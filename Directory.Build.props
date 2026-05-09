@@ -1,0 +1,30 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- CA1822: instance services are wired through DI; they are intentionally not static. -->
+    <NoWarn>$(NoWarn);CA1822</NoWarn>
+
+    <Authors>Julien Bombled</Authors>
+    <Company>Julien Bombled</Company>
+    <Copyright>Copyright 2026 Julien Bombled</Copyright>
+    <Product>Winsight</Product>
+
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/julienbombled/winsight</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <NeutralLanguage>en-US</NeutralLanguage>
+
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

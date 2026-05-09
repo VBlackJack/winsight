@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/SampleWpfApp/SampleWpfApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Winsight.Core/Winsight.Core.csproj" />
+    <Project Path="src/Winsight.Mcp/Winsight.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Winsight.Core.Tests/Winsight.Core.Tests.csproj" />
+    <Project Path="tests/Winsight.E2E/Winsight.E2E.csproj" />
+    <Project Path="tests/Winsight.Mcp.Tests/Winsight.Mcp.Tests.csproj" />
+  </Folder>
+</Solution>

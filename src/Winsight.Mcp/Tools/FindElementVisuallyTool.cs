@@ -1,0 +1,71 @@
+// Copyright 2026 Julien Bombled
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System.ComponentModel;
+using System.Globalization;
+using System.Text.Json;
+using ModelContextProtocol.Server;
+using Winsight.Core.Models;
+using Winsight.Core.Modules.Capture;
+using Winsight.Core.Modules.Vision;
+using Winsight.Mcp.Serialization;
+
+namespace Winsight.Mcp.Tools;
+
+[McpServerToolType]
+public static class FindElementVisuallyTool
+{
+    private const string ScreenshotSubdirectory = "winsight";
+    private const string ScreenshotPrefix = "vision-";
+    private const string ScreenshotExtension = ".png";
+    private const string TimestampFormat = "yyyyMMdd-HHmmss-fff";
+
+    [McpServerTool(Name = "find_element_visually")]
+    [Description("Locate a UI element from a natural-language description by capturing a screenshot " +
+                 "of the target window and grounding it via a vision model. Use this when " +
+                 "inspect_ui_tree returns no useful AutomationId (custom WPF Canvas, SkiaSharp, " +
+                 "DirectX surfaces, or any control that does not expose itself to UI Automation). " +
+                 "Returns the bounding box center (x, y) plus width/height in pixels of the screenshot, " +
+                 "a confidence score, and the model's reasoning. Coordinates are in screenshot space " +
+                 "(window-relative); add the window's origin to get screen-space if needed. " +
+                 "Default backend is the Anthropic Claude Sonnet 4.6 vision API; configure it with " +
+                 "the ANTHROPIC_API_KEY environment variable. NOTE: the screenshot is sent to the " +
+                 "Anthropic API — do not use this tool on apps with regulated or sensitive content " +
+                 "until a local ONNX backend (ShowUI-π) is shipped.")]
+    public static Task<string> FindElementVisuallyAsync(
+        IElementGrounder grounder,
+        WindowCapture capture,
+        [Description("Process id of the target application (from list_windows).")]
+        int processId,
+        [Description("Natural-language description of the element to locate, " +
+                     "e.g. 'the increment button in the lower-right of the counter panel'.")]
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        return ToolSafety.SafeInvokeAsync(async () =>
+        {
+            var screenshotPath = BuildTempPath();
+            capture.Capture(processId, screenshotPath);
+            var grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
+            return JsonSerializer.Serialize(grounded, JsonOptions.Default);
+        });
+    }
+
+    private static string BuildTempPath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), ScreenshotSubdirectory);
+        var timestamp = DateTime.UtcNow.ToString(TimestampFormat, CultureInfo.InvariantCulture);
+        return Path.Combine(directory, ScreenshotPrefix + timestamp + ScreenshotExtension);
+    }
+}

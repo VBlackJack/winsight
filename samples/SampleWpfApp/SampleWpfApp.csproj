@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Winsight.Samples.SimpleCounter</RootNamespace>
+    <AssemblyName>SampleWpfApp</AssemblyName>
+    <ApplicationIcon />
+    <Description>Reference WPF target used to demonstrate Winsight tools end-to-end.</Description>
+  </PropertyGroup>
+
+</Project>
