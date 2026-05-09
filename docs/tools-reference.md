@@ -1,9 +1,14 @@
 # Tools reference
 
 This document describes the MCP tools exposed by `Winsight.Mcp` to AI agents.
-Every tool returns a JSON string. Errors are surfaced inside an
-`OperationResult` shape (`{ "success": false, "error": "..." }`) rather than
-as MCP exceptions, so an agent can read and recover from them.
+Every tool returns a JSON string. Errors — whether from a known failure mode
+or an unexpected exception inside the tool body — are uniformly surfaced
+inside an `OperationResult` shape (`{ "success": false, "error": "..." }`)
+rather than as MCP exceptions, so an agent can read and recover from them.
+A universal `ToolSafety` guard at the tool boundary catches anything the
+implementation throws and converts it into that shape, so a single rogue
+exception cannot tear down the host process or kill the rest of the agent's
+session.
 
 ## `list_windows`
 
@@ -153,14 +158,27 @@ result is often a black rectangle.
 | `processId`  | int    | yes      | Target process id                                      |
 | `outputPath` | string | no       | Absolute file path. Default: `%TEMP%\winsight\screenshot-{utc-timestamp}.png` |
 
-**Returns** — JSON `ScreenshotResult`:
+**Returns** — `OperationResult` wrapping a `ScreenshotResult` payload:
 
 ```json
 {
-  "path": "C:\\Users\\me\\AppData\\Local\\Temp\\winsight\\screenshot-20260509-143012-457.png",
-  "width": 420,
-  "height": 280,
-  "capturedAtUtc": "2026-05-09T14:30:12.4571234Z"
+  "success": true,
+  "data": {
+    "path": "C:\\Users\\me\\AppData\\Local\\Temp\\winsight\\screenshot-20260509-143012-457.png",
+    "width": 420,
+    "height": 280,
+    "capturedAtUtc": "2026-05-09T14:30:12.4571234Z"
+  }
+}
+```
+
+On failure (window minimized, `PrintWindow` returned false, output path
+not writable, target requires administrator and the host does not, …):
+
+```json
+{
+  "success": false,
+  "error": "PrintWindow returned false (Win32 error 0x00000005=5). Window may be minimized, occluded, or use a composition surface that does not support PrintWindow (e.g. WinUI3 with DesktopChildSiteBridge)."
 }
 ```
 
@@ -170,7 +188,11 @@ result is often a black rectangle.
   redraw cost (a few ms for typical WPF windows).
 - The capture covers the window's bounding rectangle including non-client
   area (title bar, borders).
-- Minimized windows return an error.
+- Minimized windows, occluded windows, and modern WinUI3 composition
+  surfaces (Win11 Notepad, recent Settings panes) may fail `PrintWindow`.
+  The error message includes the Win32 error code so the agent can decide
+  whether to retry, restore the window, or fall back to a different
+  capture strategy.
 
 ## `detect_webview2_endpoints`
 

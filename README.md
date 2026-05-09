@@ -35,16 +35,22 @@ bots for desktop applications have lagged behind, stuck on top of the UI
 Automation tree. Winsight closes that gap by combining four orthogonal
 capabilities under a single tool surface that an LLM can compose:
 
-| Layer       | What it offers                                                       | Backed by                          |
-| ----------- | -------------------------------------------------------------------- | ---------------------------------- |
-| Discovery   | Window enumeration, UIA tree inspection                              | FlaUI (UIA3)                       |
-| Action      | Element location, click, type, focus                                 | FlaUI patterns + fallback          |
-| Oracle      | Read private fields and managed state without `InternalsVisibleTo`   | Microsoft.Diagnostics.Runtime      |
-| Perception  | (Phase 2) Vision grounding, visual regression                        | ONNX runtime + ShowUI / OmniParser |
+| Layer       | What it offers                                                                | Backed by                                       |
+| ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| Discovery   | Window enumeration, UIA tree inspection                                       | FlaUI (UIA3)                                    |
+| Action      | Element location, click, type, focus                                          | FlaUI patterns + Win32 fallback                 |
+| Oracle      | Read private fields and managed state without `InternalsVisibleTo`            | Microsoft.Diagnostics.Runtime (CLRMD)           |
+| Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry) | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
+| Capture     | Window screenshot via `PrintWindow` + `PW_RENDERFULLCONTENT`                  | Win32 `PrintWindow`                             |
+| WebView2    | Locate embedded WebView2 instances, surface their CDP debugging endpoint      | WMI process tree + TCP listener cross-reference |
+| Perception  | Visual grounding from a natural-language description (cloud), local ONNX backlog | Anthropic Messages API today / ShowUI-π planned |
 
 ## Status
 
-Phase 1 — bootable scaffold. Not production-ready.
+Phase 1 + Phase 2 + tool boundary hardening — fully bootable, end-to-end
+validated against `SampleWpfApp` (golden path) and a real WPF application
+(`Win11Forge`). 47 unit tests + 2 E2E scenarios green. Local ONNX vision
+and visual regression are still backlog (see capability matrix below).
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
 | ------------------------------- | ------- | ------- | ------- |
@@ -66,13 +72,16 @@ Phase 1 — bootable scaffold. Not production-ready.
 ```
 winsight/
 ├── src/
-│   ├── Winsight.Core/      Engine: UIA, CLRMD, models
-│   └── Winsight.Mcp/       MCP server executable (stdio)
+│   ├── Winsight.Core/      Engine: UIA, CLRMD, capture, diagnostics, vision, models
+│   └── Winsight.Mcp/       MCP server executable (stdio) + tool boundary guard
 ├── samples/
-│   └── SampleWpfApp/       Counter app used as test target
+│   └── SampleWpfApp/       Counter app used as the integration target
 ├── tests/
-│   ├── Winsight.Core.Tests xUnit unit tests
-│   └── Winsight.E2E        End-to-end agent-driven scenarios
+│   ├── Winsight.Core.Tests xUnit unit tests for the engine layer
+│   ├── Winsight.Mcp.Tests  xUnit unit tests for the MCP tool boundary (ToolSafety, wrappers)
+│   └── Winsight.E2E        End-to-end agent-driven scenarios on SampleWpfApp
+├── tools/
+│   └── smoke-mcp.ps1       JSON-RPC smoke test for the stdio server
 └── docs/
     ├── architecture.md
     └── tools-reference.md
@@ -148,7 +157,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists 9 tools.
+server is connected and lists all 10 tools.
 
 ### Smoke check from the shell
 

@@ -14,6 +14,7 @@ and testable. The MCP server is a thin adapter; the value lives in the engine.
 ┌─────────────────────────────────────────────────────────┐
 │  Winsight.Mcp                                           │
 │   - tool definitions (Tools/*.cs)                       │
+│   - ToolSafety outer guard (Tools/ToolSafety.cs)        │
 │   - JSON serialization (Serialization/JsonOptions.cs)   │
 │   - hosting (Program.cs)                                │
 └─────────────────────────────────────────────────────────┘
@@ -21,11 +22,13 @@ and testable. The MCP server is a thin adapter; the value lives in the engine.
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Winsight.Core                                          │
-│   ┌────────┬─────────────┬─────────────┬─────────┬─────┐│
-│   │ Models │ UiAutomation│ ManagedState│ Capture │ Web │
-│   │records │ FlaUI UIA3  │ CLRMD heap  │PrintWin │View2│
-│   │  DTOs  │ finder/BFS  │   walk      │ + PNG   │ WMI │
-│   └────────┴─────────────┴─────────────┴─────────┴─────┘│
+│   • Models        — pure data records (DTOs)            │
+│   • UiAutomation  — FlaUI UIA3 finder / BFS / actions   │
+│   • ManagedState  — CLRMD non-suspending heap walk      │
+│   • Capture       — PrintWindow PW_RENDERFULLCONTENT    │
+│   • WebView2      — WMI process tree + CDP detection    │
+│   • Diagnostics   — EventPipe counters + events         │
+│   • Vision        — IElementGrounder + Anthropic API    │
 └─────────────────────────────────────────────────────────┘
                          │  Win32 / .NET diagnostic APIs
                          ▼
@@ -43,7 +46,21 @@ Pure data records. No behavior, no IO.
 - `WindowDescriptor` — top-level window snapshot.
 - `UiElementNode` — a single node in a recursive UIA tree.
 - `ElementLocator` — input criteria for finding an element.
-- `OperationResult` — uniform success/error/data envelope.
+- `OperationResult` — uniform `{success, error, data}` envelope used by
+  every tool's failure path (and by several tools' success path too).
+- `ScreenshotResult` — path / dimensions / capture timestamp returned by
+  `capture_screenshot`.
+- `WebView2Endpoint` — descendant WebView2 process descriptor with the
+  CDP port it was launched with (if any) and whether the port is
+  actually listening.
+- `CounterSnapshot` — output of `observe_counters`: provider, duration,
+  sample count, and a `counters` map of counter-name to last observed
+  value.
+- `DiagnosticEvent` + `EventCaptureResult` — output of `capture_events`:
+  per-event metadata (timestamp, provider, name, level, normalized
+  payload) bounded by a configurable cap with a `truncated` flag.
+- `GroundedElement` — bounding box, confidence, and reasoning returned
+  by `find_element_visually`.
 
 ### Winsight.Core/Modules/UiAutomation
 
@@ -193,24 +210,55 @@ Logging is forced to stderr — stdout is reserved for the MCP protocol.
 - CLRMD's `DataTarget` is similarly scoped per call. Attach is non-suspending
   (`suspend: false`) to avoid GC interaction issues on .NET 9 / .NET 10.
 
+## Tool boundary safety
+
+Every tool method on `Winsight.Mcp` is wrapped by `ToolSafety.SafeInvoke`
+(or `SafeInvokeAsync` for the vision tool). The guard:
+
+- Catches every non-fatal exception thrown inside the tool body and
+  returns a structured `OperationResult { success: false, error }` JSON
+  the agent can read and recover from.
+- Mirrors the original exception (with full stack) to **stderr** so a
+  human attaching to the host process can see what happened. Stdout
+  remains reserved for MCP protocol traffic.
+- Lets truly fatal exceptions propagate (`OutOfMemoryException`,
+  `StackOverflowException`, `ThreadAbortException`) — masking those
+  would hide a process-wide failure.
+
+The reason this guard exists rather than relying on the MCP framework's
+own error handling: a single unhandled exception inside any tool (a
+`COMException` from a UIA call, a CLRMD attach failure on an
+inaccessible process) was observed to **terminate the .NET host
+process**, which in turn closes the stdio transport and renders every
+other tool permanently unusable for the rest of the agent's session.
+The universal guard pins the failure to the calling tool only.
+
 ## Failure modes and how they are reported
 
-| Situation                                 | Behavior                                            |
-| ----------------------------------------- | --------------------------------------------------- |
-| Window has no name                        | Skipped from `list_windows` (kept implicit)         |
-| COM exception on a single window          | Caught locally, that window is skipped              |
-| Element not found                         | `OperationResult.Failure(...)` (success = false)    |
-| Process has no managed runtime            | `OperationResult.Failure(...)`                      |
-| Type/field not found in heap              | `OperationResult.Failure(...)`                      |
-| Architecture mismatch with target process | CLRMD throws; MCP returns the exception as error    |
+| Situation                                 | Behavior                                              |
+| ----------------------------------------- | ----------------------------------------------------- |
+| Window has no name                        | Skipped from `list_windows` (kept implicit)           |
+| COM exception on a single window          | Caught locally, that window is skipped                |
+| Element not found                         | `OperationResult.Failure(...)` (success = false)      |
+| Process has no managed runtime            | `OperationResult.Failure(...)`                        |
+| Type/field not found in heap              | `OperationResult.Failure(...)`                        |
+| Architecture / elevation mismatch         | CLRMD attach throws; ToolSafety wraps it as `OperationResult.Failure(message)` and the host stays up |
+| Any other unhandled exception in a tool   | ToolSafety wraps it as `OperationResult.Failure(message)`, stderr-logs the full stack, returns to caller |
 
 ## What is intentionally absent at this point
 
-- Vision grounding (ShowUI / OmniParser) — Phase 2 backlog.
+- Local ONNX vision grounding (ShowUI-π / OmniParser V2) — Phase 2
+  backlog. The cloud Anthropic backend ships today behind
+  `IElementGrounder`, so adding a local backend is a swap, not a rewrite.
 - Visual regression (Anomalib / PatchCore) — Phase 2 backlog.
-- ETW / EventPipe oracles — Phase 2 backlog.
 - Process-injection-based instrumentation (DLL injection, MinHook).
 - DPI-aware coordinate mapping for multi-monitor setups.
 - D3D11 `Present` hook for capturing surfaces UIA cannot see.
+- Cross-elevation UIA / CLRMD inspection. A standard-user winsight host
+  cannot inspect or attach to processes that ship
+  `<requestedExecutionLevel level="requireAdministrator" />`. The tool
+  failures surface cleanly through `ToolSafety` but the operations
+  themselves cannot succeed. To drive elevated apps, run the winsight
+  host at the same or higher integrity level.
 
 These are tracked in the README capability matrix.
