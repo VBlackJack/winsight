@@ -1,0 +1,74 @@
+// Copyright 2026 Julien Bombled
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace Winsight.Core.Models;
+
+/// <summary>
+/// Condition polled by the element waiter until satisfied or timed out.
+/// </summary>
+public enum WaitCondition
+{
+    /// <summary>At least one element matches the locator.</summary>
+    Exists,
+
+    /// <summary>No element matches the locator (e.g. a dialog has closed).</summary>
+    NotExists,
+
+    /// <summary>Exactly one element matches and is enabled.</summary>
+    Enabled,
+
+    /// <summary>Exactly one element matches and is on-screen.</summary>
+    Visible,
+}
+
+/// <summary>
+/// Parses wire-format condition names ("exists", "not_exists", "enabled",
+/// "visible") into <see cref="WaitCondition"/> values. Tolerates casing and
+/// underscores so agent-produced input round-trips reliably.
+/// </summary>
+public static class WaitConditionParser
+{
+    /// <summary>Try to parse a wire-format condition name.</summary>
+    public static bool TryParse(string? raw, out WaitCondition condition)
+    {
+        string normalized = (raw ?? string.Empty)
+            .Trim()
+            .Replace("_", string.Empty, StringComparison.Ordinal);
+        if (string.Equals(normalized, "exists", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.Exists;
+            return true;
+        }
+        if (string.Equals(normalized, "notexists", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.NotExists;
+            return true;
+        }
+        if (string.Equals(normalized, "enabled", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.Enabled;
+            return true;
+        }
+        if (string.Equals(normalized, "visible", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.Visible;
+            return true;
+        }
+        condition = WaitCondition.Exists;
+        return false;
+    }
+
+    /// <summary>Comma-separated list of accepted wire-format names, for error messages.</summary>
+    public static string AcceptedValues => "exists, not_exists, enabled, visible";
+}

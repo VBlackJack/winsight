@@ -14,6 +14,12 @@
 
 namespace Winsight.Core.Models;
 
+/// <summary>
+/// Node of the inspected UIA tree. <see cref="Value"/> carries the current
+/// Value-pattern content (text boxes, combo boxes) and is null when the
+/// element does not support the pattern, so the tree doubles as a read-only
+/// oracle for assertions.
+/// </summary>
 public sealed record UiElementNode(
     string AutomationId,
     string Name,
@@ -21,6 +27,7 @@ public sealed record UiElementNode(
     string ClassName,
     bool IsEnabled,
     bool IsVisible,
+    string? Value,
     int X,
     int Y,
     int Width,

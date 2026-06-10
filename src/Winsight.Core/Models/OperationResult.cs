@@ -21,4 +21,6 @@ public sealed record OperationResult(bool Success, string? Error, object? Data)
     public static OperationResult OkWith(object? data) => new(true, null, data);
 
     public static OperationResult Failure(string error) => new(false, error, null);
+
+    public static OperationResult FailureWith(string error, object? data) => new(false, error, data);
 }

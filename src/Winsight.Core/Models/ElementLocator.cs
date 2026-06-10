@@ -14,13 +14,34 @@
 
 namespace Winsight.Core.Models;
 
+/// <summary>
+/// Criteria used to locate a UI Automation element. All provided criteria
+/// must match (logical AND). <see cref="Index"/> alone is not a valid
+/// locator: it only disambiguates when several elements match the other
+/// criteria.
+/// </summary>
+/// <param name="AutomationId">Exact AutomationId match.</param>
+/// <param name="Name">Exact Name property match.</param>
+/// <param name="ClassName">Exact ClassName match.</param>
+/// <param name="ControlType">Exact UIA control type match (e.g. "Button", "Edit"), case-insensitive.</param>
+/// <param name="NameContains">Case-insensitive substring match on the Name property.</param>
+/// <param name="Index">Zero-based index used to pick one element when several match the other criteria.</param>
 public sealed record ElementLocator(
     string? AutomationId = null,
     string? Name = null,
-    string? ClassName = null)
+    string? ClassName = null,
+    string? ControlType = null,
+    string? NameContains = null,
+    int? Index = null)
 {
+    /// <summary>
+    /// True when no discriminating criterion is set. An index alone does not
+    /// make a locator usable.
+    /// </summary>
     public bool IsEmpty =>
         string.IsNullOrEmpty(AutomationId) &&
         string.IsNullOrEmpty(Name) &&
-        string.IsNullOrEmpty(ClassName);
+        string.IsNullOrEmpty(ClassName) &&
+        string.IsNullOrEmpty(ControlType) &&
+        string.IsNullOrEmpty(NameContains);
 }

@@ -41,6 +41,8 @@ public static class Program
         builder.Services.AddSingleton<WindowDiscovery>();
         builder.Services.AddSingleton<UiTreeInspector>();
         builder.Services.AddSingleton<ActionInvoker>();
+        builder.Services.AddSingleton<ElementStateReader>();
+        builder.Services.AddSingleton<ElementWaiter>();
         builder.Services.AddSingleton<ManagedStateReader>();
         builder.Services.AddSingleton<WindowCapture>();
         builder.Services.AddSingleton<WebView2Detector>();

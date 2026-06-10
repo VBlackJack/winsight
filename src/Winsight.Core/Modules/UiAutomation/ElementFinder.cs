@@ -12,64 +12,279 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Runtime.InteropServices;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using Winsight.Core.Models;
 
 namespace Winsight.Core.Modules.UiAutomation;
 
+/// <summary>
+/// A located element together with the compact candidate descriptor used
+/// for ambiguity and near-miss reporting.
+/// </summary>
+internal sealed record ElementMatch(AutomationElement Element, ElementCandidate Candidate);
+
+/// <summary>
+/// Outcome of a strict single-element lookup. Exactly one of
+/// <see cref="Element"/> or <see cref="Error"/> is set; when an error is
+/// caused by ambiguity or produces near-miss suggestions, the corresponding
+/// candidates are attached so an agent can refine its locator in one step.
+/// </summary>
+internal sealed record ElementSearchResult(
+    ElementMatch? Match,
+    string? Error,
+    IReadOnlyList<ElementCandidate>? Candidates)
+{
+    public bool Found => Match is not null;
+
+    public AutomationElement? Element => Match?.Element;
+
+    public static ElementSearchResult Success(ElementMatch match) =>
+        new(match, null, null);
+
+    public static ElementSearchResult Failure(string error, IReadOnlyList<ElementCandidate>? candidates = null) =>
+        new(null, error, candidates);
+}
+
+/// <summary>
+/// Locates elements across all top-level windows of a process. Lookups are
+/// strict: when several elements match a locator without an explicit index,
+/// the lookup fails and reports the candidates rather than silently picking
+/// the first match.
+/// </summary>
 internal static class ElementFinder
 {
-    public static AutomationElement? Find(UIA3Automation automation, int processId, ElementLocator locator)
+    /// <summary>
+    /// Top-level windows of the process, optionally narrowed to those whose
+    /// title contains <paramref name="windowTitle"/> (case-insensitive).
+    /// Enumeration goes through Win32 and roots each element at its handle,
+    /// because UIA's desktop child listing omits owned windows (modal
+    /// dialogs) and the owner's child listing omits them too.
+    /// </summary>
+    internal static IReadOnlyList<AutomationElement> ResolveWindows(
+        UIA3Automation automation,
+        int processId,
+        string? windowTitle)
+    {
+        List<AutomationElement> windows = new();
+        foreach ((IntPtr handle, string title) in NativeWindowEnumerator.VisibleTopLevelWindows(processId))
+        {
+            if (!string.IsNullOrEmpty(windowTitle) &&
+                !title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            try
+            {
+                windows.Add(automation.FromHandle(handle));
+            }
+            catch (COMException)
+            {
+                // The window closed between enumeration and attachment.
+            }
+        }
+        return windows;
+    }
+
+    /// <summary>
+    /// Breadth-first search over the given windows, returning every element
+    /// matching the locator (index criterion excluded).
+    /// </summary>
+    internal static List<ElementMatch> CollectMatches(
+        IReadOnlyList<AutomationElement> windows,
+        ElementLocator locator)
+    {
+        List<ElementMatch> matches = new();
+        foreach (AutomationElement window in windows)
+        {
+            string title = SafeName(window);
+            Queue<AutomationElement> queue = new();
+            queue.Enqueue(window);
+            while (queue.Count > 0)
+            {
+                AutomationElement current = queue.Dequeue();
+                (string automationId, string name, string className, string controlType)? snapshot =
+                    TryReadSnapshot(current);
+                if (snapshot is null)
+                {
+                    // Element vanished mid-walk (closing popup); skip its branch.
+                    continue;
+                }
+                (string automationId, string name, string className, string controlType) = snapshot.Value;
+                if (LocatorMatcher.Matches(locator, automationId, name, className, controlType))
+                {
+                    matches.Add(new ElementMatch(
+                        current,
+                        new ElementCandidate(matches.Count, automationId, name, controlType, className, title)));
+                }
+                foreach (AutomationElement child in SafeChildren(current))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+        return matches;
+    }
+
+    /// <summary>
+    /// Strict single-element lookup. Fails with candidate listings on
+    /// ambiguity, and with near-miss suggestions when nothing matches.
+    /// </summary>
+    internal static ElementSearchResult FindSingle(
+        UIA3Automation automation,
+        int processId,
+        ElementLocator locator,
+        string? windowTitle = null)
     {
         if (locator.IsEmpty)
         {
+            return ElementSearchResult.Failure(
+                "Locator is empty: provide at least one of automationId, name, nameContains, className, or controlType.");
+        }
+
+        IReadOnlyList<AutomationElement> windows = ResolveWindows(automation, processId, windowTitle);
+        if (windows.Count == 0)
+        {
+            return ElementSearchResult.Failure(BuildNoWindowError(processId, windowTitle));
+        }
+
+        List<ElementMatch> matches = CollectMatches(windows, locator);
+
+        if (matches.Count == 0)
+        {
+            List<ElementCandidate> suggestions = CollectNearMisses(windows, locator);
+            string suffix = suggestions.Count > 0
+                ? $" Near matches: {DescribeCandidates(suggestions)}"
+                : string.Empty;
+            return ElementSearchResult.Failure(
+                $"Element not found for locator {locator} in process {processId}.{suffix}",
+                suggestions.Count > 0 ? suggestions : null);
+        }
+
+        if (locator.Index is int index)
+        {
+            if (index < 0 || index >= matches.Count)
+            {
+                return ElementSearchResult.Failure(
+                    $"Locator index {index} is out of range: {matches.Count} element(s) matched. " +
+                    $"Candidates: {DescribeCandidates(Cap(matches))}",
+                    Cap(matches));
+            }
+            return ElementSearchResult.Success(matches[index]);
+        }
+
+        if (matches.Count > 1)
+        {
+            return ElementSearchResult.Failure(
+                $"Locator {locator} matched {matches.Count} elements in process {processId}. " +
+                $"Add 'index' (0-based) or narrow the locator. Candidates: {DescribeCandidates(Cap(matches))}",
+                Cap(matches));
+        }
+
+        return ElementSearchResult.Success(matches[0]);
+    }
+
+    private static string BuildNoWindowError(int processId, string? windowTitle)
+    {
+        List<(IntPtr Handle, string Title)> allWindows =
+            NativeWindowEnumerator.VisibleTopLevelWindows(processId);
+        if (string.IsNullOrEmpty(windowTitle) || allWindows.Count == 0)
+        {
+            return $"No top-level window found for process {processId}.";
+        }
+
+        string titles = string.Join(", ", allWindows.Select(w => $"\"{w.Title}\""));
+        return $"No window of process {processId} has a title containing \"{windowTitle}\". " +
+               $"Available titles: {titles}.";
+    }
+
+    private static List<ElementCandidate> CollectNearMisses(
+        IReadOnlyList<AutomationElement> windows,
+        ElementLocator locator)
+    {
+        List<ElementCandidate> nearMisses = new();
+        foreach (AutomationElement window in windows)
+        {
+            string title = SafeName(window);
+            Queue<AutomationElement> queue = new();
+            queue.Enqueue(window);
+            while (queue.Count > 0 && nearMisses.Count < UiaDefaults.MaxReportedCandidates)
+            {
+                AutomationElement current = queue.Dequeue();
+                (string automationId, string name, string className, string controlType)? snapshot =
+                    TryReadSnapshot(current);
+                if (snapshot is null)
+                {
+                    continue;
+                }
+                (string automationId, string name, string className, string controlType) = snapshot.Value;
+                if (LocatorMatcher.IsNearMiss(locator, automationId, name))
+                {
+                    nearMisses.Add(new ElementCandidate(
+                        nearMisses.Count, automationId, name, controlType, className, title));
+                }
+                foreach (AutomationElement child in SafeChildren(current))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+        return nearMisses;
+    }
+
+    private static (string AutomationId, string Name, string ClassName, string ControlType)? TryReadSnapshot(
+        AutomationElement element)
+    {
+        try
+        {
+            return (
+                element.Properties.AutomationId.ValueOrDefault ?? string.Empty,
+                element.Properties.Name.ValueOrDefault ?? string.Empty,
+                element.Properties.ClassName.ValueOrDefault ?? string.Empty,
+                element.Properties.ControlType.ValueOrDefault.ToString());
+        }
+        catch (COMException)
+        {
             return null;
         }
-
-        var desktop = automation.GetDesktop();
-        var window = desktop.FindAllChildren()
-            .FirstOrDefault(e => e.Properties.ProcessId.ValueOrDefault == processId);
-
-        return window is null ? null : BreadthFirstSearch(window, locator);
     }
 
-    private static AutomationElement? BreadthFirstSearch(AutomationElement root, ElementLocator locator)
+    private static string SafeName(AutomationElement element)
     {
-        var queue = new Queue<AutomationElement>();
-        queue.Enqueue(root);
-        while (queue.Count > 0)
+        try
         {
-            var current = queue.Dequeue();
-            if (Matches(current, locator))
-            {
-                return current;
-            }
-            foreach (var child in current.FindAllChildren())
-            {
-                queue.Enqueue(child);
-            }
+            return element.Properties.Name.ValueOrDefault ?? string.Empty;
         }
-        return null;
+        catch (COMException)
+        {
+            return string.Empty;
+        }
     }
 
-    private static bool Matches(AutomationElement element, ElementLocator locator)
+    private static AutomationElement[] SafeChildren(AutomationElement element)
     {
-        if (!string.IsNullOrEmpty(locator.AutomationId) &&
-            !string.Equals(element.Properties.AutomationId.ValueOrDefault, locator.AutomationId, StringComparison.Ordinal))
+        try
         {
-            return false;
+            return element.FindAllChildren();
         }
-        if (!string.IsNullOrEmpty(locator.Name) &&
-            !string.Equals(element.Properties.Name.ValueOrDefault, locator.Name, StringComparison.Ordinal))
+        catch (COMException)
         {
-            return false;
+            return Array.Empty<AutomationElement>();
         }
-        if (!string.IsNullOrEmpty(locator.ClassName) &&
-            !string.Equals(element.Properties.ClassName.ValueOrDefault, locator.ClassName, StringComparison.Ordinal))
-        {
-            return false;
-        }
-        return true;
+    }
+
+    private static List<ElementCandidate> Cap(List<ElementMatch> matches)
+    {
+        return matches
+            .Take(UiaDefaults.MaxReportedCandidates)
+            .Select(m => m.Candidate)
+            .ToList();
+    }
+
+    private static string DescribeCandidates(IReadOnlyList<ElementCandidate> candidates)
+    {
+        return string.Join("; ", candidates.Select(c =>
+            $"[{c.Index}] automationId=\"{c.AutomationId}\" name=\"{c.Name}\" controlType={c.ControlType} window=\"{c.WindowTitle}\""));
     }
 }

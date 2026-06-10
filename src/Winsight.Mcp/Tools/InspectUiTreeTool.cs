@@ -24,20 +24,27 @@ namespace Winsight.Mcp.Tools;
 public static class InspectUiTreeTool
 {
     [McpServerTool(Name = "inspect_ui_tree")]
-    [Description("Walk the UI Automation tree of a process's main window and return its structure. " +
+    [Description("Walk the UI Automation tree of a process window and return its structure. " +
                  "Each node carries automationId, name, controlType, className, enabled/visible flags, " +
-                 "and its bounding rectangle. Use this to discover automation ids and locate elements " +
-                 "for click_element or type_text.")]
+                 "current value (Value pattern, when supported), and its bounding rectangle. " +
+                 "Use this to discover automation ids and locate elements for click_element or type_text. " +
+                 "Filters prune the tree to matching nodes and their ancestors.")]
     public static string InspectUiTree(
         UiTreeInspector inspector,
         [Description("Process id of the target application (from list_windows).")]
         int processId,
         [Description("Maximum tree depth to walk. Defaults to 5; max 20.")]
-        int maxDepth = 5)
+        int maxDepth = 5,
+        [Description("Inspect the first window whose title contains this text instead of the first window of the process (modal dialogs, popups).")]
+        string? windowTitle = null,
+        [Description("Keep only nodes of this UIA control type (e.g. Button, Edit), case-insensitive, plus their ancestors.")]
+        string? controlType = null,
+        [Description("Keep only nodes whose Name contains this text (case-insensitive), plus their ancestors.")]
+        string? nameContains = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var node = inspector.Inspect(processId, maxDepth);
+            var node = inspector.Inspect(processId, maxDepth, windowTitle, controlType, nameContains);
             return JsonSerializer.Serialize(node, JsonOptions.Default);
         });
     }
