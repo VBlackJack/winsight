@@ -44,4 +44,26 @@ public class ElementLocatorTests
         var locator = new ElementLocator(id, name, className);
         locator.IsEmpty.Should().BeFalse();
     }
+
+    [Fact]
+    public void Locator_with_only_control_type_is_not_empty()
+    {
+        var locator = new ElementLocator(ControlType: "Button");
+        locator.IsEmpty.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Locator_with_only_name_contains_is_not_empty()
+    {
+        var locator = new ElementLocator(NameContains: "Count");
+        locator.IsEmpty.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Locator_with_only_index_is_empty()
+    {
+        var locator = new ElementLocator(Index: 2);
+        locator.IsEmpty.Should().BeTrue(
+            "an index alone matches everything and must not be accepted as a locator");
+    }
 }
