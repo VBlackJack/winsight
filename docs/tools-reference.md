@@ -242,6 +242,99 @@ When no usable endpoint is found, `hint` carries an actionable message:
 - Listening detection looks at any local interface, not only loopback —
   this matches WebView2's binding behavior.
 
+## `list_cdp_targets`
+
+List the debuggable targets of a Chrome DevTools Protocol endpoint
+(`GET /json/list`). Use the port reported by `detect_webview2_endpoints`.
+
+**Parameters**
+
+| Name   | Type | Default | Description                                  |
+| ------ | ---- | ------- | -------------------------------------------- |
+| `port` | int  | —       | CDP debugging port (`remoteDebuggingPort`).   |
+
+**Returns**
+
+```json
+{
+  "targets": [
+    {
+      "id": "AB12",
+      "title": "Terminal",
+      "url": "https://appassets.example/index.html",
+      "type": "page",
+      "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/AB12"
+    }
+  ],
+  "hint": null
+}
+```
+
+`hint` is set when the endpoint answers but exposes no `page` target yet
+(content still navigating — retry after the app finishes loading). Pass a
+`page` target `id` to `evaluate_javascript` or `type_into_webview`.
+
+## `evaluate_javascript`
+
+Evaluate a JavaScript expression inside a WebView2 page over CDP
+(`Runtime.evaluate` with `returnByValue` + `awaitPromise`). Use it to read
+DOM state, extract visible text (`document.body.innerText`), or perform
+ad-hoc actions UIA cannot reach.
+
+**Parameters**
+
+| Name         | Type    | Default | Description                                              |
+| ------------ | ------- | ------- | -------------------------------------------------------- |
+| `port`       | int     | —       | CDP debugging port.                                       |
+| `targetId`   | string  | —       | Page target id from `list_cdp_targets`.                   |
+| `expression` | string  | —       | JavaScript expression evaluated in the page context.      |
+| `timeoutMs`  | int?    | null    | Per-command timeout; defaults to `WINSIGHT_CDP_TIMEOUT_MS` or 10000. |
+
+**Returns** — a `CdpEvaluationResult`:
+
+```json
+{
+  "success": true,
+  "valueJson": "\"$ ls\\nREADME.md\"",
+  "valueType": "string"
+}
+```
+
+Script exceptions come back as `{ "success": false, "exceptionMessage":
+"ReferenceError: ..." }` instead of a tool error, so the agent can read
+and recover.
+
+## `type_into_webview`
+
+Type text into a WebView2 page as real key events
+(`Input.dispatchKeyEvent` keyDown/keyUp pairs). Unlike the UIA-based
+`type_text`, this reaches keydown-driven surfaces such as xterm.js
+terminals hosted in `HwndHost` — the documented failure case for UIA
+typing against embedded WebView2 content.
+
+**Parameters**
+
+| Name            | Type    | Default | Description                                                       |
+| --------------- | ------- | ------- | ----------------------------------------------------------------- |
+| `port`          | int     | —       | CDP debugging port.                                                |
+| `targetId`      | string  | —       | Page target id from `list_cdp_targets`.                            |
+| `text`          | string  | —       | Text to type. `\n` / `\r\n` become Enter, `\t` becomes Tab.        |
+| `focusSelector` | string? | null    | CSS selector focused before typing (e.g. `.xterm-helper-textarea`). Fails explicitly when nothing matches. |
+| `timeoutMs`     | int?    | null    | Per-command timeout; defaults to `WINSIGHT_CDP_TIMEOUT_MS` or 10000. |
+
+**Returns**
+
+```json
+{ "success": true, "data": { "dispatchedEvents": 6 } }
+```
+
+**Notes**
+
+- Enter is dispatched with `windowsVirtualKeyCode` 13 and text `\r`,
+  matching what terminal emulators expect from a physical key press.
+- A 10 ms delay separates successive key events so fast input is not
+  coalesced by the page.
+
 ## `observe_counters`
 
 Subscribe to .NET `EventCounters` from a managed process via EventPipe (the

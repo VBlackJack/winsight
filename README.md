@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 10 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 13 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -49,7 +49,7 @@ capabilities under a single tool surface that an LLM can compose:
 
 Phase 1 + Phase 2 + tool boundary hardening — fully bootable, end-to-end
 validated against `SampleWpfApp` (golden path) and a real WPF application
-(`Win11Forge`). 47 unit tests + 2 E2E scenarios green. Local ONNX vision
+(`Win11Forge`). 62 unit tests + 2 E2E scenarios green. Local ONNX vision
 and visual regression are still backlog (see capability matrix below).
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -60,6 +60,7 @@ and visual regression are still backlog (see capability matrix below).
 | Read managed field via CLRMD    | yes     |         |         |
 | Window screenshot (PrintWindow) |         | yes     |         |
 | WebView2 CDP endpoint discovery |         | yes     |         |
+| WebView2 CDP drive (eval / type) |        | yes     |         |
 | EventPipe counter observer      |         | yes     |         |
 | EventPipe arbitrary event capture |       | yes     |         |
 | Vision grounding (Claude API)   |         | yes     |         |
@@ -157,7 +158,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 10 tools.
+server is connected and lists all 13 tools.
 
 ### Smoke check from the shell
 

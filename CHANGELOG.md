@@ -58,6 +58,29 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `capture_events`
   - `find_element_visually`
 
+#### Phase 2.1 — WebView2 CDP driving
+
+- `Cdp` module (`Winsight.Core/Modules/Cdp`) — dependency-free Chrome
+  DevTools Protocol client over a raw `ClientWebSocket` (no Playwright /
+  Puppeteer). `CdpTargetDiscovery` lists debuggable targets via
+  `/json/list`; `CdpClient` attaches to a page target, correlates command
+  ids, skips event frames, and times out per command
+  (`WINSIGHT_CDP_TIMEOUT_MS`, default 10000 ms).
+- `CdpKeyEventFactory` — expands text into `Input.dispatchKeyEvent`
+  keyDown/keyUp sequences (`\n`/`\r\n` → Enter with
+  `windowsVirtualKeyCode` 13, `\t` → Tab). Real key events are what make
+  typing reach keydown-driven surfaces such as xterm.js terminals hosted
+  in `HwndHost`/WebView2 — the exact case where UIA `type_text` fails.
+- 3 additional tools (10 → 13):
+  - `list_cdp_targets` — targets of a CDP endpoint, with a hint when no
+    `page` target is available yet.
+  - `evaluate_javascript` — `Runtime.evaluate` with `returnByValue` +
+    `awaitPromise`; script exceptions surface as structured failures.
+  - `type_into_webview` — types text as real key events, with an optional
+    `focusSelector` that fails explicitly when nothing matches.
+- 15 new unit tests (target parsing, key event sequences, response/
+  exception parsing). `smoke-mcp.ps1` expected tool count bumped to 13.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at
