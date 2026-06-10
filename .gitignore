@@ -1,4 +1,5 @@
 # Build output
+.validation/
 [Bb]in/
 [Oo]bj/
 [Oo]ut/
