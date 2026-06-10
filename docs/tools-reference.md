@@ -31,18 +31,55 @@ Enumerate top-level windows currently on the desktop.
 ]
 ```
 
+## Locator semantics (shared by the UIA tools)
+
+`click_element`, `type_text`, `select_item`, `get_element_state`, and
+`wait_for_element` share the same locator contract:
+
+| Criterion      | Match                                                     |
+| -------------- | --------------------------------------------------------- |
+| `automationId` | Exact, case-sensitive                                      |
+| `name`         | Exact, case-sensitive                                      |
+| `className`    | Exact, case-sensitive                                      |
+| `controlType`  | Exact, case-insensitive (`Button`, `Edit`, `CheckBox`, …)  |
+| `nameContains` | Substring, case-insensitive                                |
+| `index`        | Zero-based pick when several elements match the rest       |
+
+All provided criteria combine with AND. At least one criterion other than
+`index` must be set.
+
+- **Multi-window** — the search covers every visible top-level window of
+  the process (including owned modal dialogs, which UIA hides from desktop
+  enumeration; Winsight reaches them through Win32 handles). Use
+  `windowTitle` (case-insensitive substring of the window title) to scope
+  the search to one window, e.g. a modal dialog.
+- **Strict mode** — when several elements match and no `index` is given,
+  the call fails and lists the candidates (`index`, `automationId`,
+  `name`, `controlType`, `windowTitle`) in both the error message and
+  `data`, so an agent can refine its locator in one round trip.
+- **Near misses** — when nothing matches, elements whose id or name
+  partially overlaps the requested terms are suggested in the error.
+- **Off-screen elements** are scrolled into view (ScrollItem pattern)
+  before any physical mouse action.
+
 ## `inspect_ui_tree`
 
-Walk the UI Automation tree of a process's main window.
+Walk the UI Automation tree of a process window.
 
 **Parameters**
 
-| Name        | Type | Default | Description                           |
-| ----------- | ---- | ------- | ------------------------------------- |
-| `processId` | int  | —       | Process id obtained from list_windows |
-| `maxDepth`  | int  | 5       | Tree depth, capped at 20              |
+| Name           | Type    | Default | Description                                                |
+| -------------- | ------- | ------- | ----------------------------------------------------------- |
+| `processId`    | int     | —       | Process id obtained from list_windows                       |
+| `maxDepth`     | int     | 5       | Tree depth, capped at 20                                    |
+| `windowTitle`  | string? | null    | Inspect the first window whose title contains this text     |
+| `controlType`  | string? | null    | Keep only nodes of this control type (plus their ancestors) |
+| `nameContains` | string? | null    | Keep only nodes whose Name contains this text (plus ancestors) |
 
-**Returns** — JSON `UiElementNode` (recursive):
+**Returns** — JSON `UiElementNode` (recursive). `value` carries the current
+Value-pattern content (text boxes, combo boxes) and is null when the
+element does not support the pattern, so the tree doubles as a read-only
+oracle:
 
 ```json
 {
@@ -66,20 +103,25 @@ Walk the UI Automation tree of a process's main window.
 
 ## `click_element`
 
-Locate an element and trigger its primary action.
+Locate an element (see [Locator semantics](#locator-semantics-shared-by-the-uia-tools))
+and click it.
 
 **Parameters**
 
-| Name           | Type   | Required | Description                              |
-| -------------- | ------ | -------- | ---------------------------------------- |
-| `processId`    | int    | yes      | Target process id                        |
-| `automationId` | string | one of   | UIA AutomationId                         |
-| `name`         | string | one of   | UIA Name                                 |
-| `className`    | string | one of   | UIA ClassName                            |
+| Name           | Type    | Required | Description                                        |
+| -------------- | ------- | -------- | -------------------------------------------------- |
+| `processId`    | int     | yes      | Target process id                                  |
+| `automationId` | string? | locator  | UIA AutomationId                                   |
+| `name`         | string? | locator  | UIA Name                                           |
+| `className`    | string? | locator  | UIA ClassName                                      |
+| `controlType`  | string? | locator  | UIA control type                                   |
+| `nameContains` | string? | locator  | Name substring                                     |
+| `index`        | int?    | no       | Pick among multiple matches                        |
+| `windowTitle`  | string? | no       | Scope to windows whose title contains this text    |
+| `clickStyle`   | string? | no       | `single` (default), `double`, or `right`           |
 
-At least one of `automationId`, `name`, or `className` must be set.
-
-**Resolution order**: Invoke pattern → Toggle pattern → mouse click on center.
+**Resolution order** (`single`): Invoke pattern → Toggle pattern → mouse
+click on center. `double` and `right` are always physical mouse actions.
 
 **Returns** — `OperationResult`:
 
@@ -87,29 +129,117 @@ At least one of `automationId`, `name`, or `className` must be set.
 { "success": true }
 ```
 
-or
+or, on ambiguity:
 
 ```json
-{ "success": false, "error": "Element not found for locator ..." }
+{
+  "success": false,
+  "error": "Locator ... matched 3 elements ... Candidates: [0] automationId=\"IncrementButton\" ...",
+  "data": [ { "index": 0, "automationId": "IncrementButton", "name": "Increment", "controlType": "Button", "className": "Button", "windowTitle": "Winsight Sample - Counter" } ]
+}
 ```
 
 ## `type_text`
 
-Locate an element and write text into it.
+Locate an element and write text into it. Same locator parameters as
+`click_element` (minus `clickStyle`), plus:
 
-**Parameters**
+| Name   | Type   | Required | Description  |
+| ------ | ------ | -------- | ------------ |
+| `text` | string | yes      | Text to send |
 
-| Name           | Type   | Required | Description                              |
-| -------------- | ------ | -------- | ---------------------------------------- |
-| `processId`    | int    | yes      | Target process id                        |
-| `text`         | string | yes      | Text to send                             |
-| `automationId` | string | one of   | UIA AutomationId                         |
-| `name`         | string | one of   | UIA Name                                 |
-| `className`    | string | one of   | UIA ClassName                            |
-
-**Resolution order**: Value pattern → focus + keyboard.Type.
+**Resolution order**: Value pattern (when writable) → focus + keyboard.Type.
 
 **Returns** — `OperationResult` (same shape as `click_element`).
+
+## `select_item`
+
+Select an item by its visible text inside a located container. The
+container locator uses the shared locator parameters.
+
+| Name       | Type   | Required | Description                        |
+| ---------- | ------ | -------- | ---------------------------------- |
+| `itemName` | string | yes      | Visible text of the item to select |
+
+**Container handling**
+
+| Container control type | Strategy                                       |
+| ---------------------- | ----------------------------------------------- |
+| `ComboBox`             | FlaUI ComboBox select + collapse                |
+| `List`                 | FlaUI ListBox select                            |
+| `Tab`                  | Tab item select                                 |
+| anything else          | Descendant search for a SelectionItem element   |
+
+On a missing item, the error lists the available item names.
+
+**Returns** — `OperationResult`.
+
+## `get_element_state`
+
+Read the observable state of a located element — the lightweight UI-level
+oracle for assertions. Prefer it over `read_managed_state` when the
+on-screen state is enough. Uses the shared locator parameters.
+
+**Returns** — `OperationResult` wrapping an `ElementState`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "automationId": "FeatureToggle",
+    "name": "Enable feature",
+    "controlType": "CheckBox",
+    "className": "CheckBox",
+    "windowTitle": "Winsight Sample - Counter",
+    "isEnabled": true,
+    "isVisible": true,
+    "hasKeyboardFocus": false,
+    "value": null,
+    "toggleState": "On",
+    "isSelected": null,
+    "selectedItem": null,
+    "x": 766, "y": 612, "width": 102, "height": 15
+  }
+}
+```
+
+Pattern-backed fields are null when the element does not support the
+corresponding pattern: `value` (Value pattern), `toggleState` (Toggle),
+`isSelected` (SelectionItem, e.g. a list item), `selectedItem` (Selection —
+the name of the first selected child of a container such as a ComboBox).
+
+## `wait_for_element`
+
+Poll until a condition holds for a locator, or fail after a timeout. This
+is the synchronization primitive: wait before clicking (element appears /
+enables) and after acting (dialog closes). Uses the shared locator
+parameters, plus:
+
+| Name             | Type    | Default | Description                                                  |
+| ---------------- | ------- | ------- | ------------------------------------------------------------ |
+| `condition`      | string  | —       | `exists`, `not_exists`, `enabled`, or `visible`              |
+| `timeoutMs`      | int?    | 10000   | Max wait; overridable globally via `WINSIGHT_UIA_WAIT_TIMEOUT_MS`; capped at 120000 |
+| `pollIntervalMs` | int?    | 250     | Delay between polls; min 50                                   |
+
+`exists` is satisfied by one or more matches; `not_exists` by zero.
+`enabled` and `visible` require a unique match (use `index` to
+disambiguate) and fail fast with candidates when several elements match.
+
+**Returns** — `OperationResult` wrapping a `WaitOutcome` (also attached to
+timeout failures):
+
+```json
+{
+  "success": true,
+  "data": {
+    "condition": "Exists",
+    "conditionMet": true,
+    "elapsedMs": 312,
+    "matchCount": 1,
+    "state": { "automationId": "NoteInput", "...": "..." }
+  }
+}
+```
 
 ## `read_managed_state`
 

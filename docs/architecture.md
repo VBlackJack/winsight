@@ -45,7 +45,16 @@ Pure data records. No behavior, no IO.
 
 - `WindowDescriptor` — top-level window snapshot.
 - `UiElementNode` — a single node in a recursive UIA tree.
-- `ElementLocator` — input criteria for finding an element.
+- `ElementLocator` — input criteria for finding an element (exact id/name/
+  className, case-insensitive controlType and nameContains, index pick).
+- `ElementCandidate` — compact element descriptor reported on ambiguous
+  or failed lookups.
+- `ElementState` — UI-level state snapshot returned by `get_element_state`
+  (value, toggle, selection, focus, geometry).
+- `WaitCondition` + `WaitOutcome` — condition enum and result payload of
+  `wait_for_element`; `ClickStyle` — click variants for `click_element`.
+  Both enums ship wire-format parsers (`exists`/`not_exists`/…,
+  `single`/`double`/`right`).
 - `OperationResult` — uniform `{success, error, data}` envelope used by
   every tool's failure path (and by several tools' success path too).
 - `ScreenshotResult` — path / dimensions / capture timestamp returned by
@@ -64,16 +73,35 @@ Pure data records. No behavior, no IO.
 
 ### Winsight.Core/Modules/UiAutomation
 
-Wraps FlaUI (UIA3). Three pieces:
+Wraps FlaUI (UIA3):
 
 - `WindowDiscovery` — enumerates top-level windows and resolves process metadata.
   Uses `GetForegroundWindow` for the foreground flag.
-- `UiTreeInspector` — bounded BFS traversal of the UIA tree for a given process.
-  Default depth is 5; capped at 20 to avoid pathological trees.
-- `ElementFinder` (internal) — locates an element by automationId, name, or
-  className via BFS.
-- `ActionInvoker` — clicks (Invoke / Toggle / mouse fallback) and types
-  (Value pattern / keyboard fallback) on located elements.
+- `UiTreeInspector` — bounded BFS traversal of the UIA tree for a given process
+  window (default depth 5, capped at 20), with optional window-title scoping
+  and controlType/nameContains pruning; nodes carry Value-pattern content.
+- `NativeWindowEnumerator` (internal) — Win32 `EnumWindows` listing of the
+  visible top-level windows of a process. Required because UIA reparents
+  owned windows (modal dialogs) under their owner and omits them from both
+  desktop and owner child enumerations; rooting searches at Win32 handles
+  makes every window addressable.
+- `LocatorMatcher` — pure matching semantics between an `ElementLocator`
+  and an element snapshot (exact, substring, near-miss), unit-testable
+  without live UIA.
+- `ElementFinder` (internal) — strict single-element resolution across all
+  windows of the process: fails with candidate listings on ambiguity (no
+  silent first-match), suggests near misses when nothing matches, and
+  tolerates `COMException` from elements tearing down mid-walk.
+- `ActionInvoker` — clicks (Invoke / Toggle / mouse fallback; double and
+  right click variants), types (writable Value pattern / keyboard
+  fallback), selects items in ComboBox/ListBox/Tab containers, and scrolls
+  off-screen elements into view before physical actions.
+- `ElementStateReader` — builds `ElementState` snapshots from located
+  elements (the UI-level oracle behind `get_element_state`).
+- `ElementWaiter` — polls a locator until a `WaitCondition` holds or a
+  timeout elapses (`UiaDefaults` carries the defaults and caps).
+- `UiaDefaults` — centralized timeouts, poll intervals, and candidate
+  caps; wait timeout overridable via `WINSIGHT_UIA_WAIT_TIMEOUT_MS`.
 
 ### Winsight.Core/Modules/ManagedState
 

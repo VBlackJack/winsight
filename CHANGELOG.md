@@ -81,6 +81,52 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 15 new unit tests (target parsing, key event sequences, response/
   exception parsing). `smoke-mcp.ps1` expected tool count bumped to 13.
 
+#### Phase 2.2 — UIA test ergonomics
+
+- `ElementLocator` extended with `controlType` (case-insensitive),
+  `nameContains` (case-insensitive substring), and `index` (explicit pick
+  among multiple matches). Matching logic extracted into a pure,
+  unit-tested `LocatorMatcher`.
+- **Strict locator resolution** — when several elements match and no
+  `index` is given, the call fails and reports the candidates
+  (id/name/controlType/window) in the error message and the `data`
+  payload, instead of silently acting on the first BFS hit. When nothing
+  matches, near-miss suggestions are returned.
+- **Multi-window + modal dialog support** — element searches now cover
+  every visible top-level window of the process, enumerated through Win32
+  `EnumWindows` and rooted at their handles (`NativeWindowEnumerator`).
+  This is required because UIA reparents owned windows (modal dialogs)
+  under their owner and then omits them from both desktop and owner child
+  listings, making them unreachable through tree walks. A new
+  `windowTitle` parameter scopes any UIA tool to one window.
+- `get_element_state` tool + `ElementStateReader` — UI-level oracle
+  returning name, Value-pattern content, toggle state, selection
+  (item + container), enabled/visible/focus flags, and geometry.
+- `wait_for_element` tool + `ElementWaiter` — condition-based
+  synchronization (`exists`, `not_exists`, `enabled`, `visible`) with
+  configurable timeout (`WINSIGHT_UIA_WAIT_TIMEOUT_MS`, capped at
+  120000 ms) and poll interval; returns elapsed time, match count, and
+  the final element state.
+- `select_item` tool — selects an item by visible text in a ComboBox,
+  ListBox, or Tab (descendant SelectionItem fallback elsewhere); lists
+  the available items on failure.
+- `click_element` gains `clickStyle` (`single`/`double`/`right`) and
+  scrolls off-screen elements into view before physical clicks.
+- `inspect_ui_tree` gains `windowTitle`, `controlType`, and
+  `nameContains` filters (pruning keeps matching nodes and their
+  ancestors) and now reports each node's Value-pattern content, so the
+  tree doubles as a read-only oracle.
+- UIA walks are hardened against `COMException` from windows or elements
+  tearing down mid-traversal (transient states are skipped or retried on
+  the next poll instead of failing the tool call).
+- `SampleWpfApp` extended with a ComboBox, a CheckBox, and a modal note
+  dialog so E2E scenarios exercise selection, toggling, window-scoped
+  locators, and dialog synchronization.
+- 3 additional tools (13 → 16); `smoke-mcp.ps1` expected tool count
+  bumped to 16. 29 new unit tests + 1 new E2E scenario (E2E now runs
+  sequentially via `DisableTestParallelization` — concurrent scenarios
+  race on physical input and the live desktop tree).
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at
@@ -131,7 +177,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The MCP server process must match the target process bitness. The
   default platform target throughout the solution is x64.
 - `find_element_visually` requires `ANTHROPIC_API_KEY` to be set and
-  transmits the screenshot to the configured API. The other 9 tools
+  transmits the screenshot to the configured API. The other 15 tools
   work without any API key.
 - Windows UAC / UIPI: a winsight host running at standard-user level
   cannot enumerate, inspect, or attach to processes that require
