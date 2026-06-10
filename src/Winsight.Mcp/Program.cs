@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Winsight.Core.Modules.Capture;
+using Winsight.Core.Modules.Cdp;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.ManagedState;
 using Winsight.Core.Modules.UiAutomation;
@@ -46,6 +47,11 @@ public static class Program
         builder.Services.AddSingleton<DiagnosticsObserver>();
 
         builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<CdpTargetDiscovery>(sp =>
+        {
+            HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(CdpTargetDiscovery));
+            return new CdpTargetDiscovery(http);
+        });
         builder.Services.AddSingleton<IElementGrounder>(sp =>
         {
             var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(AnthropicVisionGrounder));
