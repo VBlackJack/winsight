@@ -19,13 +19,39 @@ namespace Winsight.Samples.SimpleCounter.ViewModels;
 
 public sealed class CounterViewModel : ViewModelBase
 {
-    // Private backing field - this is what Winsight reads through the read_managed_state tool.
+    // Fixture data exercised by the select_item E2E scenario.
+    private static readonly string[] AvailableOptions = { "Alpha", "Beta", "Gamma" };
+
+    // Private backing fields - these are what Winsight reads through the read_managed_state tool.
     private int _internalCount;
+    private string _selectedOption = AvailableOptions[0];
+    private bool _featureEnabled;
+    private string _lastNote = string.Empty;
 
     public int Count
     {
         get => _internalCount;
         private set => SetField(ref _internalCount, value);
+    }
+
+    public IReadOnlyList<string> Options => AvailableOptions;
+
+    public string SelectedOption
+    {
+        get => _selectedOption;
+        set => SetField(ref _selectedOption, value);
+    }
+
+    public bool IsFeatureEnabled
+    {
+        get => _featureEnabled;
+        set => SetField(ref _featureEnabled, value);
+    }
+
+    public string LastNote
+    {
+        get => _lastNote;
+        set => SetField(ref _lastNote, value);
     }
 
     public ICommand IncrementCommand { get; }

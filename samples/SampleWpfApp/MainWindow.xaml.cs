@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Windows;
+using Winsight.Samples.SimpleCounter.ViewModels;
 
 namespace Winsight.Samples.SimpleCounter;
 
@@ -21,5 +22,14 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    private void OnOpenDialogClick(object sender, RoutedEventArgs e)
+    {
+        NoteDialog dialog = new() { Owner = this };
+        if (dialog.ShowDialog() == true && DataContext is CounterViewModel viewModel)
+        {
+            viewModel.LastNote = dialog.NoteText;
+        }
     }
 }

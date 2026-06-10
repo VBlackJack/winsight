@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Winsight.Samples.SimpleCounter.ViewModels"
         Title="Winsight Sample - Counter"
-        Width="420" Height="280"
+        Width="420" Height="440"
         WindowStartupLocation="CenterScreen"
         AutomationProperties.AutomationId="MainWindow">
     <Window.DataContext>
@@ -28,6 +28,26 @@
                         AutomationProperties.AutomationId="ResetButton"
                         Command="{Binding ResetCommand}" />
             </StackPanel>
+            <ComboBox Margin="0,24,0,0"
+                      Width="160"
+                      ItemsSource="{Binding Options}"
+                      SelectedItem="{Binding SelectedOption}"
+                      AutomationProperties.AutomationId="OptionSelector" />
+            <CheckBox Content="Enable feature"
+                      Margin="0,16,0,0"
+                      HorizontalAlignment="Center"
+                      IsChecked="{Binding IsFeatureEnabled}"
+                      AutomationProperties.AutomationId="FeatureToggle" />
+            <Button Content="Open Dialog"
+                    Padding="20,10"
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="OpenDialogButton"
+                    Click="OnOpenDialogClick" />
+            <TextBlock Text="{Binding LastNote}"
+                       Margin="0,16,0,0"
+                       HorizontalAlignment="Center"
+                       AutomationProperties.AutomationId="LastNoteLabel" />
         </StackPanel>
     </Grid>
 </Window>
