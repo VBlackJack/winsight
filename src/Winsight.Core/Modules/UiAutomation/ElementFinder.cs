@@ -23,7 +23,18 @@ namespace Winsight.Core.Modules.UiAutomation;
 /// A located element together with the compact candidate descriptor used
 /// for ambiguity and near-miss reporting.
 /// </summary>
-internal sealed record ElementMatch(AutomationElement Element, ElementCandidate Candidate);
+internal sealed record ElementMatch(
+    AutomationElement Element,
+    ElementCandidate Candidate,
+    IntPtr WindowHandle);
+
+/// <summary>
+/// UIA root element for a visible top-level Win32 window.
+/// </summary>
+internal sealed record WindowRoot(
+    AutomationElement Element,
+    IntPtr Handle,
+    string Title);
 
 /// <summary>
 /// Outcome of a strict single-element lookup. Exactly one of
@@ -62,12 +73,12 @@ internal static class ElementFinder
     /// because UIA's desktop child listing omits owned windows (modal
     /// dialogs) and the owner's child listing omits them too.
     /// </summary>
-    internal static IReadOnlyList<AutomationElement> ResolveWindows(
+    internal static IReadOnlyList<WindowRoot> ResolveWindows(
         UIA3Automation automation,
         int processId,
         string? windowTitle)
     {
-        List<AutomationElement> windows = new();
+        List<WindowRoot> windows = new();
         foreach ((IntPtr handle, string title) in NativeWindowEnumerator.VisibleTopLevelWindows(processId))
         {
             if (!string.IsNullOrEmpty(windowTitle) &&
@@ -77,7 +88,7 @@ internal static class ElementFinder
             }
             try
             {
-                windows.Add(automation.FromHandle(handle));
+                windows.Add(new WindowRoot(automation.FromHandle(handle), handle, title));
             }
             catch (COMException)
             {
@@ -92,15 +103,15 @@ internal static class ElementFinder
     /// matching the locator (index criterion excluded).
     /// </summary>
     internal static List<ElementMatch> CollectMatches(
-        IReadOnlyList<AutomationElement> windows,
+        IReadOnlyList<WindowRoot> windows,
         ElementLocator locator)
     {
         List<ElementMatch> matches = new();
-        foreach (AutomationElement window in windows)
+        foreach (WindowRoot window in windows)
         {
-            string title = SafeName(window);
+            string title = window.Title;
             Queue<AutomationElement> queue = new();
-            queue.Enqueue(window);
+            queue.Enqueue(window.Element);
             while (queue.Count > 0)
             {
                 AutomationElement current = queue.Dequeue();
@@ -112,11 +123,21 @@ internal static class ElementFinder
                     continue;
                 }
                 (string automationId, string name, string className, string controlType) = snapshot.Value;
-                if (LocatorMatcher.Matches(locator, automationId, name, className, controlType))
+                List<string>? descendantTexts = !string.IsNullOrEmpty(locator.DescendantText)
+                    ? CollectDescendantTexts(current)
+                    : null;
+                if (LocatorMatcher.Matches(
+                    locator,
+                    automationId,
+                    name,
+                    className,
+                    controlType,
+                    descendantTexts))
                 {
                     matches.Add(new ElementMatch(
                         current,
-                        new ElementCandidate(matches.Count, automationId, name, controlType, className, title)));
+                        new ElementCandidate(matches.Count, automationId, name, controlType, className, title),
+                        window.Handle));
                 }
                 foreach (AutomationElement child in SafeChildren(current))
                 {
@@ -140,10 +161,10 @@ internal static class ElementFinder
         if (locator.IsEmpty)
         {
             return ElementSearchResult.Failure(
-                "Locator is empty: provide at least one of automationId, name, nameContains, className, or controlType.");
+                "Locator is empty: provide at least one of automationId, name, nameContains, descendantText, className, or controlType.");
         }
 
-        IReadOnlyList<AutomationElement> windows = ResolveWindows(automation, processId, windowTitle);
+        IReadOnlyList<WindowRoot> windows = ResolveWindows(automation, processId, windowTitle);
         if (windows.Count == 0)
         {
             return ElementSearchResult.Failure(BuildNoWindowError(processId, windowTitle));
@@ -200,15 +221,15 @@ internal static class ElementFinder
     }
 
     private static List<ElementCandidate> CollectNearMisses(
-        IReadOnlyList<AutomationElement> windows,
+        IReadOnlyList<WindowRoot> windows,
         ElementLocator locator)
     {
         List<ElementCandidate> nearMisses = new();
-        foreach (AutomationElement window in windows)
+        foreach (WindowRoot window in windows)
         {
-            string title = SafeName(window);
+            string title = window.Title;
             Queue<AutomationElement> queue = new();
-            queue.Enqueue(window);
+            queue.Enqueue(window.Element);
             while (queue.Count > 0 && nearMisses.Count < UiaDefaults.MaxReportedCandidates)
             {
                 AutomationElement current = queue.Dequeue();
@@ -250,15 +271,63 @@ internal static class ElementFinder
         }
     }
 
-    private static string SafeName(AutomationElement element)
+    private static List<string> CollectDescendantTexts(AutomationElement element)
+    {
+        List<string> texts = new();
+        Queue<(AutomationElement Element, int Depth)> queue = new();
+        foreach (AutomationElement child in SafeChildren(element))
+        {
+            queue.Enqueue((child, 1));
+        }
+
+        while (queue.Count > 0)
+        {
+            (AutomationElement current, int depth) = queue.Dequeue();
+            AddIfNotEmpty(texts, SafeReadName(current));
+            AddIfNotEmpty(texts, SafeReadValue(current));
+
+            if (depth >= UiaDefaults.MaxDescendantTextDepth)
+            {
+                continue;
+            }
+            foreach (AutomationElement child in SafeChildren(current))
+            {
+                queue.Enqueue((child, depth + 1));
+            }
+        }
+
+        return texts;
+    }
+
+    private static string? SafeReadName(AutomationElement element)
     {
         try
         {
-            return element.Properties.Name.ValueOrDefault ?? string.Empty;
+            return element.Properties.Name.ValueOrDefault;
         }
         catch (COMException)
         {
-            return string.Empty;
+            return null;
+        }
+    }
+
+    private static string? SafeReadValue(AutomationElement element)
+    {
+        try
+        {
+            return element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+    private static void AddIfNotEmpty(List<string> texts, string? text)
+    {
+        if (!string.IsNullOrEmpty(text))
+        {
+            texts.Add(text);
         }
     }
 

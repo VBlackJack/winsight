@@ -46,19 +46,29 @@ public static class ElementStateTool
         string? nameContains = null,
         [Description("Zero-based index to pick one element when several match.")]
         int? index = null,
+        [Description("Case-insensitive substring exposed by a descendant's Name or Value, searched to bounded depth.")]
+        string? descendantText = null,
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
         string? windowTitle = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            ElementLocator locator = new(automationId, name, className, controlType, nameContains, index);
+            ElementLocator locator = new(
+                automationId,
+                name,
+                className,
+                controlType,
+                nameContains,
+                index,
+                descendantText);
             OperationResult result = reader.Read(processId, locator, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
 
     [McpServerTool(Name = "wait_for_element")]
-    [Description("Poll until a condition holds for a locator: exists, not_exists, enabled, or visible. " +
+    [Description("Poll until a condition holds for a locator: exists, not_exists, enabled, visible, " +
+                 "value_equals, value_contains, or stable_for. " +
                  "Use it to synchronize before clicking (wait for a button to appear or enable) and " +
                  "after acting (wait for a dialog to close with not_exists). Returns the elapsed time " +
                  "and the element's final state. Fails when the timeout elapses first.")]
@@ -66,8 +76,10 @@ public static class ElementStateTool
         ElementWaiter waiter,
         [Description("Process id of the target application.")]
         int processId,
-        [Description("Condition to wait for: exists, not_exists, enabled, or visible.")]
+        [Description("Condition to wait for: exists, not_exists, enabled, visible, value_equals, value_contains, or stable_for.")]
         string condition,
+        [Description("Expected Value-pattern content for value_equals or value_contains.")]
+        string? expectedValue = null,
         [Description("Exact AutomationId of the element.")]
         string? automationId = null,
         [Description("Exact Name property of the element.")]
@@ -80,12 +92,16 @@ public static class ElementStateTool
         string? nameContains = null,
         [Description("Zero-based index to pick one element when several match.")]
         int? index = null,
+        [Description("Case-insensitive substring exposed by a descendant's Name or Value, searched to bounded depth.")]
+        string? descendantText = null,
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
         string? windowTitle = null,
         [Description("Timeout in milliseconds. Defaults to 10000 (or WINSIGHT_UIA_WAIT_TIMEOUT_MS); max 120000.")]
         int? timeoutMs = null,
         [Description("Delay between polls in milliseconds. Defaults to 250; min 50.")]
-        int? pollIntervalMs = null)
+        int? pollIntervalMs = null,
+        [Description("Required unchanged-state duration in milliseconds for stable_for.")]
+        int? stableForMs = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -97,8 +113,23 @@ public static class ElementStateTool
                     JsonOptions.Default);
             }
 
-            ElementLocator locator = new(automationId, name, className, controlType, nameContains, index);
-            OperationResult result = waiter.Wait(processId, locator, parsed, timeoutMs, pollIntervalMs, windowTitle);
+            ElementLocator locator = new(
+                automationId,
+                name,
+                className,
+                controlType,
+                nameContains,
+                index,
+                descendantText);
+            OperationResult result = waiter.Wait(
+                processId,
+                locator,
+                parsed,
+                timeoutMs,
+                pollIntervalMs,
+                windowTitle,
+                expectedValue,
+                stableForMs);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

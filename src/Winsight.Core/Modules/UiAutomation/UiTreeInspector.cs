@@ -51,7 +51,7 @@ public sealed class UiTreeInspector
         }
 
         using UIA3Automation automation = new();
-        IReadOnlyList<AutomationElement> windows =
+        IReadOnlyList<WindowRoot> windows =
             ElementFinder.ResolveWindows(automation, processId, windowTitle);
 
         if (windows.Count == 0)
@@ -63,7 +63,7 @@ public sealed class UiTreeInspector
                 $"No top-level window found for process {processId}{scope}.");
         }
 
-        UiElementNode root = BuildNode(windows[0], depth: 0, maxDepth);
+        UiElementNode root = BuildNode(windows[0].Element, depth: 0, maxDepth);
 
         bool hasFilter = !string.IsNullOrEmpty(controlTypeFilter)
             || !string.IsNullOrEmpty(nameContainsFilter);

@@ -26,13 +26,15 @@ namespace Winsight.Core.Models;
 /// <param name="ControlType">Exact UIA control type match (e.g. "Button", "Edit"), case-insensitive.</param>
 /// <param name="NameContains">Case-insensitive substring match on the Name property.</param>
 /// <param name="Index">Zero-based index used to pick one element when several match the other criteria.</param>
+/// <param name="DescendantText">Case-insensitive substring match on a bounded descendant's Name or Value text.</param>
 public sealed record ElementLocator(
     string? AutomationId = null,
     string? Name = null,
     string? ClassName = null,
     string? ControlType = null,
     string? NameContains = null,
-    int? Index = null)
+    int? Index = null,
+    string? DescendantText = null)
 {
     /// <summary>
     /// True when no discriminating criterion is set. An index alone does not
@@ -43,5 +45,6 @@ public sealed record ElementLocator(
         string.IsNullOrEmpty(Name) &&
         string.IsNullOrEmpty(ClassName) &&
         string.IsNullOrEmpty(ControlType) &&
-        string.IsNullOrEmpty(NameContains);
+        string.IsNullOrEmpty(NameContains) &&
+        string.IsNullOrEmpty(DescendantText);
 }
