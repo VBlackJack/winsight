@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 16 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 18 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -38,8 +38,8 @@ capabilities under a single tool surface that an LLM can compose:
 | Layer       | What it offers                                                                | Backed by                                       |
 | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
 | Discovery   | Window enumeration, UIA tree inspection (filterable, value-aware)             | FlaUI (UIA3) + Win32 window enumeration         |
-| Action      | Strict element location (multi-window, modal dialogs), click styles, type, item selection | FlaUI patterns + Win32 fallback        |
-| Sync        | Condition-based waits (exists / not_exists / enabled / visible)               | UIA polling with structured outcomes            |
+| Action      | Strict element location, click styles, type, chords, hover, item selection     | FlaUI patterns + SendInput / Win32 fallback      |
+| Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
 | Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry)           | FlaUI patterns                                  |
 | Oracle      | Read private fields and managed state without `InternalsVisibleTo`            | Microsoft.Diagnostics.Runtime (CLRMD)           |
 | Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry) | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
@@ -51,7 +51,7 @@ capabilities under a single tool surface that an LLM can compose:
 
 Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics — fully
 bootable, end-to-end validated against `SampleWpfApp` (golden path) and a
-real WPF application (`Win11Forge`). 98 unit tests + 3 E2E scenarios green.
+real WPF application (`Win11Forge`). 111 unit tests + 3 E2E scenarios green.
 Local ONNX vision and visual regression are still backlog (see capability
 matrix below).
 
@@ -62,6 +62,7 @@ matrix below).
 | Click / type via UIA            | yes     |         |         |
 | Strict locators + modal dialogs |         | yes     |         |
 | Element state oracle + waits    |         | yes     |         |
+| Focused key chords + tooltip hover |      | yes     |         |
 | Item selection (combo/list/tab) |         | yes     |         |
 | Read managed field via CLRMD    | yes     |         |         |
 | Window screenshot (PrintWindow) |         | yes     |         |
@@ -91,6 +92,7 @@ winsight/
 │   └── smoke-mcp.ps1       JSON-RPC smoke test for the stdio server
 └── docs/
     ├── architecture.md
+    ├── runbook.md
     └── tools-reference.md
 ```
 
@@ -164,7 +166,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 16 tools.
+server is connected and lists all 18 tools.
 
 ### Smoke check from the shell
 
@@ -205,9 +207,11 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `inspect_ui_tree`             | Return the UIA tree for a process (filterable, value-aware) |
 | `click_element`               | Click a located element (single/double/right, strict locators) |
 | `type_text`                   | Type into a located element                            |
+| `send_key_chord`              | Focus a window and send a verified keyboard chord      |
+| `hover_element`               | Hover an element and capture/assert its tooltip        |
 | `select_item`                 | Select an item by text in a ComboBox/ListBox/Tab       |
 | `get_element_state`           | Read an element's state (value, toggle, selection, focus) |
-| `wait_for_element`            | Wait until an element exists/disappears/enables/shows  |
+| `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value matches, or state is stable |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
 | `capture_screenshot`          | PNG capture of a window (PrintWindow PW_RENDERFULLCONTENT) |
 | `detect_webview2_endpoints`   | Find WebView2 children and report any CDP endpoint     |

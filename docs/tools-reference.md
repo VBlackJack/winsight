@@ -33,8 +33,8 @@ Enumerate top-level windows currently on the desktop.
 
 ## Locator semantics (shared by the UIA tools)
 
-`click_element`, `type_text`, `select_item`, `get_element_state`, and
-`wait_for_element` share the same locator contract:
+`click_element`, `type_text`, `select_item`, `get_element_state`,
+`wait_for_element`, and `hover_element` share the same locator contract:
 
 | Criterion      | Match                                                     |
 | -------------- | --------------------------------------------------------- |
@@ -43,6 +43,7 @@ Enumerate top-level windows currently on the desktop.
 | `className`    | Exact, case-sensitive                                      |
 | `controlType`  | Exact, case-insensitive (`Button`, `Edit`, `CheckBox`, …)  |
 | `nameContains` | Substring, case-insensitive                                |
+| `descendantText` | Substring, case-insensitive, in a bounded descendant Name or Value |
 | `index`        | Zero-based pick when several elements match the rest       |
 
 All provided criteria combine with AND. At least one criterion other than
@@ -59,6 +60,10 @@ All provided criteria combine with AND. At least one criterion other than
   `data`, so an agent can refine its locator in one round trip.
 - **Near misses** — when nothing matches, elements whose id or name
   partially overlaps the requested terms are suggested in the error.
+- **Descendant text** — `descendantText` checks descendants up to depth 5.
+  It targets WPF controls whose parent exposes a non-human `Name`
+  (for example a view-model type name) while the useful label is carried
+  by a child `TextBlock` or value-bearing descendant.
 - **Off-screen elements** are scrolled into view (ScrollItem pattern)
   before any physical mouse action.
 
@@ -116,6 +121,7 @@ and click it.
 | `className`    | string? | locator  | UIA ClassName                                      |
 | `controlType`  | string? | locator  | UIA control type                                   |
 | `nameContains` | string? | locator  | Name substring                                     |
+| `descendantText` | string? | locator | Descendant Name/Value substring                    |
 | `index`        | int?    | no       | Pick among multiple matches                        |
 | `windowTitle`  | string? | no       | Scope to windows whose title contains this text    |
 | `clickStyle`   | string? | no       | `single` (default), `double`, or `right`           |
@@ -147,10 +153,77 @@ Locate an element and write text into it. Same locator parameters as
 | Name   | Type   | Required | Description  |
 | ------ | ------ | -------- | ------------ |
 | `text` | string | yes      | Text to send |
+| `focusWindow` | bool | no | Bring the matched top-level window to the foreground before writing; fails if `GetForegroundWindow` does not match |
 
 **Resolution order**: Value pattern (when writable) → focus + keyboard.Type.
 
 **Returns** — `OperationResult` (same shape as `click_element`).
+
+## `send_key_chord`
+
+Focus a target top-level window, verify it became the foreground window,
+then send a keyboard chord through FlaUI's SendInput-backed keyboard
+primitive. This tool does not use `SendKeys`.
+
+| Name          | Type    | Required | Description                                      |
+| ------------- | ------- | -------- | ------------------------------------------------ |
+| `processId`   | int     | yes      | Target process id                                |
+| `chord`       | string  | yes      | Chord such as `Ctrl+Shift+N`, `Alt+F4`, `Ctrl+Enter` |
+| `windowTitle` | string? | no       | Scope focus to windows whose title contains this text |
+
+The focus step restores the selected window, calls `SetForegroundWindow`,
+then polls `GetForegroundWindow` for up to 1000 ms. If the foreground
+handle does not become the selected window, the tool returns
+`success: false` with the expected and actual window handles.
+
+**Returns**
+
+```json
+{
+  "success": true,
+  "data": {
+    "chord": "Ctrl+Shift+N",
+    "windowTitle": "Winsight Sample - Counter",
+    "windowHandle": 1247868
+  }
+}
+```
+
+## `hover_element`
+
+Locate an element, move the mouse to its center, and capture a newly
+appearing nearby tooltip. Tooltips already present before the hover are
+filtered out, and candidates are filtered by proximity to the hover point.
+
+Uses the shared locator parameters, plus:
+
+| Name                  | Type    | Required | Description                                      |
+| --------------------- | ------- | -------- | ------------------------------------------------ |
+| `expectedTooltipText` | string? | no       | Case-insensitive substring assertion on tooltip text |
+| `timeoutMs`           | int?    | no       | Tooltip wait timeout; default 1500, max 10000    |
+
+When `expectedTooltipText` is provided, absence of a matching tooltip is
+an explicit failure. Without an expected text, the hover succeeds and
+returns the captured tooltip when one appears, or `tooltip: null`.
+
+**Returns**
+
+```json
+{
+  "success": true,
+  "data": {
+    "x": 960,
+    "y": 540,
+    "tooltip": {
+      "text": "Increment counter by one",
+      "x": 912,
+      "y": 566,
+      "width": 176,
+      "height": 32
+    }
+  }
+}
+```
 
 ## `select_item`
 
@@ -217,13 +290,20 @@ parameters, plus:
 
 | Name             | Type    | Default | Description                                                  |
 | ---------------- | ------- | ------- | ------------------------------------------------------------ |
-| `condition`      | string  | —       | `exists`, `not_exists`, `enabled`, or `visible`              |
+| `condition`      | string  | —       | `exists`, `not_exists`, `enabled`, `visible`, `value_equals`, `value_contains`, or `stable_for` |
+| `expectedValue`  | string? | null    | Required for `value_equals` and `value_contains`              |
 | `timeoutMs`      | int?    | 10000   | Max wait; overridable globally via `WINSIGHT_UIA_WAIT_TIMEOUT_MS`; capped at 120000 |
 | `pollIntervalMs` | int?    | 250     | Delay between polls; min 50                                   |
+| `stableForMs`    | int?    | null    | Required unchanged-state duration for `stable_for`            |
 
 `exists` is satisfied by one or more matches; `not_exists` by zero.
-`enabled` and `visible` require a unique match (use `index` to
-disambiguate) and fail fast with candidates when several elements match.
+`enabled`, `visible`, `value_equals`, `value_contains`, and `stable_for`
+require a unique match (use `index` to disambiguate) and fail fast with
+candidates when several elements match. `value_equals` compares the
+Value-pattern content exactly; `value_contains` is a case-insensitive
+substring check. `stable_for` passes only after the full `ElementState`
+snapshot remains unchanged for `stableForMs`, which is useful for
+anti-debounce assertions after server-filtered UI updates.
 
 **Returns** — `OperationResult` wrapping a `WaitOutcome` (also attached to
 timeout failures):
@@ -650,4 +730,3 @@ output — the tool returns an `OperationResult` failure object instead:
 regulated or offline scenarios, wait for the planned `OnnxLocalGrounder`
 that will run ShowUI-π locally; the contract (`IElementGrounder`) is
 already in place so the tool surface stays identical.
-
