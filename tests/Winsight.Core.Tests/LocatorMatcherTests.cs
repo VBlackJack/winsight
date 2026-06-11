@@ -21,6 +21,10 @@ namespace Winsight.Core.Tests;
 
 public class LocatorMatcherTests
 {
+    private static readonly string[] SemanticLabelTexts = { "Semantic Label" };
+
+    private static readonly string[] CancelTexts = { "Cancel" };
+
     [Fact]
     public void Exact_automation_id_match_is_case_sensitive()
     {
@@ -62,6 +66,38 @@ public class LocatorMatcherTests
         var locator = new ElementLocator(NameContains: "Count");
 
         LocatorMatcher.Matches(locator, "CountLabel", null, null, "Text").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Descendant_text_matches_descendant_name_case_insensitively()
+    {
+        var locator = new ElementLocator(DescendantText: "semantic label");
+
+        LocatorMatcher.Matches(
+                locator,
+                "Container",
+                "Winsight.ViewModels.SemanticItem",
+                null,
+                "Button",
+                SemanticLabelTexts)
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public void Descendant_text_must_match_when_set()
+    {
+        var locator = new ElementLocator(DescendantText: "Save");
+
+        LocatorMatcher.Matches(
+                locator,
+                "Container",
+                "Winsight.ViewModels.SemanticItem",
+                null,
+                "Button",
+                CancelTexts)
+            .Should()
+            .BeFalse();
     }
 
     [Fact]

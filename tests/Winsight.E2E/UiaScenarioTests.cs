@@ -28,12 +28,15 @@ public class UiaScenarioTests
     private const string OptionSelectorId = "OptionSelector";
     private const string FeatureToggleId = "FeatureToggle";
     private const string OpenDialogButtonId = "OpenDialogButton";
+    private const string SemanticContainerId = "SemanticContainer";
     private const string LastNoteLabelId = "LastNoteLabel";
     private const string NoteInputId = "NoteInput";
     private const string ConfirmNoteButtonId = "ConfirmNoteButton";
     private const string DialogTitleFragment = "Note";
     private const string NoteText = "hello from UIA";
     private const string ComboTargetItem = "Beta";
+    private const string ShortcutText = "Shortcut: Ctrl+Shift+N";
+    private const string IncrementTooltip = "Increment counter by one";
 
     [Fact]
     public void Agent_can_synchronize_assert_and_drive_rich_controls()
@@ -56,9 +59,24 @@ public class UiaScenarioTests
                 process.Id, new ElementLocator(AutomationId: CountLabelId), WaitCondition.Exists);
             appeared.Success.Should().BeTrue(appeared.Error);
 
+            var shortcut = invoker.SendKeyChord(process.Id, "Ctrl+Shift+N");
+            shortcut.Success.Should().BeTrue(shortcut.Error);
+            var shortcutHandled = waiter.Wait(
+                process.Id,
+                new ElementLocator(AutomationId: LastNoteLabelId, NameContains: ShortcutText),
+                WaitCondition.Exists);
+            shortcutHandled.Success.Should().BeTrue(shortcutHandled.Error);
+
+            var tooltip = invoker.Hover(
+                process.Id,
+                new ElementLocator(AutomationId: IncrementButtonId),
+                expectedTooltipText: IncrementTooltip,
+                timeoutMs: 3000);
+            tooltip.Success.Should().BeTrue(tooltip.Error);
+
             // Strict mode: an ambiguous locator must fail and report candidates.
             var ambiguous = invoker.Click(process.Id, new ElementLocator(ControlType: "Button"));
-            ambiguous.Success.Should().BeFalse("three buttons match the locator");
+            ambiguous.Success.Should().BeFalse("several buttons match the locator");
             ambiguous.Error.Should().Contain("matched");
 
             // Disambiguation via partial name match.
@@ -69,6 +87,21 @@ public class UiaScenarioTests
             // get_element_state is the UI-level oracle: no CLRMD attach needed.
             var countState = ReadState(stateReader, process.Id, CountLabelId);
             countState.Name.Should().Be("Count: 1");
+
+            var stableCount = waiter.Wait(
+                process.Id,
+                new ElementLocator(AutomationId: CountLabelId),
+                WaitCondition.StableFor,
+                pollIntervalMs: 50,
+                stableForMs: 350);
+            stableCount.Success.Should().BeTrue(stableCount.Error);
+            ((WaitOutcome)stableCount.Data!).ElapsedMs.Should().BeGreaterThanOrEqualTo(350);
+
+            var semantic = stateReader.Read(
+                process.Id,
+                new ElementLocator(ControlType: "Button", DescendantText: "semantic child label"));
+            semantic.Success.Should().BeTrue(semantic.Error);
+            ((ElementState)semantic.Data!).AutomationId.Should().Be(SemanticContainerId);
 
             // select_item drives the ComboBox by item text.
             var selection = invoker.SelectItem(
@@ -96,6 +129,14 @@ public class UiaScenarioTests
                 process.Id, new ElementLocator(AutomationId: NoteInputId), NoteText,
                 windowTitle: DialogTitleFragment);
             typed.Success.Should().BeTrue(typed.Error);
+
+            var typedValue = waiter.Wait(
+                process.Id,
+                new ElementLocator(AutomationId: NoteInputId),
+                WaitCondition.ValueEquals,
+                windowTitle: DialogTitleFragment,
+                expectedValue: NoteText);
+            typedValue.Success.Should().BeTrue(typedValue.Error);
 
             var confirm = invoker.Click(
                 process.Id, new ElementLocator(AutomationId: ConfirmNoteButtonId),
