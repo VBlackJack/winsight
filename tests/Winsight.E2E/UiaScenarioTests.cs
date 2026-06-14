@@ -45,7 +45,7 @@ public class UiaScenarioTests
         File.Exists(executablePath).Should().BeTrue(
             $"the sample app must be built before running E2E tests (looked at: {executablePath})");
 
-        using var process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
+        using Process process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
             ?? throw new InvalidOperationException("Failed to start sample app.");
 
         var waiter = new ElementWaiter();
@@ -55,19 +55,19 @@ public class UiaScenarioTests
         try
         {
             // wait_for_element replaces the fixed startup sleep.
-            var appeared = waiter.Wait(
+            OperationResult appeared = waiter.Wait(
                 process.Id, new ElementLocator(AutomationId: CountLabelId), WaitCondition.Exists);
             appeared.Success.Should().BeTrue(appeared.Error);
 
-            var shortcut = invoker.SendKeyChord(process.Id, "Ctrl+Shift+N");
+            OperationResult shortcut = invoker.SendKeyChord(process.Id, "Ctrl+Shift+N");
             shortcut.Success.Should().BeTrue(shortcut.Error);
-            var shortcutHandled = waiter.Wait(
+            OperationResult shortcutHandled = waiter.Wait(
                 process.Id,
                 new ElementLocator(AutomationId: LastNoteLabelId, NameContains: ShortcutText),
                 WaitCondition.Exists);
             shortcutHandled.Success.Should().BeTrue(shortcutHandled.Error);
 
-            var tooltip = invoker.Hover(
+            OperationResult tooltip = invoker.Hover(
                 process.Id,
                 new ElementLocator(AutomationId: IncrementButtonId),
                 expectedTooltipText: IncrementTooltip,
@@ -75,20 +75,20 @@ public class UiaScenarioTests
             tooltip.Success.Should().BeTrue(tooltip.Error);
 
             // Strict mode: an ambiguous locator must fail and report candidates.
-            var ambiguous = invoker.Click(process.Id, new ElementLocator(ControlType: "Button"));
+            OperationResult ambiguous = invoker.Click(process.Id, new ElementLocator(ControlType: "Button"));
             ambiguous.Success.Should().BeFalse("several buttons match the locator");
             ambiguous.Error.Should().Contain("matched");
 
             // Disambiguation via partial name match.
-            var increment = invoker.Click(
+            OperationResult increment = invoker.Click(
                 process.Id, new ElementLocator(NameContains: "increment", ControlType: "Button"));
             increment.Success.Should().BeTrue(increment.Error);
 
             // get_element_state is the UI-level oracle: no CLRMD attach needed.
-            var countState = ReadState(stateReader, process.Id, CountLabelId);
+            ElementState countState = ReadState(stateReader, process.Id, CountLabelId);
             countState.Name.Should().Be("Count: 1");
 
-            var stableCount = waiter.Wait(
+            OperationResult stableCount = waiter.Wait(
                 process.Id,
                 new ElementLocator(AutomationId: CountLabelId),
                 WaitCondition.StableFor,
@@ -97,40 +97,40 @@ public class UiaScenarioTests
             stableCount.Success.Should().BeTrue(stableCount.Error);
             ((WaitOutcome)stableCount.Data!).ElapsedMs.Should().BeGreaterThanOrEqualTo(350);
 
-            var semantic = stateReader.Read(
+            OperationResult semantic = stateReader.Read(
                 process.Id,
                 new ElementLocator(ControlType: "Button", DescendantText: "semantic child label"));
             semantic.Success.Should().BeTrue(semantic.Error);
             ((ElementState)semantic.Data!).AutomationId.Should().Be(SemanticContainerId);
 
             // select_item drives the ComboBox by item text.
-            var selection = invoker.SelectItem(
+            OperationResult selection = invoker.SelectItem(
                 process.Id, new ElementLocator(AutomationId: OptionSelectorId), ComboTargetItem);
             selection.Success.Should().BeTrue(selection.Error);
-            var comboState = ReadState(stateReader, process.Id, OptionSelectorId);
+            ElementState comboState = ReadState(stateReader, process.Id, OptionSelectorId);
             comboState.SelectedItem.Should().Be(ComboTargetItem);
 
             // A primary click on a CheckBox goes through the Toggle pattern.
-            var toggle = invoker.Click(process.Id, new ElementLocator(AutomationId: FeatureToggleId));
+            OperationResult toggle = invoker.Click(process.Id, new ElementLocator(AutomationId: FeatureToggleId));
             toggle.Success.Should().BeTrue(toggle.Error);
-            var toggleState = ReadState(stateReader, process.Id, FeatureToggleId);
+            ElementState toggleState = ReadState(stateReader, process.Id, FeatureToggleId);
             toggleState.ToggleState.Should().Be("On");
 
             // Modal dialog: a second top-level window of the same process.
-            var openDialog = invoker.Click(process.Id, new ElementLocator(AutomationId: OpenDialogButtonId));
+            OperationResult openDialog = invoker.Click(process.Id, new ElementLocator(AutomationId: OpenDialogButtonId));
             openDialog.Success.Should().BeTrue(openDialog.Error);
 
-            var dialogShown = waiter.Wait(
+            OperationResult dialogShown = waiter.Wait(
                 process.Id, new ElementLocator(AutomationId: NoteInputId), WaitCondition.Exists,
                 windowTitle: DialogTitleFragment);
             dialogShown.Success.Should().BeTrue(dialogShown.Error);
 
-            var typed = invoker.Type(
+            OperationResult typed = invoker.Type(
                 process.Id, new ElementLocator(AutomationId: NoteInputId), NoteText,
                 windowTitle: DialogTitleFragment);
             typed.Success.Should().BeTrue(typed.Error);
 
-            var typedValue = waiter.Wait(
+            OperationResult typedValue = waiter.Wait(
                 process.Id,
                 new ElementLocator(AutomationId: NoteInputId),
                 WaitCondition.ValueEquals,
@@ -138,17 +138,17 @@ public class UiaScenarioTests
                 expectedValue: NoteText);
             typedValue.Success.Should().BeTrue(typedValue.Error);
 
-            var confirm = invoker.Click(
+            OperationResult confirm = invoker.Click(
                 process.Id, new ElementLocator(AutomationId: ConfirmNoteButtonId),
                 windowTitle: DialogTitleFragment);
             confirm.Success.Should().BeTrue(confirm.Error);
 
-            var dialogClosed = waiter.Wait(
+            OperationResult dialogClosed = waiter.Wait(
                 process.Id, new ElementLocator(AutomationId: NoteInputId), WaitCondition.NotExists);
             dialogClosed.Success.Should().BeTrue(dialogClosed.Error);
 
             // The note travelled dialog -> view model -> main window label.
-            var noteAppeared = waiter.Wait(
+            OperationResult noteAppeared = waiter.Wait(
                 process.Id, new ElementLocator(AutomationId: LastNoteLabelId, NameContains: NoteText),
                 WaitCondition.Exists);
             noteAppeared.Success.Should().BeTrue(noteAppeared.Error);
@@ -164,7 +164,7 @@ public class UiaScenarioTests
 
     private static ElementState ReadState(ElementStateReader stateReader, int processId, string automationId)
     {
-        var result = stateReader.Read(processId, new ElementLocator(AutomationId: automationId));
+        OperationResult result = stateReader.Read(processId, new ElementLocator(AutomationId: automationId));
         result.Success.Should().BeTrue(result.Error);
         return (ElementState)result.Data!;
     }

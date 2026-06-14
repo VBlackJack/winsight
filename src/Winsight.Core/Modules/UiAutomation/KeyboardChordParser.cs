@@ -162,7 +162,12 @@ public static class KeyboardChordParser
             return Enum.TryParse($"F{functionKey}", ignoreCase: false, out key);
         }
 
-        return Enum.TryParse(token, ignoreCase: true, out key);
+        // Enum.TryParse accepts any raw numeric string (e.g. "9999") and casts it
+        // to an undefined enum value. Guard with Enum.IsDefined so a numeric token
+        // outside the enum is rejected as an unknown key rather than dispatched as
+        // an arbitrary virtual key.
+        return Enum.TryParse(token, ignoreCase: true, out key)
+            && Enum.IsDefined(key);
     }
 
     internal static bool IsModifier(VirtualKeyShort key)

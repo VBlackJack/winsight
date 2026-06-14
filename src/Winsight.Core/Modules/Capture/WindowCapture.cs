@@ -16,6 +16,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using Winsight.Core.Models;
 
@@ -39,7 +40,7 @@ public sealed class WindowCapture
                 $"No top-level window found for process {processId}.");
         }
 
-        if (!NativeMethods.GetWindowRect(hwnd, out var rect))
+        if (!NativeMethods.GetWindowRect(hwnd, out Rect rect))
         {
             throw new InvalidOperationException(
                 $"GetWindowRect failed for window 0x{hwnd.ToInt64():x} (process {processId}).");
@@ -91,8 +92,8 @@ public sealed class WindowCapture
     private static IntPtr ResolveWindowHandle(int processId)
     {
         using var automation = new UIA3Automation();
-        var desktop = automation.GetDesktop();
-        var window = desktop.FindAllChildren()
+        AutomationElement desktop = automation.GetDesktop();
+        AutomationElement? window = desktop.FindAllChildren()
             .FirstOrDefault(e => e.Properties.ProcessId.ValueOrDefault == processId);
         if (window is null)
         {

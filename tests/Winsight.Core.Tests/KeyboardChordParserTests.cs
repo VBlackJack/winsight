@@ -71,4 +71,19 @@ public class KeyboardChordParserTests
         parsed.Should().BeFalse();
         error.Should().Contain("Hyper");
     }
+
+    [Fact]
+    public void Rejects_raw_numeric_tokens_outside_the_enum()
+    {
+        // Enum.TryParse would cast "9999" to an undefined VirtualKeyShort and
+        // report success; the parser must reject it instead of dispatching an
+        // arbitrary virtual key.
+        bool parsed = KeyboardChordParser.TryParse(
+            "Ctrl+9999",
+            out _,
+            out string? error);
+
+        parsed.Should().BeFalse();
+        error.Should().Contain("9999");
+    }
 }

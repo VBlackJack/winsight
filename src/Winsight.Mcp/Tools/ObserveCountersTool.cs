@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Mcp.Serialization;
 
@@ -44,7 +45,7 @@ public static class ObserveCountersTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var snapshot = observer.ObserveCounters(processId, providerName, durationMs);
+            CounterSnapshot snapshot = observer.ObserveCounters(processId, providerName, durationMs);
             return JsonSerializer.Serialize(snapshot, JsonOptions.Default);
         });
     }

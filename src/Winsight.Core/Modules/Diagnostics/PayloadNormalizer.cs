@@ -59,7 +59,7 @@ public static class PayloadNormalizer
         IDictionary<string, object> source, int depth)
     {
         var result = new Dictionary<string, object?>(source.Count, StringComparer.Ordinal);
-        foreach (var pair in source)
+        foreach (KeyValuePair<string, object> pair in source)
         {
             result[pair.Key] = NormalizeCore(pair.Value, depth + 1);
         }

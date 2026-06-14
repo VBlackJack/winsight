@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using FluentAssertions;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.UiAutomation;
 using Xunit;
 
@@ -25,7 +26,7 @@ public class WindowDiscoveryTests
     public void List_returns_at_least_the_explorer_or_sample_when_a_desktop_session_exists()
     {
         var discovery = new WindowDiscovery();
-        var windows = discovery.List();
+        IReadOnlyList<WindowDescriptor> windows = discovery.List();
         windows.Should().NotBeNull();
         // We don't assert on count: some CI agents run headless and will return 0.
         // The contract here is just that the call does not throw.

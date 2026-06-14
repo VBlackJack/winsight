@@ -17,6 +17,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using Winsight.Core.Models;
 using FlaUIControlType = FlaUI.Core.Definitions.ControlType;
@@ -130,7 +131,7 @@ public sealed class ActionInvoker
         string chord,
         string? windowTitle = null)
     {
-        if (!KeyboardChordParser.TryParse(chord, out var keys, out string? parseError))
+        if (!KeyboardChordParser.TryParse(chord, out VirtualKeyShort[]? keys, out string? parseError))
         {
             return OperationResult.Failure(parseError!);
         }

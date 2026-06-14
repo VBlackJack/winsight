@@ -14,6 +14,7 @@
 
 using System.Diagnostics;
 using FluentAssertions;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.WebView2;
@@ -37,7 +38,7 @@ public class DiagnosticsScenarioTests
         File.Exists(executablePath).Should().BeTrue(
             $"the sample app must be built first (looked at: {executablePath})");
 
-        using var process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
+        using Process process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
             ?? throw new InvalidOperationException("Failed to start sample app.");
 
         try
@@ -51,7 +52,7 @@ public class DiagnosticsScenarioTests
                 Path.GetTempPath(),
                 "winsight-e2e",
                 $"screenshot-{Guid.NewGuid():N}.png");
-            var screenshot = capture.Capture(process.Id, screenshotPath);
+            ScreenshotResult screenshot = capture.Capture(process.Id, screenshotPath);
             try
             {
                 File.Exists(screenshot.Path).Should().BeTrue();
@@ -67,7 +68,7 @@ public class DiagnosticsScenarioTests
 
             // observe_counters
             var observer = new DiagnosticsObserver();
-            var snapshot = observer.ObserveCounters(process.Id, RuntimeProvider, CounterObservationMs);
+            CounterSnapshot snapshot = observer.ObserveCounters(process.Id, RuntimeProvider, CounterObservationMs);
             snapshot.ProcessId.Should().Be(process.Id);
             snapshot.ProviderName.Should().Be(RuntimeProvider);
             snapshot.SamplesObserved.Should().BeGreaterThan(0,
@@ -76,7 +77,7 @@ public class DiagnosticsScenarioTests
             snapshot.Counters.Should().ContainKey("cpu-usage");
 
             // capture_events (low-rate slice — TplEventSource always emits something during a 1.5s window)
-            var capture2 = observer.CaptureEvents(
+            EventCaptureResult capture2 = observer.CaptureEvents(
                 process.Id,
                 providerNames: TplProviders,
                 durationMs: EventCaptureMs,
@@ -89,7 +90,7 @@ public class DiagnosticsScenarioTests
 
             // detect_webview2_endpoints — sample app has none, exercises the empty path
             var detector = new WebView2Detector();
-            var endpoints = detector.Detect(process.Id);
+            IReadOnlyList<WebView2Endpoint> endpoints = detector.Detect(process.Id);
             endpoints.Should().BeEmpty(
                 "SampleWpfApp does not embed WebView2; the detector must return an empty list, not throw");
         }
@@ -104,7 +105,7 @@ public class DiagnosticsScenarioTests
 
     private static void WaitForMainWindow(Process process)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
             process.Refresh();

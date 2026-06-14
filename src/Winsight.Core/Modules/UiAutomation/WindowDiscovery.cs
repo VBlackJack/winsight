@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
@@ -29,12 +30,12 @@ public sealed class WindowDiscovery
     {
         var foregroundHandle = GetForegroundWindow().ToInt64();
         using var automation = new UIA3Automation();
-        var desktop = automation.GetDesktop();
-        var topLevel = desktop.FindAllChildren();
+        AutomationElement desktop = automation.GetDesktop();
+        AutomationElement[] topLevel = desktop.FindAllChildren();
         var result = new List<WindowDescriptor>(topLevel.Length);
-        foreach (var element in topLevel)
+        foreach (AutomationElement element in topLevel)
         {
-            var descriptor = TryBuildDescriptor(element, foregroundHandle);
+            WindowDescriptor? descriptor = TryBuildDescriptor(element, foregroundHandle);
             if (descriptor is not null)
             {
                 result.Add(descriptor);
@@ -54,7 +55,7 @@ public sealed class WindowDiscovery
             }
             var hwnd = element.Properties.NativeWindowHandle.ValueOrDefault.ToInt64();
             var processId = element.Properties.ProcessId.ValueOrDefault;
-            var rect = element.BoundingRectangle;
+            Rectangle rect = element.BoundingRectangle;
             return new WindowDescriptor(
                 ProcessId: processId,
                 WindowHandle: hwnd,

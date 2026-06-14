@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.ManagedState;
 using Winsight.Mcp.Serialization;
 
@@ -39,7 +40,7 @@ public static class ReadManagedStateTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var result = reader.Read(processId, typeName, fieldName);
+            OperationResult result = reader.Read(processId, typeName, fieldName);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

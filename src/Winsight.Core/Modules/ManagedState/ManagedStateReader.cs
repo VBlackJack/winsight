@@ -25,20 +25,20 @@ public sealed class ManagedStateReader
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldName);
 
         using var dataTarget = DataTarget.AttachToProcess(processId, suspend: false);
-        var clrInfo = dataTarget.ClrVersions.FirstOrDefault();
+        ClrInfo? clrInfo = dataTarget.ClrVersions.FirstOrDefault();
         if (clrInfo is null)
         {
             return OperationResult.Failure($"Process {processId} has no managed runtime loaded.");
         }
 
-        using var runtime = clrInfo.CreateRuntime();
-        var heap = runtime.Heap;
+        using ClrRuntime runtime = clrInfo.CreateRuntime();
+        ClrHeap heap = runtime.Heap;
         if (!heap.CanWalkHeap)
         {
             return OperationResult.Failure("Managed heap is not in a walkable state.");
         }
 
-        foreach (var obj in heap.EnumerateObjects())
+        foreach (ClrObject obj in heap.EnumerateObjects())
         {
             if (obj.Type is null)
             {
@@ -49,7 +49,7 @@ public sealed class ManagedStateReader
                 continue;
             }
 
-            var field = obj.Type.Fields.FirstOrDefault(f => f.Name == fieldName);
+            ClrInstanceField? field = obj.Type.Fields.FirstOrDefault(f => f.Name == fieldName);
             if (field is null)
             {
                 return OperationResult.Failure($"Type '{typeName}' has no field '{fieldName}'.");
@@ -65,7 +65,7 @@ public sealed class ManagedStateReader
     {
         if (field.IsObjectReference)
         {
-            var reference = obj.ReadObjectField(fieldName);
+            ClrObject reference = obj.ReadObjectField(fieldName);
             if (reference.IsNull)
             {
                 return null;

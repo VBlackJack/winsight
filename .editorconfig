@@ -25,6 +25,18 @@ csharp_indent_switch_labels = true
 csharp_space_after_cast = false
 csharp_space_after_keywords_in_control_flow_statements = true
 
+# Explicit types where the type is not apparent from the right-hand side.
+# var stays allowed when the initializer makes the type obvious (new T(), casts)
+# and for built-in types; it is banned for ambiguous initializers such as method
+# or property results. This mirrors what `dotnet format` can auto-fix, keeping
+# the gate self-maintainable: IDE0008 is a hard build error (no ambiguous var),
+# while IDE0007 is left unenforced so var is permitted but never mandated.
+csharp_style_var_for_built_in_types = true
+csharp_style_var_when_type_is_apparent = true
+csharp_style_var_elsewhere = false
+dotnet_diagnostic.IDE0007.severity = silent
+dotnet_diagnostic.IDE0008.severity = warning
+
 # Naming
 dotnet_naming_rule.private_fields_should_have_underscore.severity = warning
 dotnet_naming_rule.private_fields_should_have_underscore.symbols = private_fields

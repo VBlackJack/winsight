@@ -29,7 +29,7 @@ public static class Program
 {
     public static async Task Main(string[] args)
     {
-        var builder = Host.CreateApplicationBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
         // MCP requires stdout to be free for protocol traffic. Logs go to stderr.
         builder.Logging.ClearProviders();
@@ -56,7 +56,7 @@ public static class Program
         });
         builder.Services.AddSingleton<IElementGrounder>(sp =>
         {
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(AnthropicVisionGrounder));
+            HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(AnthropicVisionGrounder));
             var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
             var model = Environment.GetEnvironmentVariable("WINSIGHT_VISION_MODEL");
             var apiUrl = Environment.GetEnvironmentVariable("WINSIGHT_VISION_API_URL");

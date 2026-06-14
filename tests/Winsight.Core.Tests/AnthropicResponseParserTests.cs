@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using FluentAssertions;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.Vision;
 using Xunit;
 
@@ -29,7 +30,7 @@ public class AnthropicResponseParserTests
             "{\"x\":150,\"y\":80,\"width\":120,\"height\":40," +
             "\"confidence\":0.95,\"reasoning\":\"button labeled Increment.\"}";
 
-        var grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
+        GroundedElement grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
 
         grounded.X.Should().Be(150);
         grounded.Y.Should().Be(80);
@@ -47,7 +48,7 @@ public class AnthropicResponseParserTests
             "Sure, here is the location:\n" +
             "{\"x\":10,\"y\":20,\"width\":30,\"height\":40,\"confidence\":1,\"reasoning\":\"ok\"}";
 
-        var grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
+        GroundedElement grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
 
         grounded.X.Should().Be(10);
         grounded.Confidence.Should().Be(1);
@@ -61,7 +62,7 @@ public class AnthropicResponseParserTests
             "{\"x\":50,\"y\":60,\"width\":70,\"height\":80,\"confidence\":0.5,\"reasoning\":\"r\"}\n" +
             "```";
 
-        var grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
+        GroundedElement grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
 
         grounded.X.Should().Be(50);
         grounded.Width.Should().Be(70);
@@ -74,7 +75,7 @@ public class AnthropicResponseParserTests
             "{\"x\":1,\"y\":2,\"width\":3,\"height\":4,\"confidence\":0.1," +
             "\"reasoning\":\"contains a {brace} character.\"}";
 
-        var grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
+        GroundedElement grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
 
         grounded.Reasoning.Should().Be("contains a {brace} character.");
     }
@@ -86,7 +87,7 @@ public class AnthropicResponseParserTests
             "{\"x\":\"100\",\"y\":\"200\",\"width\":\"50\",\"height\":\"25\"," +
             "\"confidence\":\"0.7\",\"reasoning\":\"r\"}";
 
-        var grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
+        GroundedElement grounded = AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
 
         grounded.X.Should().Be(100);
         grounded.Y.Should().Be(200);
@@ -96,7 +97,7 @@ public class AnthropicResponseParserTests
     [Fact]
     public void Throws_when_no_json_object_present()
     {
-        var act = () => AnthropicResponseParser.ParseGrounded(
+        Func<GroundedElement> act = () => AnthropicResponseParser.ParseGrounded(
             "I cannot find the element you described.",
             SourceModel);
         act.Should().Throw<FormatException>();
@@ -108,7 +109,7 @@ public class AnthropicResponseParserTests
         const string ModelText =
             "{\"x\":1,\"y\":2,\"width\":3,\"confidence\":0.5,\"reasoning\":\"r\"}";
 
-        var act = () => AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
+        Func<GroundedElement> act = () => AnthropicResponseParser.ParseGrounded(ModelText, SourceModel);
         act.Should().Throw<FormatException>().WithMessage("*height*");
     }
 
@@ -132,7 +133,7 @@ public class AnthropicResponseParserTests
         }
         """;
 
-        var grounded = AnthropicResponseParser.ParseEnvelope(ResponseJson, SourceModel);
+        GroundedElement grounded = AnthropicResponseParser.ParseEnvelope(ResponseJson, SourceModel);
 
         grounded.X.Should().Be(11);
         grounded.Source.Should().Be(SourceModel);
@@ -149,7 +150,7 @@ public class AnthropicResponseParserTests
         }
         """;
 
-        var act = () => AnthropicResponseParser.ParseEnvelope(ResponseJson, SourceModel);
+        Func<GroundedElement> act = () => AnthropicResponseParser.ParseEnvelope(ResponseJson, SourceModel);
         act.Should().Throw<FormatException>().WithMessage("*no text content*");
     }
 }

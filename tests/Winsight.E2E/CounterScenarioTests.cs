@@ -36,33 +36,33 @@ public class CounterScenarioTests
         File.Exists(executablePath).Should().BeTrue(
             $"the sample app must be built before running E2E tests (looked at: {executablePath})");
 
-        using var process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
+        using Process process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
             ?? throw new InvalidOperationException("Failed to start sample app.");
 
         try
         {
             WaitForMainWindow(process);
 
-            var windows = new WindowDiscovery().List();
+            IReadOnlyList<WindowDescriptor> windows = new WindowDiscovery().List();
             windows.Should().Contain(w => w.ProcessId == process.Id);
 
             var invoker = new ActionInvoker();
-            var clickResult = invoker.Click(process.Id, new ElementLocator(AutomationId: IncrementButtonId));
+            OperationResult clickResult = invoker.Click(process.Id, new ElementLocator(AutomationId: IncrementButtonId));
             clickResult.Success.Should().BeTrue(clickResult.Error);
 
             // Allow the UI thread to flush the binding update before we read state.
             Thread.Sleep(250);
 
             var reader = new ManagedStateReader();
-            var state = reader.Read(process.Id, CounterTypeName, CounterFieldName);
+            OperationResult state = reader.Read(process.Id, CounterTypeName, CounterFieldName);
             state.Success.Should().BeTrue(state.Error);
             state.Data.Should().Be(1);
 
-            var resetResult = invoker.Click(process.Id, new ElementLocator(AutomationId: ResetButtonId));
+            OperationResult resetResult = invoker.Click(process.Id, new ElementLocator(AutomationId: ResetButtonId));
             resetResult.Success.Should().BeTrue(resetResult.Error);
             Thread.Sleep(250);
 
-            var afterReset = reader.Read(process.Id, CounterTypeName, CounterFieldName);
+            OperationResult afterReset = reader.Read(process.Id, CounterTypeName, CounterFieldName);
             afterReset.Data.Should().Be(0);
         }
         finally
@@ -76,7 +76,7 @@ public class CounterScenarioTests
 
     private static void WaitForMainWindow(Process process)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
             process.Refresh();

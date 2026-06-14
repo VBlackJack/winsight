@@ -51,7 +51,7 @@ public static class DetectWebView2EndpointsTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var endpoints = detector.Detect(hostProcessId);
+            IReadOnlyList<WebView2Endpoint> endpoints = detector.Detect(hostProcessId);
             var hint = ResolveHint(endpoints);
             var response = new
             {
