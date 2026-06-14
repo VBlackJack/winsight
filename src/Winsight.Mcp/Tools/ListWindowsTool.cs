@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Mcp.Serialization;
 
@@ -33,7 +34,7 @@ public static class ListWindowsTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var windows = discovery.List();
+            IReadOnlyList<WindowDescriptor> windows = discovery.List();
             return JsonSerializer.Serialize(windows, JsonOptions.Default);
         });
     }

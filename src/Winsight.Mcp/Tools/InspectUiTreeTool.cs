@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Mcp.Serialization;
 
@@ -44,7 +45,7 @@ public static class InspectUiTreeTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var node = inspector.Inspect(processId, maxDepth, windowTitle, controlType, nameContains);
+            UiElementNode node = inspector.Inspect(processId, maxDepth, windowTitle, controlType, nameContains);
             return JsonSerializer.Serialize(node, JsonOptions.Default);
         });
     }

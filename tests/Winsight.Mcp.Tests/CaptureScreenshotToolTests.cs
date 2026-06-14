@@ -38,7 +38,7 @@ public class CaptureScreenshotToolTests
         var json = CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
 
         using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
+        JsonElement root = document.RootElement;
 
         root.GetProperty("success").GetBoolean().Should().BeFalse();
         root.GetProperty("error").GetString()
@@ -57,7 +57,7 @@ public class CaptureScreenshotToolTests
         // into an exploitable OperationResult.
         var capture = new WindowCapture();
 
-        var act = () => CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+        Func<string> act = () => CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
 
         act.Should().NotThrow();
     }

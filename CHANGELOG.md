@@ -127,6 +127,29 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sequentially via `DisableTestParallelization` — concurrent scenarios
   race on physical input and the live desktop tree).
 
+#### Phase 2.3 — UIA focus, semantic matching, and stability
+
+- `send_key_chord` tool — parses chords such as `Ctrl+Shift+N`, focuses
+  the selected process window first, verifies `GetForegroundWindow`, and
+  dispatches through FlaUI's SendInput-backed keyboard primitives
+  instead of `SendKeys`.
+- `type_text` gains `focusWindow`, an optional foreground-window check
+  before writing text or falling back to keyboard input.
+- `ElementLocator` gains `descendantText`, a case-insensitive bounded
+  descendant Name/Value match for WPF controls whose parent Name exposes
+  view-model metadata while the real label lives in a child `TextBlock`.
+- `wait_for_element` gains `value_equals`, `value_contains`, and
+  `stable_for`. Value waits assert Value-pattern content; `stable_for`
+  requires the full `ElementState` snapshot to remain unchanged for
+  `stableForMs`, covering debounce/filter delays.
+- `hover_element` tool — moves the mouse to an element center and captures
+  newly appearing nearby tooltips, filtering tooltip snapshots that were
+  already present before the hover.
+- `SampleWpfApp` now covers a global keyboard shortcut, tooltip hover,
+  and semantic descendant-text locators for deterministic E2E validation.
+- 2 additional tools (16 → 18); `smoke-mcp.ps1` expected tool count
+  bumped to 18.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at
@@ -135,7 +158,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   error: "<message>" }` JSON. Truly fatal exceptions (`OutOfMemoryException`,
   `StackOverflowException`, `ThreadAbortException`) are deliberately left
   to propagate.
-- The guard is applied to all 10 tool methods. Before, an unhandled
+- The guard is applied to all tool methods. Before, an unhandled
   exception inside any tool (e.g. a `COMException` from FlaUI/UIA, or a
   CLRMD attach failure on an inaccessible process) would terminate the
   `.NET` host, close the stdio transport, and render every other tool
@@ -147,12 +170,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Tests
 
-- 47 unit tests covering record contracts, the CDP command-line parser,
-  the EventPipe payload normalizer, the Anthropic response parser, the
-  capture-screenshot tool wrapper, and the universal `ToolSafety` guard.
+- 111 unit tests covering record contracts, locators, waits, keyboard
+  chord parsing, the CDP command-line parser, the EventPipe payload
+  normalizer, the Anthropic response parser, the capture-screenshot tool
+  wrapper, and the universal `ToolSafety` guard.
 - New `Winsight.Mcp.Tests` project (with `InternalsVisibleTo`) so the
   tool boundary itself can be unit-tested without touching live processes.
-- 2 end-to-end tests that drive `SampleWpfApp` from spawn to teardown,
+- 3 end-to-end tests that drive `SampleWpfApp` from spawn to teardown,
   exercising every Phase 1 and Phase 2 module.
 
 #### Validation
@@ -177,7 +201,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The MCP server process must match the target process bitness. The
   default platform target throughout the solution is x64.
 - `find_element_visually` requires `ANTHROPIC_API_KEY` to be set and
-  transmits the screenshot to the configured API. The other 15 tools
+  transmits the screenshot to the configured API. The other 17 tools
   work without any API key.
 - Windows UAC / UIPI: a winsight host running at standard-user level
   cannot enumerate, inspect, or attach to processes that require

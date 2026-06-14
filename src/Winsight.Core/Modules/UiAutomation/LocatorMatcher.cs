@@ -33,7 +33,8 @@ public static class LocatorMatcher
         string? automationId,
         string? name,
         string? className,
-        string? controlType)
+        string? controlType,
+        IEnumerable<string?>? descendantTexts = null)
     {
         if (!string.IsNullOrEmpty(locator.AutomationId) &&
             !string.Equals(automationId, locator.AutomationId, StringComparison.Ordinal))
@@ -60,6 +61,11 @@ public static class LocatorMatcher
         {
             return false;
         }
+        if (!string.IsNullOrEmpty(locator.DescendantText) &&
+            !AnyTextContains(descendantTexts, locator.DescendantText))
+        {
+            return false;
+        }
         return true;
     }
 
@@ -78,7 +84,26 @@ public static class LocatorMatcher
             || ContainsTerm(automationId, locator.Name)
             || ContainsTerm(name, locator.Name)
             || ContainsTerm(name, locator.NameContains)
-            || ContainsTerm(automationId, locator.NameContains);
+            || ContainsTerm(automationId, locator.NameContains)
+            || ContainsTerm(name, locator.DescendantText)
+            || ContainsTerm(automationId, locator.DescendantText);
+    }
+
+    private static bool AnyTextContains(IEnumerable<string?>? haystacks, string term)
+    {
+        if (haystacks is null)
+        {
+            return false;
+        }
+        foreach (string? haystack in haystacks)
+        {
+            if (haystack is not null &&
+                haystack.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool ContainsTerm(string? haystack, string? term)

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Management;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
 using Winsight.Core.Models;
@@ -26,12 +27,12 @@ public sealed class WebView2Detector
 
     public IReadOnlyList<WebView2Endpoint> Detect(int hostProcessId)
     {
-        var processTree = BuildProcessTree();
-        var listeningPorts = GetListeningTcpPorts();
-        var descendants = EnumerateDescendants(hostProcessId, processTree);
+        Dictionary<int, List<ProcessSnapshot>> processTree = BuildProcessTree();
+        HashSet<int> listeningPorts = GetListeningTcpPorts();
+        IEnumerable<ProcessSnapshot> descendants = EnumerateDescendants(hostProcessId, processTree);
 
         var endpoints = new List<WebView2Endpoint>();
-        foreach (var process in descendants)
+        foreach (ProcessSnapshot process in descendants)
         {
             if (!string.Equals(process.Name, WebView2ProcessName, StringComparison.OrdinalIgnoreCase))
             {
@@ -51,9 +52,9 @@ public sealed class WebView2Detector
 
     private static HashSet<int> GetListeningTcpPorts()
     {
-        var listeners = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
+        IPEndPoint[] listeners = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
         var ports = new HashSet<int>(listeners.Length);
-        foreach (var endpoint in listeners)
+        foreach (IPEndPoint endpoint in listeners)
         {
             ports.Add(endpoint.Port);
         }
@@ -65,16 +66,16 @@ public sealed class WebView2Detector
         const string Query = "SELECT ProcessId, ParentProcessId, Name, CommandLine FROM Win32_Process";
         using var searcher = new ManagementObjectSearcher(Query);
         var byParent = new Dictionary<int, List<ProcessSnapshot>>();
-        foreach (var item in searcher.Get())
+        foreach (ManagementBaseObject? item in searcher.Get())
         {
-            using var managementObject = item;
+            using ManagementBaseObject managementObject = item;
             var snapshot = new ProcessSnapshot(
                 ProcessId: ToInt(managementObject["ProcessId"]),
                 ParentProcessId: ToInt(managementObject["ParentProcessId"]),
                 Name: managementObject["Name"]?.ToString() ?? string.Empty,
                 CommandLine: managementObject["CommandLine"]?.ToString());
 
-            if (!byParent.TryGetValue(snapshot.ParentProcessId, out var list))
+            if (!byParent.TryGetValue(snapshot.ParentProcessId, out List<ProcessSnapshot>? list))
             {
                 list = new List<ProcessSnapshot>();
                 byParent[snapshot.ParentProcessId] = list;
@@ -104,11 +105,11 @@ public sealed class WebView2Detector
         while (queue.Count > 0)
         {
             var parentId = queue.Dequeue();
-            if (!processTree.TryGetValue(parentId, out var children))
+            if (!processTree.TryGetValue(parentId, out List<ProcessSnapshot>? children))
             {
                 continue;
             }
-            foreach (var child in children)
+            foreach (ProcessSnapshot child in children)
             {
                 if (!visited.Add(child.ProcessId))
                 {

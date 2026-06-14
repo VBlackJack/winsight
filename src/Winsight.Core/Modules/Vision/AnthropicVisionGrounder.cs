@@ -64,7 +64,7 @@ public sealed class AnthropicVisionGrounder : IElementGrounder
         }
 
         var imageBytes = await File.ReadAllBytesAsync(screenshotPath, cancellationToken);
-        var (width, height) = ReadDimensions(screenshotPath);
+        (int width, int height) = ReadDimensions(screenshotPath);
         var prompt = BuildPrompt(query, width, height);
         var requestJson = BuildRequestJson(imageBytes, prompt);
 
@@ -74,7 +74,7 @@ public sealed class AnthropicVisionGrounder : IElementGrounder
         request.Headers.Add("anthropic-version", ApiVersion);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _http.SendAsync(request, cancellationToken);
+        using HttpResponseMessage response = await _http.SendAsync(request, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)

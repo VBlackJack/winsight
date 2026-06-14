@@ -39,12 +39,14 @@ public sealed class ElementWaiter
         WaitCondition condition,
         int? timeoutMs = null,
         int? pollIntervalMs = null,
-        string? windowTitle = null)
+        string? windowTitle = null,
+        string? expectedValue = null,
+        int? stableForMs = null)
     {
         if (locator.IsEmpty)
         {
             return OperationResult.Failure(
-                "Locator is empty: provide at least one of automationId, name, nameContains, className, or controlType.");
+                "Locator is empty: provide at least one of automationId, name, nameContains, descendantText, className, or controlType.");
         }
 
         int timeout = timeoutMs ?? UiaDefaults.ResolveWaitTimeoutMs();
@@ -60,18 +62,52 @@ public sealed class ElementWaiter
             return OperationResult.Failure(
                 $"pollIntervalMs must be at least {UiaDefaults.MinPollIntervalMs}.");
         }
+        if (condition is WaitCondition.ValueEquals or WaitCondition.ValueContains &&
+            expectedValue is null)
+        {
+            return OperationResult.Failure(
+                $"expectedValue is required for condition '{condition}'.");
+        }
+        if (condition == WaitCondition.StableFor)
+        {
+            if (stableForMs is null)
+            {
+                return OperationResult.Failure(
+                    "stableForMs is required for condition 'StableFor'.");
+            }
+            if (stableForMs <= 0 || stableForMs > timeout)
+            {
+                return OperationResult.Failure(
+                    $"stableForMs must be between 1 and timeoutMs ({timeout}).");
+            }
+        }
 
         using UIA3Automation automation = new();
         Stopwatch stopwatch = Stopwatch.StartNew();
+        ElementStateStabilityTracker stabilityTracker = new();
 
         while (true)
         {
-            PollResult poll = EvaluateOnce(automation, processId, locator, condition, windowTitle);
+            PollResult poll = EvaluateOnce(
+                automation,
+                processId,
+                locator,
+                condition,
+                windowTitle,
+                expectedValue);
             if (poll.StrictError is not null)
             {
                 return OperationResult.FailureWith(poll.StrictError, poll.Candidates);
             }
-            if (poll.ConditionMet)
+            if (condition == WaitCondition.StableFor)
+            {
+                if (stabilityTracker.Observe(poll.State, stopwatch.ElapsedMilliseconds, stableForMs!.Value))
+                {
+                    return OperationResult.OkWith(new WaitOutcome(
+                        condition.ToString(), ConditionMet: true, stopwatch.ElapsedMilliseconds, poll.MatchCount, poll.State));
+                }
+            }
+            else if (poll.ConditionMet)
             {
                 return OperationResult.OkWith(new WaitOutcome(
                     condition.ToString(), ConditionMet: true, stopwatch.ElapsedMilliseconds, poll.MatchCount, poll.State));
@@ -100,12 +136,13 @@ public sealed class ElementWaiter
         int processId,
         ElementLocator locator,
         WaitCondition condition,
-        string? windowTitle)
+        string? windowTitle,
+        string? expectedValue)
     {
         List<ElementMatch> matches;
         try
         {
-            IReadOnlyList<AutomationElement> windows =
+            IReadOnlyList<WindowRoot> windows =
                 ElementFinder.ResolveWindows(automation, processId, windowTitle);
             matches = ElementFinder.CollectMatches(windows, locator);
         }
@@ -135,6 +172,9 @@ public sealed class ElementWaiter
 
             case WaitCondition.Enabled:
             case WaitCondition.Visible:
+            case WaitCondition.ValueEquals:
+            case WaitCondition.ValueContains:
+            case WaitCondition.StableFor:
                 if (matches.Count > 1)
                 {
                     return new PollResult(
@@ -148,7 +188,15 @@ public sealed class ElementWaiter
                     return new PollResult(false, 0, null);
                 }
                 ElementState state = ElementStateReader.BuildState(matches[0]);
-                bool met = condition == WaitCondition.Enabled ? state.IsEnabled : state.IsVisible;
+                bool met = condition switch
+                {
+                    WaitCondition.Enabled => state.IsEnabled,
+                    WaitCondition.Visible => state.IsVisible,
+                    WaitCondition.ValueEquals or WaitCondition.ValueContains =>
+                        WaitConditionEvaluator.ValueMatches(condition, state.Value, expectedValue!),
+                    WaitCondition.StableFor => true,
+                    _ => false,
+                };
                 return new PollResult(met, 1, state);
 
             default:

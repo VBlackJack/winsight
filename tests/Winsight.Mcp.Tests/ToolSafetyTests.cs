@@ -46,7 +46,7 @@ public class ToolSafetyTests
             throw new InvalidOperationException("could not attach to process 1234"));
 
         using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
+        JsonElement root = document.RootElement;
         root.GetProperty("success").GetBoolean().Should().BeFalse();
         root.GetProperty("error").GetString().Should().Be("could not attach to process 1234");
     }

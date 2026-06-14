@@ -40,7 +40,7 @@ public sealed class DiagnosticsObserver
         ValidateDuration(durationMs);
 
         var client = new DiagnosticsClient(processId);
-        var providers = new[]
+        EventPipeProvider[] providers = new[]
         {
             new EventPipeProvider(
                 name: providerName,
@@ -55,7 +55,7 @@ public sealed class DiagnosticsObserver
         var counters = new ConcurrentDictionary<string, double>();
         var sampleCount = 0;
 
-        using var session = client.StartEventPipeSession(providers, requestRundown: false);
+        using EventPipeSession session = client.StartEventPipeSession(providers, requestRundown: false);
         using var source = new EventPipeEventSource(session.EventStream);
 
         source.Dynamic.All += traceEvent =>
@@ -187,7 +187,7 @@ public sealed class DiagnosticsObserver
         }
 
         var client = new DiagnosticsClient(processId);
-        var providers = providerNames
+        EventPipeProvider[] providers = providerNames
             .Select(name => new EventPipeProvider(
                 name: name,
                 eventLevel: System.Diagnostics.Tracing.EventLevel.Informational,
@@ -198,7 +198,7 @@ public sealed class DiagnosticsObserver
         var capturedCount = 0;
         var truncated = false;
 
-        using var session = client.StartEventPipeSession(providers, requestRundown: false);
+        using EventPipeSession session = client.StartEventPipeSession(providers, requestRundown: false);
         using var source = new EventPipeEventSource(session.EventStream);
 
         source.Dynamic.All += traceEvent =>

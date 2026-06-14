@@ -25,16 +25,16 @@ public static class AnthropicResponseParser
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceModel);
 
         using var doc = JsonDocument.Parse(anthropicResponseJson);
-        if (!doc.RootElement.TryGetProperty("content", out var content) ||
+        if (!doc.RootElement.TryGetProperty("content", out JsonElement content) ||
             content.ValueKind != JsonValueKind.Array)
         {
             throw new FormatException("Anthropic response has no content array.");
         }
 
         string? text = null;
-        foreach (var block in content.EnumerateArray())
+        foreach (JsonElement block in content.EnumerateArray())
         {
-            if (!block.TryGetProperty("type", out var typeProp))
+            if (!block.TryGetProperty("type", out JsonElement typeProp))
             {
                 continue;
             }
@@ -42,7 +42,7 @@ public static class AnthropicResponseParser
             {
                 continue;
             }
-            if (block.TryGetProperty("text", out var textProp))
+            if (block.TryGetProperty("text", out JsonElement textProp))
             {
                 text = textProp.GetString();
                 break;
@@ -64,7 +64,7 @@ public static class AnthropicResponseParser
 
         var json = ExtractFirstJsonObject(modelText);
         using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+        JsonElement root = doc.RootElement;
 
         return new GroundedElement(
             X: GetInt(root, "x"),
@@ -129,7 +129,7 @@ public static class AnthropicResponseParser
 
     private static int GetInt(JsonElement root, string property)
     {
-        if (!root.TryGetProperty(property, out var element))
+        if (!root.TryGetProperty(property, out JsonElement element))
         {
             throw new FormatException($"Missing required property '{property}'.");
         }
@@ -145,7 +145,7 @@ public static class AnthropicResponseParser
 
     private static double GetDouble(JsonElement root, string property)
     {
-        if (!root.TryGetProperty(property, out var element))
+        if (!root.TryGetProperty(property, out JsonElement element))
         {
             throw new FormatException($"Missing required property '{property}'.");
         }
@@ -162,7 +162,7 @@ public static class AnthropicResponseParser
 
     private static string? GetString(JsonElement root, string property)
     {
-        if (!root.TryGetProperty(property, out var element))
+        if (!root.TryGetProperty(property, out JsonElement element))
         {
             return null;
         }

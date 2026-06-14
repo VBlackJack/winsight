@@ -48,7 +48,7 @@ public static class CaptureScreenshotTool
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
                 ? BuildDefaultPath()
                 : outputPath;
-            var screenshot = capture.Capture(processId, resolvedPath);
+            ScreenshotResult screenshot = capture.Capture(processId, resolvedPath);
             return JsonSerializer.Serialize(
                 OperationResult.OkWith(screenshot),
                 JsonOptions.Default);

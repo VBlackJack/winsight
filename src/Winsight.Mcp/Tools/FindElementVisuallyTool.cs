@@ -57,7 +57,7 @@ public static class FindElementVisuallyTool
         {
             var screenshotPath = BuildTempPath();
             capture.Capture(processId, screenshotPath);
-            var grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
+            GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
             return JsonSerializer.Serialize(grounded, JsonOptions.Default);
         });
     }

@@ -66,4 +66,11 @@ public class ElementLocatorTests
         locator.IsEmpty.Should().BeTrue(
             "an index alone matches everything and must not be accepted as a locator");
     }
+
+    [Fact]
+    public void Locator_with_only_descendant_text_is_not_empty()
+    {
+        var locator = new ElementLocator(DescendantText: "Semantic Label");
+        locator.IsEmpty.Should().BeFalse();
+    }
 }

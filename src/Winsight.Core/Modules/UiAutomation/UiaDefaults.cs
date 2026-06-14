@@ -40,6 +40,9 @@ public static class UiaDefaults
     /// <summary>Maximum number of candidates reported on ambiguous or failed lookups.</summary>
     public const int MaxReportedCandidates = 10;
 
+    /// <summary>Maximum descendant depth inspected for semantic descendant text locators.</summary>
+    public const int MaxDescendantTextDepth = 5;
+
     /// <summary>
     /// Resolve the effective default wait timeout: environment override when
     /// set and valid, fallback constant otherwise.

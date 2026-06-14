@@ -30,12 +30,22 @@ public enum WaitCondition
 
     /// <summary>Exactly one element matches and is on-screen.</summary>
     Visible,
+
+    /// <summary>Exactly one element matches and its Value equals the expected value.</summary>
+    ValueEquals,
+
+    /// <summary>Exactly one element matches and its Value contains the expected value.</summary>
+    ValueContains,
+
+    /// <summary>Exactly one element matches and its full state remains unchanged for a duration.</summary>
+    StableFor,
 }
 
 /// <summary>
 /// Parses wire-format condition names ("exists", "not_exists", "enabled",
-/// "visible") into <see cref="WaitCondition"/> values. Tolerates casing and
-/// underscores so agent-produced input round-trips reliably.
+/// "visible", "value_equals", "value_contains", "stable_for") into
+/// <see cref="WaitCondition"/> values. Tolerates casing and underscores so
+/// agent-produced input round-trips reliably.
 /// </summary>
 public static class WaitConditionParser
 {
@@ -65,10 +75,26 @@ public static class WaitConditionParser
             condition = WaitCondition.Visible;
             return true;
         }
+        if (string.Equals(normalized, "valueequals", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.ValueEquals;
+            return true;
+        }
+        if (string.Equals(normalized, "valuecontains", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.ValueContains;
+            return true;
+        }
+        if (string.Equals(normalized, "stablefor", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.StableFor;
+            return true;
+        }
         condition = WaitCondition.Exists;
         return false;
     }
 
     /// <summary>Comma-separated list of accepted wire-format names, for error messages.</summary>
-    public static string AcceptedValues => "exists, not_exists, enabled, visible";
+    public static string AcceptedValues =>
+        "exists, not_exists, enabled, visible, value_equals, value_contains, stable_for";
 }

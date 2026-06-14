@@ -58,9 +58,12 @@ public sealed class CounterViewModel : ViewModelBase
 
     public ICommand ResetCommand { get; }
 
+    public ICommand ShortcutNoteCommand { get; }
+
     public CounterViewModel()
     {
         IncrementCommand = new RelayCommand(_ => Count++);
         ResetCommand = new RelayCommand(_ => Count = 0);
+        ShortcutNoteCommand = new RelayCommand(_ => LastNote = "Shortcut: Ctrl+Shift+N");
     }
 }

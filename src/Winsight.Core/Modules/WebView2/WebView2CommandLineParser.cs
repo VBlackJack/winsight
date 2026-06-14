@@ -28,7 +28,7 @@ public static partial class WebView2CommandLineParser
         {
             return null;
         }
-        var match = RemoteDebuggingPortRegex().Match(commandLine);
+        Match match = RemoteDebuggingPortRegex().Match(commandLine);
         if (!match.Success)
         {
             return null;

@@ -3,9 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Winsight.Samples.SimpleCounter.ViewModels"
         Title="Winsight Sample - Counter"
-        Width="420" Height="440"
+        Width="420" Height="520"
         WindowStartupLocation="CenterScreen"
         AutomationProperties.AutomationId="MainWindow">
+    <Window.InputBindings>
+        <KeyBinding Key="N"
+                    Modifiers="Control+Shift"
+                    Command="{Binding ShortcutNoteCommand}" />
+    </Window.InputBindings>
     <Window.DataContext>
         <vm:CounterViewModel />
     </Window.DataContext>
@@ -22,6 +27,9 @@
                         Padding="20,10"
                         Margin="0,0,12,0"
                         AutomationProperties.AutomationId="IncrementButton"
+                        ToolTip="Increment counter by one"
+                        ToolTipService.InitialShowDelay="0"
+                        ToolTipService.ShowDuration="60000"
                         Command="{Binding IncrementCommand}" />
                 <Button Content="Reset"
                         Padding="20,10"
@@ -44,6 +52,13 @@
                     HorizontalAlignment="Center"
                     AutomationProperties.AutomationId="OpenDialogButton"
                     Click="OnOpenDialogClick" />
+            <Button Padding="20,10"
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="SemanticContainer"
+                    AutomationProperties.Name="Winsight.Samples.SimpleCounter.ViewModels.SemanticAction">
+                <TextBlock Text="Semantic Child Label" />
+            </Button>
             <TextBlock Text="{Binding LastNote}"
                        Margin="0,16,0,0"
                        HorizontalAlignment="Center"

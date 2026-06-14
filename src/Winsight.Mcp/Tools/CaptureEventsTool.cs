@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Mcp.Serialization;
 
@@ -50,7 +51,7 @@ public static class CaptureEventsTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            var result = observer.CaptureEvents(processId, providers, durationMs, maxEvents, eventNameFilter);
+            EventCaptureResult result = observer.CaptureEvents(processId, providers, durationMs, maxEvents, eventNameFilter);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
