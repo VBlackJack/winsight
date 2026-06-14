@@ -19,7 +19,7 @@ namespace Winsight.Core.Modules.Vision;
 /// <summary>
 /// Locates a UI element from a screenshot given a natural-language query.
 /// Implementations may use a cloud vision API (Anthropic, OpenAI),
-/// a local ONNX model (ShowUI-π, OmniParser V2), or a hybrid.
+/// a local ONNX model (Qwen2.5-VL), or a hybrid.
 /// </summary>
 public interface IElementGrounder
 {

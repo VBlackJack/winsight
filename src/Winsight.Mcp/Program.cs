@@ -54,14 +54,7 @@ public static class Program
             HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(CdpTargetDiscovery));
             return new CdpTargetDiscovery(http);
         });
-        builder.Services.AddSingleton<IElementGrounder>(sp =>
-        {
-            HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(AnthropicVisionGrounder));
-            var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-            var model = Environment.GetEnvironmentVariable("WINSIGHT_VISION_MODEL");
-            var apiUrl = Environment.GetEnvironmentVariable("WINSIGHT_VISION_API_URL");
-            return new AnthropicVisionGrounder(http, apiKey, model, apiUrl);
-        });
+        builder.Services.AddSingleton<IElementGrounder>(VisionGrounderRegistration.Create);
 
         builder.Services
             .AddMcpServer()

@@ -159,6 +159,25 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   explicit `outputPath` argument still takes precedence; the directory is
   created on first write. Tool count unchanged (18).
 
+#### Phase 2.5 — local ONNX vision grounder
+
+- `OnnxLocalGrounder` — fully local `IElementGrounder` selected with
+  `WINSIGHT_VISION_BACKEND=onnx`. Runs Qwen2.5-VL-3B as a 3-ONNX split (vision
+  encoder + token embedding + decoder, fp16) on plain `Microsoft.ML.OnnxRuntime`
+  with a hand-rolled mRoPE generation loop; nothing leaves the host and it never
+  falls back to the cloud. CPU execution (DirectML/CUDA is a follow-up; the
+  decoder's fused MultiHeadAttention op is unsupported on the DirectML EP).
+- Supporting pieces: `QwenImagePreprocessing` (smart-resize + CLIP normalize +
+  patchify via `System.Drawing`), `QwenVisionTokenizer` (Qwen byte-level BPE via
+  `Microsoft.ML.Tokenizers` `CodeGenTokenizer` over a special-token-patched
+  vocab), `GroundingCoordinateParser` (point/box pixel output → click center),
+  and `VisionGrounderRegistration` (env-driven backend selection, explicit-failure
+  fallback for unknown backends).
+- `tools/provision-vision-model.ps1` downloads the model package
+  (`onnx-community/Qwen2.5-VL-3B-Instruct-ONNX` + tokenizer files); weights are
+  never committed. New dependencies: `Microsoft.ML.OnnxRuntime`,
+  `Microsoft.ML.Tokenizers`. See `docs/local-onnx-grounder.md`.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

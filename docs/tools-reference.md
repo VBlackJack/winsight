@@ -726,14 +726,17 @@ output — the tool returns an `OperationResult` failure object instead:
 
 **Configuration** (environment variables)
 
-| Variable                  | Default                                  | Purpose                          |
-| ------------------------- | ---------------------------------------- | -------------------------------- |
-| `ANTHROPIC_API_KEY`       | —                                        | Required                         |
-| `WINSIGHT_VISION_MODEL`   | `claude-sonnet-4-6`                      | Override the model               |
-| `WINSIGHT_VISION_API_URL` | `https://api.anthropic.com/v1/messages`  | Override the endpoint (proxies)  |
-| `WINSIGHT_OUTPUT_DIR`     | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |
+| Variable                    | Default                                  | Purpose                          |
+| --------------------------- | ---------------------------------------- | -------------------------------- |
+| `WINSIGHT_VISION_BACKEND`   | `anthropic`                              | `anthropic` or `onnx`            |
+| `ANTHROPIC_API_KEY`         | —                                        | Required for `anthropic`         |
+| `WINSIGHT_VISION_MODEL`     | `claude-sonnet-4-6`                      | Anthropic model override         |
+| `WINSIGHT_VISION_API_URL`   | `https://api.anthropic.com/v1/messages`  | Anthropic endpoint override      |
+| `WINSIGHT_VISION_ONNX_PATH` | —                                        | Local Qwen2.5-VL ONNX model directory |
+| `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` or `dml` (CPU-only in this build) |
+| `WINSIGHT_OUTPUT_DIR`       | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |
 
-**Privacy** — screenshots are transmitted to the configured API. For
-regulated or offline scenarios, wait for the planned `OnnxLocalGrounder`
-that will run ShowUI-π locally; the contract (`IElementGrounder`) is
-already in place so the tool surface stays identical.
+**Privacy** — screenshots are transmitted to the configured API when using
+`WINSIGHT_VISION_BACKEND=anthropic`. `WINSIGHT_VISION_BACKEND=onnx` runs a local
+Qwen2.5-VL model fully on-host and never falls back to Anthropic; see
+[docs/local-onnx-grounder.md](local-onnx-grounder.md) for provisioning.

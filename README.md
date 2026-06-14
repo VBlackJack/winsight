@@ -45,7 +45,7 @@ capabilities under a single tool surface that an LLM can compose:
 | Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry) | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
 | Capture     | Window screenshot via `PrintWindow` + `PW_RENDERFULLCONTENT`                  | Win32 `PrintWindow`                             |
 | WebView2    | Locate embedded WebView2 instances, surface their CDP debugging endpoint      | WMI process tree + TCP listener cross-reference |
-| Perception  | Visual grounding from a natural-language description (cloud), local ONNX backlog | Anthropic Messages API today / ShowUI-π planned |
+| Perception  | Visual grounding from a natural-language description (cloud or fully local)   | Anthropic Messages API / local Qwen2.5-VL ONNX  |
 
 ## Status
 
@@ -71,7 +71,7 @@ matrix below).
 | EventPipe counter observer      |         | yes     |         |
 | EventPipe arbitrary event capture |       | yes     |         |
 | Vision grounding (Claude API)   |         | yes     |         |
-| Vision grounding (ShowUI ONNX)  |         | wip     |         |
+| Vision grounding (local Qwen2.5-VL ONNX) |  | yes     |         |
 | Visual regression (Anomalib)    |         | wip     |         |
 | Exploratory agent (Sonnet 4.6)  |         |         | yes     |
 
@@ -182,20 +182,25 @@ protocol traffic.
 
 ### Optional: enable visual grounding
 
-The `find_element_visually` tool needs a vision backend. The default
-implementation calls the Anthropic Claude vision API.
+The `find_element_visually` tool needs a vision backend. The default backend
+calls the Anthropic Claude vision API.
 
 | Variable                    | Required | Default                                  |
 | --------------------------- | -------- | ---------------------------------------- |
-| `ANTHROPIC_API_KEY`         | yes      | —                                        |
+| `WINSIGHT_VISION_BACKEND`   | no       | `anthropic` (`anthropic` or `onnx`)      |
+| `ANTHROPIC_API_KEY`         | yes, for `anthropic` | —                           |
 | `WINSIGHT_VISION_MODEL`     | no       | `claude-sonnet-4-6`                      |
 | `WINSIGHT_VISION_API_URL`   | no       | `https://api.anthropic.com/v1/messages`  |
+| `WINSIGHT_VISION_ONNX_PATH` | yes, for `onnx` | —                                |
+| `WINSIGHT_VISION_EP`        | no, for `onnx` | `cpu` (`cpu` or `dml`)              |
 
-> **Privacy note** — the screenshot is sent to the configured API. Do not
-> use this tool against apps that display regulated or sensitive content
-> until a local ONNX backend (ShowUI-π) is shipped. If `ANTHROPIC_API_KEY`
-> is not set, every other tool keeps working; only `find_element_visually`
-> returns an error when invoked.
+> **Privacy note** — with the `anthropic` backend, the screenshot is sent to
+> the configured API. `WINSIGHT_VISION_BACKEND=onnx` runs a local Qwen2.5-VL
+> model fully on-host (see
+> [docs/local-onnx-grounder.md](docs/local-onnx-grounder.md) for provisioning)
+> and never falls back to cloud. If the selected backend is not configured,
+> every other tool keeps working; only `find_element_visually` returns an error
+> when invoked.
 
 ### Optional: redirect capture output
 
