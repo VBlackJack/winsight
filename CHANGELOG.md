@@ -150,6 +150,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 2 additional tools (16 → 18); `smoke-mcp.ps1` expected tool count
   bumped to 18.
 
+#### Phase 2.4 — configurable capture output
+
+- `capture_screenshot` and `find_element_visually` resolve their default
+  capture path through a shared `ScreenshotOutput` helper that honors the
+  `WINSIGHT_OUTPUT_DIR` environment variable (fallback `%TEMP%\winsight`), so a
+  supervisor agent can read captures from a known or shared directory. An
+  explicit `outputPath` argument still takes precedence; the directory is
+  created on first write. Tool count unchanged (18).
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at
@@ -193,6 +202,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registration.
 - `tools/smoke-mcp.ps1` — JSON-RPC smoke test that spawns the server,
   performs `initialize` + `tools/list`, and asserts the tool count.
+
+### Changed
+
+- Style gate in `.editorconfig`: explicit types are required for ambiguous
+  initializers (`IDE0008` is a build error under `EnforceCodeStyleInBuild` +
+  `TreatWarningsAsErrors`), while `var` stays allowed when the type is apparent
+  (`new T()`, casts) and for built-in types (`IDE0007` left unenforced). This
+  keeps the gate auto-fixable by `dotnet format`, which cannot convert apparent
+  or built-in `var`.
+
+### Fixed
+
+- `KeyboardChordParser` rejected unknown alphabetic tokens but accepted raw
+  numeric strings: `Enum.TryParse` cast them to undefined `VirtualKeyShort`
+  values and reported success. Numeric tokens outside the enum are now rejected
+  via `Enum.IsDefined`.
 
 ### Compatibility notes
 

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 using System.ComponentModel;
-using System.Globalization;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
@@ -25,40 +24,32 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class CaptureScreenshotTool
 {
-    private const string ScreenshotSubdirectory = "winsight";
     private const string ScreenshotPrefix = "screenshot-";
-    private const string ScreenshotExtension = ".png";
-    private const string TimestampFormat = "yyyyMMdd-HHmmss-fff";
 
     [McpServerTool(Name = "capture_screenshot")]
     [Description("Capture a PNG screenshot of the target process's main window using PrintWindow with " +
                  "PW_RENDERFULLCONTENT (so DirectX-composed WPF and accelerated surfaces render correctly). " +
-                 "If outputPath is omitted, the file is written under %TEMP%\\winsight with a timestamped name. " +
+                 "If outputPath is omitted, the file is written under WINSIGHT_OUTPUT_DIR " +
+                 "(default %TEMP%\\winsight) with a timestamped name. " +
                  "Returns an OperationResult JSON with success/error; on success, data carries " +
                  "{ path, width, height, capturedAtUtc }.")]
     public static string CaptureScreenshot(
         WindowCapture capture,
         [Description("Process id of the target application (from list_windows).")]
         int processId,
-        [Description("Optional absolute output path. Defaults to %TEMP%\\winsight\\screenshot-{timestamp}.png.")]
+        [Description("Optional absolute output path. Defaults to a timestamped file under " +
+                     "WINSIGHT_OUTPUT_DIR (default %TEMP%\\winsight).")]
         string? outputPath = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
-                ? BuildDefaultPath()
+                ? ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix)
                 : outputPath;
             ScreenshotResult screenshot = capture.Capture(processId, resolvedPath);
             return JsonSerializer.Serialize(
                 OperationResult.OkWith(screenshot),
                 JsonOptions.Default);
         });
-    }
-
-    private static string BuildDefaultPath()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), ScreenshotSubdirectory);
-        var timestamp = DateTime.UtcNow.ToString(TimestampFormat, CultureInfo.InvariantCulture);
-        return Path.Combine(directory, ScreenshotPrefix + timestamp + ScreenshotExtension);
     }
 }
