@@ -366,7 +366,13 @@ result is often a black rectangle.
 | Name         | Type   | Required | Description                                            |
 | ------------ | ------ | -------- | ------------------------------------------------------ |
 | `processId`  | int    | yes      | Target process id                                      |
-| `outputPath` | string | no       | Absolute file path. Default: `%TEMP%\winsight\screenshot-{utc-timestamp}.png` |
+| `outputPath` | string | no       | Absolute file path. Default: a timestamped `screenshot-{utc-timestamp}.png` under `WINSIGHT_OUTPUT_DIR` (default `%TEMP%\winsight`) |
+
+> **Output directory** — when `outputPath` is omitted, the capture is written
+> under the directory named by the `WINSIGHT_OUTPUT_DIR` environment variable,
+> falling back to `%TEMP%\winsight`. Set it to redirect captures into a folder a
+> supervisor agent can read (e.g. a shared mount). The directory is created on
+> first write.
 
 **Returns** — `OperationResult` wrapping a `ScreenshotResult` payload:
 
@@ -725,6 +731,7 @@ output — the tool returns an `OperationResult` failure object instead:
 | `ANTHROPIC_API_KEY`       | —                                        | Required                         |
 | `WINSIGHT_VISION_MODEL`   | `claude-sonnet-4-6`                      | Override the model               |
 | `WINSIGHT_VISION_API_URL` | `https://api.anthropic.com/v1/messages`  | Override the endpoint (proxies)  |
+| `WINSIGHT_OUTPUT_DIR`     | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |
 
 **Privacy** — screenshots are transmitted to the configured API. For
 regulated or offline scenarios, wait for the planned `OnnxLocalGrounder`

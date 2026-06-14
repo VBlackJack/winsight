@@ -197,6 +197,19 @@ implementation calls the Anthropic Claude vision API.
 > is not set, every other tool keeps working; only `find_element_visually`
 > returns an error when invoked.
 
+### Optional: redirect capture output
+
+By default `capture_screenshot` (and the intermediate capture taken by
+`find_element_visually`) writes PNGs under `%TEMP%\winsight`. Set the
+`WINSIGHT_OUTPUT_DIR` environment variable to redirect them into a directory a
+supervisor agent can read — for example a folder shared with the agent host.
+The directory is created on first write; an explicit `outputPath` argument to
+`capture_screenshot` always takes precedence.
+
+| Variable             | Required | Default            |
+| -------------------- | -------- | ------------------ |
+| `WINSIGHT_OUTPUT_DIR`| no       | `%TEMP%\winsight`  |
+
 ## Tools exposed
 
 See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.

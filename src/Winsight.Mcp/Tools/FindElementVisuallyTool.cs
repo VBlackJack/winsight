@@ -13,7 +13,6 @@
 // limitations under the License.
 
 using System.ComponentModel;
-using System.Globalization;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
@@ -26,10 +25,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class FindElementVisuallyTool
 {
-    private const string ScreenshotSubdirectory = "winsight";
     private const string ScreenshotPrefix = "vision-";
-    private const string ScreenshotExtension = ".png";
-    private const string TimestampFormat = "yyyyMMdd-HHmmss-fff";
 
     [McpServerTool(Name = "find_element_visually")]
     [Description("Locate a UI element from a natural-language description by capturing a screenshot " +
@@ -55,17 +51,10 @@ public static class FindElementVisuallyTool
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
-            var screenshotPath = BuildTempPath();
+            var screenshotPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix);
             capture.Capture(processId, screenshotPath);
             GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
             return JsonSerializer.Serialize(grounded, JsonOptions.Default);
         });
-    }
-
-    private static string BuildTempPath()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), ScreenshotSubdirectory);
-        var timestamp = DateTime.UtcNow.ToString(TimestampFormat, CultureInfo.InvariantCulture);
-        return Path.Combine(directory, ScreenshotPrefix + timestamp + ScreenshotExtension);
     }
 }
