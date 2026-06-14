@@ -29,6 +29,7 @@ and testable. The MCP server is a thin adapter; the value lives in the engine.
 │   • WebView2      — WMI process tree + CDP detection    │
 │   • Diagnostics   — EventPipe counters + events         │
 │   • Vision        — IElementGrounder + vision backends  │
+│   • VisualRegression — baseline screenshot diffing      │
 └─────────────────────────────────────────────────────────┘
                          │  Win32 / .NET diagnostic APIs
                          ▼
@@ -233,6 +234,32 @@ ONNX path is proven and matters more than cloud convenience (regulated
 content, offline CI, high-volume runs), `OnnxLocalGrounder` can grow
 behind the same contract without touching any tool surface.
 
+### Winsight.Core/Modules/VisualRegression
+
+Compares a captured UI screenshot to an approved baseline using deterministic
+image metrics. This module intentionally does not use Anomalib/PatchCore:
+Winsight drives the app into known states, so it has a baseline and does not
+need unsupervised novelty detection.
+
+- `VisualDiffer` — loads two same-sized PNGs, computes grayscale SSIM (Gaussian
+  11x11, sigma 1.5) both as a global mean and as the worst NxN block (local SSIM,
+  to catch small localized changes), computes a pixelmatch-style YIQ pixel-diff
+  ratio with anti-aliased-edge detection, and writes an optional red heatmap.
+- `VisualDiffOptions` — global + local SSIM thresholds, pixel-diff threshold,
+  pixelmatch color threshold, ignore rectangles, and optional diff-map path.
+  Defaults are read from `WINSIGHT_VISUAL_SSIM_THRESHOLD`,
+  `WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD`, `WINSIGHT_VISUAL_PIXEL_THRESHOLD`, and
+  `WINSIGHT_VISUAL_COLOR_THRESHOLD`.
+- `VisualDiffResult` — pass/fail (or baseline-created/updated) verdict, global
+  SSIM, local SSIM minimum, pixel-diff ratio, diff-map path, and reasoning
+  returned by `compare_visual_baseline`. Captures use the window client area for
+  determinism.
+- `VisualIgnoreRegion` — JSON-friendly rectangle DTO used by the MCP tool to
+  mask dynamic UI such as clocks, cursors, caret blinks, or animations.
+
+The comparison fails hard on image-size differences. Ignore rectangles exclude
+pixels from both the SSIM denominator and the pixel-diff ratio.
+
 ### Winsight.Mcp
 
 A `Microsoft.Extensions.Hosting` host that registers the engine modules as
@@ -291,7 +318,9 @@ The universal guard pins the failure to the calling tool only.
   ships (CPU); DirectML/CUDA execution is a follow-up (the decoder's fused
   MultiHeadAttention op is not yet supported on the DirectML EP). See
   [local-onnx-grounder.md](local-onnx-grounder.md).
-- Visual regression (Anomalib / PatchCore) — Phase 2 backlog.
+- Baseline-free visual novelty detection. The shipped visual-regression path is
+  baseline-based SSIM + pixel diff; unsupervised anomaly detection would be a
+  separate feature if there is a concrete need later.
 - Process-injection-based instrumentation (DLL injection, MinHook).
 - DPI-aware coordinate mapping for multi-monitor setups.
 - D3D11 `Present` hook for capturing surfaces UIA cannot see.

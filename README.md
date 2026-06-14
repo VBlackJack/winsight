@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 18 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 19 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -49,11 +49,10 @@ capabilities under a single tool surface that an LLM can compose:
 
 ## Status
 
-Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics — fully
-bootable, end-to-end validated against `SampleWpfApp` (golden path) and a
-real WPF application (`Win11Forge`). 111 unit tests + 3 E2E scenarios green.
-Local ONNX vision and visual regression are still backlog (see capability
-matrix below).
+Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
+regression v0 — fully bootable, end-to-end validated against `SampleWpfApp`
+(golden path) and a real WPF application (`Win11Forge`). 150 unit tests +
+4 E2E scenarios green.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
 | ------------------------------- | ------- | ------- | ------- |
@@ -72,7 +71,7 @@ matrix below).
 | EventPipe arbitrary event capture |       | yes     |         |
 | Vision grounding (Claude API)   |         | yes     |         |
 | Vision grounding (local Qwen2.5-VL ONNX) |  | yes     |         |
-| Visual regression (Anomalib)    |         | wip     |         |
+| Visual regression (SSIM + pixel diff) |   | yes     |         |
 | Exploratory agent (Sonnet 4.6)  |         |         | yes     |
 
 ## Repository layout
@@ -166,7 +165,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 18 tools.
+server is connected and lists all 19 tools.
 
 ### Smoke check from the shell
 
@@ -204,16 +203,33 @@ calls the Anthropic Claude vision API.
 
 ### Optional: redirect capture output
 
-By default `capture_screenshot` (and the intermediate capture taken by
-`find_element_visually`) writes PNGs under `%TEMP%\winsight`. Set the
-`WINSIGHT_OUTPUT_DIR` environment variable to redirect them into a directory a
-supervisor agent can read — for example a folder shared with the agent host.
-The directory is created on first write; an explicit `outputPath` argument to
-`capture_screenshot` always takes precedence.
+By default `capture_screenshot` and intermediate captures/diff maps taken by
+`find_element_visually` and `compare_visual_baseline` write PNGs under
+`%TEMP%\winsight`. Set the `WINSIGHT_OUTPUT_DIR` environment variable to
+redirect them into a directory a supervisor agent can read — for example a
+folder shared with the agent host. The directory is created on first write;
+an explicit `outputPath` argument to `capture_screenshot` always takes
+precedence.
 
 | Variable             | Required | Default            |
 | -------------------- | -------- | ------------------ |
 | `WINSIGHT_OUTPUT_DIR`| no       | `%TEMP%\winsight`  |
+
+### Optional: visual regression baselines
+
+`compare_visual_baseline` captures the target window and compares it to a
+baseline PNG using SSIM plus pixel diff. Baselines are stored outside the repo.
+If a baseline does not exist, or `updateBaseline=true`, the current capture is
+copied as the baseline and the result verdict is `baseline_created` or
+`baseline_updated`.
+
+| Variable                          | Required | Default                                      |
+| --------------------------------- | -------- | -------------------------------------------- |
+| `WINSIGHT_VISUAL_BASELINE_DIR`    | no       | `%LOCALAPPDATA%\winsight\visual-baselines`   |
+| `WINSIGHT_VISUAL_SSIM_THRESHOLD`  | no       | `0.98`                                       |
+| `WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD` | no  | `0.85`                                       |
+| `WINSIGHT_VISUAL_PIXEL_THRESHOLD` | no       | `0.005`                                      |
+| `WINSIGHT_VISUAL_COLOR_THRESHOLD` | no       | `0.1`                                        |
 
 ## Tools exposed
 
@@ -232,6 +248,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value matches, or state is stable |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
 | `capture_screenshot`          | PNG capture of a window (PrintWindow PW_RENDERFULLCONTENT) |
+| `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |
 | `detect_webview2_endpoints`   | Find WebView2 children and report any CDP endpoint     |
 | `observe_counters`            | Subscribe to EventCounters via EventPipe (non-intrusive oracle) |
 | `capture_events`              | Capture arbitrary EventPipe events (exceptions, custom EventSource) |
