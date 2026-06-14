@@ -36,9 +36,9 @@ public static class FindElementVisuallyTool
                  "a confidence score, and the model's reasoning. Coordinates are in screenshot space " +
                  "(window-relative); add the window's origin to get screen-space if needed. " +
                  "Default backend is the Anthropic Claude Sonnet 4.6 vision API; configure it with " +
-                 "the ANTHROPIC_API_KEY environment variable. NOTE: the screenshot is sent to the " +
-                 "Anthropic API — do not use this tool on apps with regulated or sensitive content " +
-                 "until a local ONNX backend (ShowUI-π) is shipped.")]
+                 "the ANTHROPIC_API_KEY environment variable. Set WINSIGHT_VISION_BACKEND=onnx for the " +
+                 "fully local Qwen2.5-VL backend (WINSIGHT_VISION_ONNX_PATH), which runs on-host and " +
+                 "never falls back to cloud — use it for regulated or sensitive content.")]
     public static Task<string> FindElementVisuallyAsync(
         IElementGrounder grounder,
         WindowCapture capture,

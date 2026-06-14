@@ -28,7 +28,7 @@ and testable. The MCP server is a thin adapter; the value lives in the engine.
 │   • Capture       — PrintWindow PW_RENDERFULLCONTENT    │
 │   • WebView2      — WMI process tree + CDP detection    │
 │   • Diagnostics   — EventPipe counters + events         │
-│   • Vision        — IElementGrounder + Anthropic API    │
+│   • Vision        — IElementGrounder + vision backends  │
 └─────────────────────────────────────────────────────────┘
                          │  Win32 / .NET diagnostic APIs
                          ▼
@@ -204,22 +204,34 @@ bounding box.
 - `AnthropicResponseParser` — extracts the model's JSON object from the
   response envelope, robust to wrapping prose, markdown code fences,
   numeric strings, and braces inside reasoning text.
+- `OnnxLocalGrounder` — selectable with `WINSIGHT_VISION_BACKEND=onnx`. A fully
+  local backend running Qwen2.5-VL-3B as a 3-ONNX split (vision encoder + token
+  embedding + decoder) on plain ONNX Runtime with a hand-rolled mRoPE generation
+  loop. It validates `WINSIGHT_VISION_ONNX_PATH` and `WINSIGHT_VISION_EP=cpu|dml`,
+  fails explicitly when misconfigured, and never falls back to the cloud.
+  Execution is CPU-only in this build (the decoder's fused MultiHeadAttention op
+  is not yet supported on the DirectML EP — a tracked follow-up).
+- `QwenImagePreprocessing` / `QwenVisionTokenizer` — C# reimplementations of the
+  Qwen2.5-VL smart-resize + patchify and the byte-level BPE tokenizer (via
+  `CodeGenTokenizer` over a vocab patched with Qwen special tokens).
+- `GroundingCoordinateParser` — turns the model's textual point `[x,y]` or box
+  `[x1,y1,x2,y2]` output (absolute pixels in the resized image space) into one
+  click center; the grounder denormalizes it to original-image pixels and stores
+  it in `GroundedElement` as a zero-area box.
 
 #### Why a cloud vision API first
 
-Local ONNX inference for ShowUI-π or OmniParser V2 carries a real cost
-to ship: ~1 GB of model weights, an ONNX runtime that doesn't natively
-ship a tokenizer for these models, image preprocessing in C# (resize,
-normalize, pad), and post-processing of the bounding-box decoder. That
-is several days of plumbing before the first real test.
+The cloud backend ships by default for zero-setup grounding. The local ONNX
+backend is opt-in and carries provisioning cost: a multi-gigabyte model
+(downloaded out of the repo) and C#-side preprocessing/tokenization. See
+[docs/local-onnx-grounder.md](local-onnx-grounder.md).
 
-Going through the Anthropic API gets the agent visual grounding
-**today** at ~$0.005 per call, with the trade-off that screenshots
-leave the host. The interface (`IElementGrounder`) is the
-forward-compatibility hedge: when the local ONNX path matters more
-than the cloud cost (regulated content, offline CI, high-volume runs),
-a `OnnxLocalGrounder` plugs in behind the same contract without touching
-any tool or test.
+Going through the Anthropic API gets the agent visual grounding today,
+with the trade-off that screenshots leave the host. The interface
+(`IElementGrounder`) is the forward-compatibility hedge: when the local
+ONNX path is proven and matters more than cloud convenience (regulated
+content, offline CI, high-volume runs), `OnnxLocalGrounder` can grow
+behind the same contract without touching any tool surface.
 
 ### Winsight.Mcp
 
@@ -275,9 +287,10 @@ The universal guard pins the failure to the calling tool only.
 
 ## What is intentionally absent at this point
 
-- Local ONNX vision grounding (ShowUI-π / OmniParser V2) — Phase 2
-  backlog. The cloud Anthropic backend ships today behind
-  `IElementGrounder`, so adding a local backend is a swap, not a rewrite.
+- GPU acceleration for the local ONNX grounder. The local Qwen2.5-VL backend
+  ships (CPU); DirectML/CUDA execution is a follow-up (the decoder's fused
+  MultiHeadAttention op is not yet supported on the DirectML EP). See
+  [local-onnx-grounder.md](local-onnx-grounder.md).
 - Visual regression (Anomalib / PatchCore) — Phase 2 backlog.
 - Process-injection-based instrumentation (DLL injection, MinHook).
 - DPI-aware coordinate mapping for multi-monitor setups.
