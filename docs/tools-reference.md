@@ -410,6 +410,87 @@ not writable, target requires administrator and the host does not, …):
   whether to retry, restore the window, or fall back to a different
   capture strategy.
 
+## `compare_visual_baseline`
+
+Capture the target process window **client area** (no chrome, for determinism)
+and compare it to an approved PNG baseline. The comparison is baseline-based and
+deterministic: SSIM (Gaussian 11x11, sigma 1.5, grayscale) as a global mean and
+a worst-block local minimum, plus a pixelmatch-style YIQ pixel-diff ratio with
+anti-aliased-edge detection. No ML model, GPU, or Python runtime is used.
+
+**Parameters**
+
+| Name                 | Type     | Required | Description                                      |
+| -------------------- | -------- | -------- | ------------------------------------------------ |
+| `processId`           | int      | yes      | Target process id                                |
+| `baselineKey`         | string   | yes      | Relative logical key under the baseline directory, e.g. `counter-initial.png`; `.png` is added when omitted |
+| `updateBaseline`      | bool     | no       | Replace the baseline with the current capture and return `verdict: "baseline_updated"` |
+| `ssimThreshold`       | double?  | no       | Override `WINSIGHT_VISUAL_SSIM_THRESHOLD`        |
+| `localSsimThreshold`  | double?  | no       | Override `WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD` (0..1) |
+| `pixelDiffThreshold`  | double?  | no       | Override `WINSIGHT_VISUAL_PIXEL_THRESHOLD`       |
+| `colorThreshold`      | double?  | no       | Override `WINSIGHT_VISUAL_COLOR_THRESHOLD` (0..1) |
+| `ignoreRegions`       | object[] | no       | Rectangles `{ "x": 0, "y": 0, "width": 100, "height": 20 }` excluded from both metrics |
+
+**Configuration**
+
+| Variable                          | Default                                      | Purpose                 |
+| --------------------------------- | -------------------------------------------- | ----------------------- |
+| `WINSIGHT_VISUAL_BASELINE_DIR`    | `%LOCALAPPDATA%\winsight\visual-baselines`   | Approved baseline store |
+| `WINSIGHT_VISUAL_SSIM_THRESHOLD`  | `0.98`                                       | Minimum passing global SSIM |
+| `WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD` | `0.85`                                  | Minimum passing worst-block SSIM |
+| `WINSIGHT_VISUAL_PIXEL_THRESHOLD` | `0.005`                                      | Maximum passing diff ratio |
+| `WINSIGHT_VISUAL_COLOR_THRESHOLD` | `0.1`                                        | pixelmatch color sensitivity (0..1) |
+| `WINSIGHT_OUTPUT_DIR`             | `%TEMP%\winsight`                            | Candidate captures and heatmaps |
+
+Baselines live outside the repository by default. `baselineKey` must be a
+relative `.png` path and cannot escape the configured baseline directory.
+
+**Returns** — `OperationResult` wrapping a `VisualDiffResult` payload:
+
+```json
+{
+  "success": true,
+  "data": {
+    "passed": false,
+    "ssim": 0.972134,
+    "pixelDiffRatio": 0.01125,
+    "diffMapPath": "C:\\Users\\me\\AppData\\Local\\Temp\\winsight\\visual-diff-20260614-181233-118.png",
+    "reasoning": "SSIM 0.972134 < 0.980000; pixel diff ratio 0.011250 > 0.005000.",
+    "verdict": "fail",
+    "baselinePath": "C:\\Users\\me\\AppData\\Local\\winsight\\visual-baselines\\counter-initial.png",
+    "candidatePath": "C:\\Users\\me\\AppData\\Local\\Temp\\winsight\\visual-candidate-20260614-181233-063.png"
+  }
+}
+```
+
+If the baseline does not exist, the tool captures the window, writes that
+capture as the new baseline, and returns a creation verdict instead of a
+pass/fail comparison:
+
+```json
+{
+  "success": true,
+  "data": {
+    "passed": true,
+    "ssim": 1,
+    "pixelDiffRatio": 0,
+    "reasoning": "Visual baseline created at C:\\Users\\me\\AppData\\Local\\winsight\\visual-baselines\\counter-initial.png.",
+    "verdict": "baseline_created",
+    "baselinePath": "C:\\Users\\me\\AppData\\Local\\winsight\\visual-baselines\\counter-initial.png",
+    "candidatePath": "C:\\Users\\me\\AppData\\Local\\Temp\\winsight\\visual-candidate-20260614-181233-063.png"
+  }
+}
+```
+
+**Notes**
+
+- Images must have identical dimensions. Different dimensions are an explicit
+  failure and produce a full-red heatmap when a diff map path is requested.
+- Ignore regions are for dynamic UI such as clocks, cursors, caret blinks, or
+  animations. Ignored pixels are excluded from both SSIM and pixel-diff.
+- The verdict passes only when `ssim >= threshold` and
+  `pixelDiffRatio <= threshold`.
+
 ## `detect_webview2_endpoints`
 
 Walk the descendant process tree of the host pid, find every

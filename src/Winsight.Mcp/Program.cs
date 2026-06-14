@@ -20,6 +20,7 @@ using Winsight.Core.Modules.Cdp;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.ManagedState;
 using Winsight.Core.Modules.UiAutomation;
+using Winsight.Core.Modules.VisualRegression;
 using Winsight.Core.Modules.Vision;
 using Winsight.Core.Modules.WebView2;
 
@@ -47,6 +48,7 @@ public static class Program
         builder.Services.AddSingleton<WindowCapture>();
         builder.Services.AddSingleton<WebView2Detector>();
         builder.Services.AddSingleton<DiagnosticsObserver>();
+        builder.Services.AddSingleton<VisualDiffer>();
 
         builder.Services.AddHttpClient();
         builder.Services.AddSingleton<CdpTargetDiscovery>(sp =>

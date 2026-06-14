@@ -178,6 +178,31 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   never committed. New dependencies: `Microsoft.ML.OnnxRuntime`,
   `Microsoft.ML.Tokenizers`. See `docs/local-onnx-grounder.md`.
 
+#### Phase 2.6 — visual regression baselines
+
+- `VisualRegression` module (`Winsight.Core/Modules/VisualRegression`) —
+  baseline-based UI screenshot comparison in pure .NET: global SSIM (Gaussian
+  11x11, sigma 1.5) plus a worst-block local SSIM (catches small localized
+  changes the global mean misses), plus a pixelmatch-style YIQ pixel-diff with
+  anti-aliased-edge detection (robust to ClearType subpixel rendering). Ignore
+  rectangles exclude dynamic regions; diff heatmaps are emitted as PNGs.
+- `WindowCapture.CaptureClientArea` — captures the window client area only (no
+  title bar/borders), so OS chrome variance (theme/DPI/focus) does not produce
+  false diffs. The visual baseline tool uses it.
+- `compare_visual_baseline` MCP tool — captures the target window client area,
+  resolves a relative baseline key under `WINSIGHT_VISUAL_BASELINE_DIR` (default
+  `%LOCALAPPDATA%\winsight\visual-baselines`), creates/updates missing
+  baselines on request, and otherwise returns a `VisualDiffResult` verdict
+  (now including the local SSIM minimum). Thresholds are configurable via
+  `WINSIGHT_VISUAL_SSIM_THRESHOLD`, `WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD`,
+  `WINSIGHT_VISUAL_PIXEL_THRESHOLD`, and `WINSIGHT_VISUAL_COLOR_THRESHOLD`.
+  Calibrated on the sample app (two-polarity E2E gate): a same-vs-same recapture
+  passes and an Increment-click change is caught by the local SSIM criterion.
+- Anomalib/PatchCore is no longer the visual-regression direction for v0:
+  Winsight drives known UI states and therefore has approved baselines, so a
+  deterministic structural diff is the chosen first implementation.
+- 19 total tools; `smoke-mcp.ps1` expected tool count bumped to 19.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at
@@ -245,7 +270,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The MCP server process must match the target process bitness. The
   default platform target throughout the solution is x64.
 - `find_element_visually` requires `ANTHROPIC_API_KEY` to be set and
-  transmits the screenshot to the configured API. The other 17 tools
+  transmits the screenshot to the configured API. The other 18 tools
   work without any API key.
 - Windows UAC / UIPI: a winsight host running at standard-user level
   cannot enumerate, inspect, or attach to processes that require
