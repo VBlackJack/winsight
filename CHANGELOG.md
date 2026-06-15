@@ -223,14 +223,16 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Tests
 
-- 111 unit tests covering record contracts, locators, waits, keyboard
+- 151 unit tests covering record contracts, locators, waits, keyboard
   chord parsing, the CDP command-line parser, the EventPipe payload
   normalizer, the Anthropic response parser, the capture-screenshot tool
-  wrapper, and the universal `ToolSafety` guard.
+  wrapper, local ONNX registration/preprocessing, visual diffing, and the
+  universal `ToolSafety` guard.
 - New `Winsight.Mcp.Tests` project (with `InternalsVisibleTo`) so the
   tool boundary itself can be unit-tested without touching live processes.
-- 3 end-to-end tests that drive `SampleWpfApp` from spawn to teardown,
-  exercising every Phase 1 and Phase 2 module.
+- 5 end-to-end tests that drive `SampleWpfApp` from spawn to teardown,
+  covering the counter golden path, richer UIA workflows, diagnostics/WebView2,
+  vision grounding precision, and visual regression calibration.
 
 #### Validation
 

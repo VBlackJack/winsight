@@ -51,8 +51,9 @@ capabilities under a single tool surface that an LLM can compose:
 
 Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 — fully bootable, end-to-end validated against `SampleWpfApp`
-(golden path) and a real WPF application (`Win11Forge`). 150 unit tests +
-4 E2E scenarios green.
+(golden path) and a real WPF application (`Win11Forge`). Current coverage:
+151 unit tests green, plus 5 E2E scenarios that drive a live interactive
+Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
 | ------------------------------- | ------- | ------- | ------- |
@@ -91,6 +92,7 @@ winsight/
 │   └── smoke-mcp.ps1       JSON-RPC smoke test for the stdio server
 └── docs/
     ├── architecture.md
+    ├── local-onnx-grounder.md
     ├── runbook.md
     └── tools-reference.md
 ```
@@ -102,20 +104,22 @@ Requires the .NET 10 SDK.
 ```powershell
 dotnet restore
 dotnet build
-dotnet test                                              # unit tests
-dotnet test tests\Winsight.E2E -c Release                # E2E (drives the sample app)
+dotnet test tests\Winsight.Core.Tests -c Release         # engine unit tests
+dotnet test tests\Winsight.Mcp.Tests -c Release          # MCP boundary unit tests
+dotnet test tests\Winsight.E2E -c Release                # E2E (drives the sample app on the live desktop)
 ```
 
-The E2E suite launches `SampleWpfApp.exe`, exercises every tool against
-it, and asserts the results — useful as a single command to confirm the
-framework end-to-end.
+The E2E suite launches `SampleWpfApp.exe`, exercises the desktop-facing
+workflow, and asserts the results. It requires an unlocked interactive desktop
+with focus available to the test process; Windows foreground-window restrictions
+can make focus-dependent cases fail in background or remote sessions.
 
 ## Running the MCP server
 
 The server speaks MCP over stdio. There are two ways to wire it into a
 client.
 
-### Development (rebuild on every launch)
+### Development (project path, manual rebuild)
 
 ```json
 {
@@ -250,6 +254,9 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `capture_screenshot`          | PNG capture of a window (PrintWindow PW_RENDERFULLCONTENT) |
 | `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |
 | `detect_webview2_endpoints`   | Find WebView2 children and report any CDP endpoint     |
+| `list_cdp_targets`            | List debuggable targets exposed by a CDP endpoint      |
+| `evaluate_javascript`         | Evaluate JavaScript inside a WebView2 page over CDP    |
+| `type_into_webview`           | Type into WebView2 content using CDP key events        |
 | `observe_counters`            | Subscribe to EventCounters via EventPipe (non-intrusive oracle) |
 | `capture_events`              | Capture arbitrary EventPipe events (exceptions, custom EventSource) |
 | `find_element_visually`       | Locate an element from a natural-language query using a vision model |
