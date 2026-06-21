@@ -42,11 +42,7 @@ public static class WindowGeometry
 
         List<(IntPtr Handle, string Title)> windows =
             NativeWindowEnumerator.VisibleTopLevelWindows(processId);
-        List<(IntPtr Handle, string Title)> candidates = string.IsNullOrWhiteSpace(windowTitle)
-            ? windows
-            : windows
-                .Where(window => window.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+        List<(IntPtr Handle, string Title)> candidates = FilterByTitle(windows, windowTitle);
 
         if (candidates.Count == 0)
         {
@@ -71,6 +67,23 @@ public static class WindowGeometry
             Width: rect.Right - rect.Left,
             Height: rect.Bottom - rect.Top);
         return true;
+    }
+
+    /// <summary>
+    /// Filters visible top-level windows by a case-insensitive title substring.
+    /// Single-sourced so window-scoped capture and coordinate mapping resolve the
+    /// same window — the screen coordinates returned for a visually grounded point
+    /// must map against the window that was captured.
+    /// </summary>
+    internal static List<(IntPtr Handle, string Title)> FilterByTitle(
+        List<(IntPtr Handle, string Title)> windows,
+        string? windowTitle)
+    {
+        return string.IsNullOrWhiteSpace(windowTitle)
+            ? windows
+            : windows
+                .Where(window => window.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase))
+                .ToList();
     }
 
     [DllImport("user32.dll", SetLastError = true)]

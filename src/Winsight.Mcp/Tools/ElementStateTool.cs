@@ -53,14 +53,8 @@ public static class ElementStateTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            ElementLocator locator = new(
-                automationId,
-                name,
-                className,
-                controlType,
-                nameContains,
-                index,
-                descendantText);
+            ElementLocator locator = LocatorFactory.From(
+                automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = reader.Read(processId, locator, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
@@ -113,14 +107,8 @@ public static class ElementStateTool
                     JsonOptions.Default);
             }
 
-            ElementLocator locator = new(
-                automationId,
-                name,
-                className,
-                controlType,
-                nameContains,
-                index,
-                descendantText);
+            ElementLocator locator = LocatorFactory.From(
+                automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = waiter.Wait(
                 processId,
                 locator,

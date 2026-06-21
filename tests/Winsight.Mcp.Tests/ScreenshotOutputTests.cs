@@ -83,4 +83,45 @@ public class ScreenshotOutputTests
         Action act = () => ScreenshotOutput.BuildTimestampedPath("  ");
         act.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void BuildTimestampedPath_prunes_old_captures_of_the_same_prefix()
+    {
+        string? original = Environment.GetEnvironmentVariable(ScreenshotOutput.OutputDirectoryVariable);
+        string directory = Path.Combine(Path.GetTempPath(), $"winsight-prune-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            Environment.SetEnvironmentVariable(ScreenshotOutput.OutputDirectoryVariable, directory);
+
+            // Seed 60 captures of the pruned prefix plus one of an unrelated prefix.
+            DateTime stamp = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            for (int i = 0; i < 60; i++)
+            {
+                string seeded = Path.Combine(directory, $"screenshot-{i:D3}.png");
+                File.WriteAllText(seeded, "x");
+                File.SetLastWriteTimeUtc(seeded, stamp.AddSeconds(i));
+            }
+            string keepOtherPrefix = Path.Combine(directory, "vision-keep.png");
+            File.WriteAllText(keepOtherPrefix, "x");
+
+            ScreenshotOutput.BuildTimestampedPath("screenshot-");
+
+            Directory.GetFiles(directory, "screenshot-*.png").Should().HaveCount(50,
+                "the retention cap keeps the most recent 50 of the same prefix");
+            File.Exists(keepOtherPrefix).Should().BeTrue("pruning is scoped to the matching prefix");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ScreenshotOutput.OutputDirectoryVariable, original);
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup.
+            }
+        }
+    }
 }

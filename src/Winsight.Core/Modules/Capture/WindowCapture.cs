@@ -194,11 +194,8 @@ public sealed class WindowCapture
                 ex);
         }
 
-        List<(IntPtr Handle, string Title)> candidates = string.IsNullOrWhiteSpace(windowTitle)
-            ? windows
-            : windows
-                .Where(window => window.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+        List<(IntPtr Handle, string Title)> candidates =
+            WindowGeometry.FilterByTitle(windows, windowTitle);
 
         if (candidates.Count == 0)
         {

@@ -30,6 +30,10 @@ internal static class ScreenshotOutput
     private const string Extension = ".png";
     private const string TimestampFormat = "yyyyMMdd-HHmmss-fff";
 
+    // Cap accumulated captures per prefix so a long agent session does not fill
+    // the output directory. Pruning is best-effort and never fails a capture.
+    private const int MaxRetainedPerPrefix = 50;
+
     /// <summary>
     /// Returns the configured WINSIGHT_OUTPUT_DIR, or %TEMP%\winsight when it is
     /// unset or whitespace. The directory is not created here; WindowCapture
@@ -51,7 +55,46 @@ internal static class ScreenshotOutput
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePrefix);
         string directory = ResolveDirectory();
+        PruneOldCaptures(directory, filePrefix);
         string timestamp = DateTime.UtcNow.ToString(TimestampFormat, CultureInfo.InvariantCulture);
         return Path.Combine(directory, filePrefix + timestamp + Extension);
+    }
+
+    /// <summary>
+    /// Best-effort retention: keep only the most recent <see cref="MaxRetainedPerPrefix"/>
+    /// captures sharing the prefix, deleting older ones. Never throws — disk
+    /// hygiene must not break a capture.
+    /// </summary>
+    private static void PruneOldCaptures(string directory, string filePrefix)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+            FileInfo[] existing = new DirectoryInfo(directory).GetFiles(filePrefix + "*" + Extension);
+            if (existing.Length <= MaxRetainedPerPrefix)
+            {
+                return;
+            }
+            foreach (FileInfo file in existing
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .Skip(MaxRetainedPerPrefix))
+            {
+                try
+                {
+                    file.Delete();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The file is in use or not ours to delete; skip it.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Enumerating the directory failed; pruning is optional.
+        }
     }
 }

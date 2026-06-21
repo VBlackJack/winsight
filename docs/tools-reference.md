@@ -485,7 +485,9 @@ in the journal.
 | `screenshot`  | `capture_screenshot` | `outputPath` (a timestamped default is used when omitted)      |
 
 `launch_app`/`close_app` are intentionally not step actions; call them around
-the batch (the process id is needed to scope the steps).
+the batch (the process id is needed to scope the steps). A `screenshot` step
+records the capture's path in its journal `data` (the batch journal is JSON, so
+unlike the standalone `capture_screenshot` tool it does not inline the image).
 
 **Returns** — `OperationResult`-style failure on bad input, otherwise a
 `BatchResult`:
