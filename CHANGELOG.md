@@ -256,6 +256,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `WindowDiscovery` to detect the ready window.
 - 22 total tools; `smoke-mcp.ps1` expected tool count bumped to 22.
 
+#### Phase 2.10 — batch step execution
+
+- `run_steps` MCP tool — runs a sequence of UI steps in one call instead of one
+  round trip per action. A whole scenario (drive, synchronize, assert, capture)
+  becomes a single call that returns a per-step journal
+  (`{ success, completed, total, failedAtIndex, steps[] }`). Actions: `click`,
+  `click_point`, `type`, `key_chord`, `select`, `hover`, `wait`, `get_state`,
+  `screenshot`. `stopOnError` (default true) halts at the first failing step; a
+  batch-level `processId` default applies to steps that omit their own.
+- `StepRunner` (`Winsight.Core/Modules/Orchestration`) dispatches each step to
+  the same primitive the matching single-action tool uses, so semantics are
+  identical and no logic is duplicated; each step is exception-isolated so one
+  bad step cannot tear down the batch. `launch_app`/`close_app` are not step
+  actions (the process id is needed to scope steps).
+- 23 total tools; `smoke-mcp.ps1` expected tool count bumped to 23.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

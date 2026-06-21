@@ -20,6 +20,7 @@ using Winsight.Core.Modules.Cdp;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.Lifecycle;
 using Winsight.Core.Modules.ManagedState;
+using Winsight.Core.Modules.Orchestration;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.VisualRegression;
 using Winsight.Core.Modules.Vision;
@@ -48,6 +49,7 @@ public static class Program
         builder.Services.AddSingleton<ElementWaiter>();
         builder.Services.AddSingleton<ManagedStateReader>();
         builder.Services.AddSingleton<WindowCapture>();
+        builder.Services.AddSingleton<StepRunner>();
         builder.Services.AddSingleton<WebView2Detector>();
         builder.Services.AddSingleton<DiagnosticsObserver>();
         builder.Services.AddSingleton<VisualDiffer>();

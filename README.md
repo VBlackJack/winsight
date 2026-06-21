@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 22 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 23 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -38,6 +38,7 @@ capabilities under a single tool surface that an LLM can compose:
 | Layer       | What it offers                                                                | Backed by                                       |
 | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
 | Lifecycle   | Launch an app and wait for its window, close it down                          | `Process` + window-ready polling                |
+| Orchestration | Run a whole scenario (act, sync, assert, capture) in one batch call         | `StepRunner` over the action/sync/oracle layers |
 | Discovery   | Window enumeration (classified: main/dialog/popup/menu/tooltip, owner, modal), UIA tree inspection (filterable, value-aware) | FlaUI (UIA3) + Win32 window enumeration         |
 | Action      | Strict element location, click styles, coordinate clicks, type, chords, hover, item selection | FlaUI patterns + SendInput / Win32 fallback      |
 | Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
@@ -54,7 +55,7 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-170 unit tests green, plus 9 E2E scenarios that drive a live interactive
+176 unit tests green, plus 11 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -65,6 +66,7 @@ Windows desktop.
 | UIA tree inspection             | yes     |         |         |
 | Click / type via UIA            | yes     |         |         |
 | Coordinate clicks (window/screen space) |   | yes     |         |
+| Batch step execution (`run_steps`, one round trip) |   | yes     |         |
 | Strict locators + modal dialogs |         | yes     |         |
 | Element state oracle + waits    |         | yes     |         |
 | Focused key chords + tooltip hover |      | yes     |         |
@@ -175,7 +177,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 22 tools.
+server is connected and lists all 23 tools.
 
 ### Smoke check from the shell
 
@@ -247,6 +249,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
+| `run_steps`                   | Run a sequence of UI steps (act/sync/assert/capture) in one call, with a per-step journal |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
 | `close_app`                   | Close a process (graceful with kill fallback, or forced) |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |
