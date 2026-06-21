@@ -125,6 +125,14 @@ Wraps FlaUI (UIA3):
   process gracefully (`CloseMainWindow`) with a kill fallback, or forced. Reuses
   `WindowDiscovery` to detect the ready window.
 
+### Winsight.Core/Modules/Orchestration
+
+- `StepRunner` — executes a `BatchStep[]` sequence in one pass, dispatching each
+  step to the existing action/sync/oracle/capture primitives (no duplicated
+  logic). Steps are exception-isolated (one failure becomes that step's result,
+  not a batch abort), stop-on-error halts at the first failure, and the run
+  returns a `BatchResult` journal. Backs the `run_steps` tool.
+
 ### Winsight.Core/Modules/ManagedState
 
 Wraps Microsoft.Diagnostics.Runtime (CLRMD).

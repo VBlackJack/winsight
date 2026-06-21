@@ -449,6 +449,66 @@ timeout failures):
 }
 ```
 
+## `run_steps`
+
+Run a sequence of UI steps in a single call, instead of one round trip per
+action. A whole scenario — drive, synchronize, assert, capture — becomes one
+tool call that returns a per-step journal. Each step dispatches to the same
+primitive the matching single-action tool uses, so semantics are identical.
+
+**Parameters**
+
+| Name          | Type        | Required | Description                                                      |
+| ------------- | ----------- | -------- | ---------------------------------------------------------------- |
+| `steps`       | `Step[]`    | yes      | Ordered steps to execute                                         |
+| `processId`   | int?        | no       | Default process id for steps that omit their own                 |
+| `stopOnError` | bool        | no       | Stop at the first failing step (default true)                    |
+
+**Step shape** — a flat object with an `action` discriminator plus that action's
+fields. The shared locator fields (`automationId`, `name`, `className`,
+`controlType`, `nameContains`, `index`, `descendantText`, `windowTitle`) work
+exactly like [`click_element`](#click_element). Each step may set its own
+`processId` (else the batch default applies) and an optional `label` echoed back
+in the journal.
+
+| `action`      | Maps to              | Step-specific fields                                            |
+| ------------- | -------------------- | -------------------------------------------------------------- |
+| `click`       | `click_element`      | `clickStyle`                                                   |
+| `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`                       |
+| `type`        | `type_text`          | `text`, `focusWindow`                                          |
+| `key_chord`   | `send_key_chord`     | `chord`                                                        |
+| `select`      | `select_item`        | `itemName`                                                    |
+| `hover`       | `hover_element`      | `expectedTooltipText`, `timeoutMs`                             |
+| `wait`        | `wait_for_element`   | `condition`, `expectedValue`, `timeoutMs`, `pollIntervalMs`, `stableForMs` |
+| `get_state`   | `get_element_state`  | (locator only)                                                |
+| `screenshot`  | `capture_screenshot` | `outputPath` (a timestamped default is used when omitted)      |
+
+`launch_app`/`close_app` are intentionally not step actions; call them around
+the batch (the process id is needed to scope the steps).
+
+**Returns** — `OperationResult`-style failure on bad input, otherwise a
+`BatchResult`:
+
+```json
+{
+  "success": true,
+  "completed": 6,
+  "total": 6,
+  "failedAtIndex": null,
+  "steps": [
+    { "index": 0, "action": "click", "label": "increment-1", "success": true, "error": null, "data": null },
+    { "index": 5, "action": "wait", "label": "assert-count", "success": true, "error": null,
+      "data": { "condition": "Exists", "conditionMet": true, "elapsedMs": 41, "matchCount": 1, "state": { "...": "..." } } }
+  ]
+}
+```
+
+With `stopOnError: true` (default), the run halts at the first failing step;
+`failedAtIndex` is that step's index, `success` is false, and steps after it are
+absent from `steps`. With `stopOnError: false`, every step runs and
+`failedAtIndex` reports the first failure. `completed` counts successful steps;
+`total` is the number submitted.
+
 ## `read_managed_state`
 
 Attach to a managed process and read a field on the first heap instance of
