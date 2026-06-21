@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 26 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 27 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -39,7 +39,7 @@ capabilities under a single tool surface that an LLM can compose:
 | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
 | Lifecycle   | Launch an app and wait for its window, close it down                          | `Process` + window-ready polling                |
 | Orchestration | Run a whole scenario (act, sync, assert, capture) in one batch call         | `StepRunner` over the action/sync/oracle layers |
-| Discovery   | Window enumeration (classified: main/dialog/popup/menu/tooltip, owner, modal), UIA tree inspection (filterable, value-aware) | FlaUI (UIA3) + Win32 window enumeration         |
+| Discovery   | Window enumeration (classified: main/dialog/popup/menu/tooltip, owner, modal), UIA tree inspection (filterable, value-aware), affordance summary (actionable elements + recommended locators) | FlaUI (UIA3) + Win32 window enumeration         |
 | Action      | Strict element location, click styles, coordinate clicks, type, chords, hover, item selection | FlaUI patterns + SendInput / Win32 fallback      |
 | Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
 | Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry)           | FlaUI patterns                                  |
@@ -55,13 +55,14 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-191 unit tests green, plus 17 E2E scenarios that drive a live interactive
+196 unit tests green, plus 18 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
 | ------------------------------- | ------- | ------- | ------- |
 | Window discovery                | yes     |         |         |
 | Classified windows (dialog/popup/menu/tooltip, owner, modal) |   | yes     |         |
+| Affordance summary (`describe_ui` — actionable elements + locators) |   | yes     |         |
 | App lifecycle (launch + wait for window, close) |   | yes     |         |
 | Session target (set_target — omit processId per call) |   | yes     |         |
 | UIA tree inspection             | yes     |         |         |
@@ -179,7 +180,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 26 tools.
+server is connected and lists all 27 tools.
 
 ### Smoke check from the shell
 
@@ -260,6 +261,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `close_app`                   | Close a process (graceful with kill fallback, or forced) |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |
 | `inspect_ui_tree`             | Return the UIA tree for a process (filterable, value-aware) |
+| `describe_ui`                 | List a window's actionable elements with ready-to-use locators ("what can I do here?") |
 | `click_element`               | Click a located element (single/double/right, strict locators) |
 | `click_point`                 | Click a window-relative or screen coordinate (acts on a visually grounded point) |
 | `type_text`                   | Type into a located element                            |
