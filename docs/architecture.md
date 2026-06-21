@@ -59,7 +59,7 @@ Pure data records. No behavior, no IO.
 - `OperationResult` — uniform `{success, error, data}` envelope used by
   every tool's failure path (and by several tools' success path too).
 - `ScreenshotResult` — path / dimensions / capture timestamp returned by
-  `capture_screenshot`.
+  `capture_screenshot` (whose tool also attaches the PNG inline as an MCP image).
 - `WebView2Endpoint` — descendant WebView2 process descriptor with the
   CDP port it was launched with (if any) and whether the port is
   actually listening.
@@ -312,11 +312,15 @@ Logging is forced to stderr — stdout is reserved for the MCP protocol.
 ## Tool boundary safety
 
 Every tool method on `Winsight.Mcp` is wrapped by `ToolSafety.SafeInvoke`
-(or `SafeInvokeAsync` for the vision tool). The guard:
+(`SafeInvokeAsync` for the vision tool, `SafeInvokeContent` for the
+image-returning capture tools). The guard:
 
 - Catches every non-fatal exception thrown inside the tool body and
   returns a structured `OperationResult { success: false, error }` JSON
-  the agent can read and recover from.
+  the agent can read and recover from. `SafeInvokeContent` returns the
+  same failure JSON inside an error `CallToolResult` text block, so the
+  error shape is identical whether a tool returns a string or rich
+  content (text plus an inline image).
 - Mirrors the original exception (with full stack) to **stderr** so a
   human attaching to the host process can see what happened. Stdout
   remains reserved for MCP protocol traffic.

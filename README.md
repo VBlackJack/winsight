@@ -217,8 +217,11 @@ calls the Anthropic Claude vision API.
 
 By default `capture_screenshot` and intermediate captures/diff maps taken by
 `find_element_visually` and `compare_visual_baseline` write PNGs under
-`%TEMP%\winsight`. Set the `WINSIGHT_OUTPUT_DIR` environment variable to
-redirect them into a directory a supervisor agent can read — for example a
+`%TEMP%\winsight`. `capture_screenshot` (and the `compare_visual_baseline` diff)
+also return the PNG inline as an MCP image, so an in-process agent sees the UI
+without touching disk; the file path still matters for an out-of-process
+supervisor. Set the `WINSIGHT_OUTPUT_DIR` environment variable to
+redirect captures into a directory a supervisor agent can read — for example a
 folder shared with the agent host. The directory is created on first write;
 an explicit `outputPath` argument to `capture_screenshot` always takes
 precedence.
