@@ -30,6 +30,9 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `WindowCapture` — PrintWindow with `PW_RENDERFULLCONTENT` so
   DirectX-composed WPF surfaces capture without going black.
+- `capture_screenshot` and `find_element_visually` can target modal dialogs,
+  popups, and secondary windows with `windowTitle`; default capture now uses
+  visible top-level Win32 windows in z-order instead of UIA desktop children.
 - `WebView2Detector` + `WebView2CommandLineParser` — single-WMI-query
   walk of the host's process tree, finds `msedgewebview2.exe`
   descendants, parses `--remote-debugging-port`, cross-references

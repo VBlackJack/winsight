@@ -61,4 +61,17 @@ public class CaptureScreenshotToolTests
 
         act.Should().NotThrow();
     }
+
+    [Fact]
+    public void Window_title_scope_is_safe_when_no_window_found()
+    {
+        var capture = new WindowCapture();
+
+        Func<string> act = () => CaptureScreenshotTool.CaptureScreenshot(
+            capture,
+            NoWindowProcessId,
+            windowTitle: "Missing dialog");
+
+        act.Should().NotThrow();
+    }
 }

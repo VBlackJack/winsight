@@ -15,6 +15,7 @@
 using System.Diagnostics;
 using FluentAssertions;
 using Winsight.Core.Models;
+using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.UiAutomation;
 using Xunit;
 
@@ -51,6 +52,8 @@ public class UiaScenarioTests
         var waiter = new ElementWaiter();
         var invoker = new ActionInvoker();
         var stateReader = new ElementStateReader();
+        var capture = new WindowCapture();
+        string? dialogScreenshotPath = null;
 
         try
         {
@@ -125,6 +128,17 @@ public class UiaScenarioTests
                 windowTitle: DialogTitleFragment);
             dialogShown.Success.Should().BeTrue(dialogShown.Error);
 
+            dialogScreenshotPath = Path.Combine(
+                Path.GetTempPath(),
+                $"winsight-dialog-{Guid.NewGuid():N}.png");
+            ScreenshotResult dialogScreenshot = capture.Capture(
+                process.Id,
+                dialogScreenshotPath,
+                windowTitle: DialogTitleFragment);
+            File.Exists(dialogScreenshot.Path).Should().BeTrue();
+            dialogScreenshot.Width.Should().BeGreaterThan(0);
+            dialogScreenshot.Height.Should().BeGreaterThan(0);
+
             OperationResult typed = invoker.Type(
                 process.Id, new ElementLocator(AutomationId: NoteInputId), NoteText,
                 windowTitle: DialogTitleFragment);
@@ -158,6 +172,11 @@ public class UiaScenarioTests
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
+            }
+
+            if (dialogScreenshotPath is not null && File.Exists(dialogScreenshotPath))
+            {
+                File.Delete(dialogScreenshotPath);
             }
         }
     }

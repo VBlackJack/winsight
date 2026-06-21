@@ -251,7 +251,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `get_element_state`           | Read an element's state (value, toggle, selection, focus) |
 | `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value matches, or state is stable |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
-| `capture_screenshot`          | PNG capture of a window (PrintWindow PW_RENDERFULLCONTENT) |
+| `capture_screenshot`          | PNG capture of a topmost or title-scoped window (PrintWindow PW_RENDERFULLCONTENT) |
 | `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |
 | `detect_webview2_endpoints`   | Find WebView2 children and report any CDP endpoint     |
 | `list_cdp_targets`            | List debuggable targets exposed by a CDP endpoint      |

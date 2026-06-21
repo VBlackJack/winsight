@@ -27,8 +27,10 @@ public static class CaptureScreenshotTool
     private const string ScreenshotPrefix = "screenshot-";
 
     [McpServerTool(Name = "capture_screenshot")]
-    [Description("Capture a PNG screenshot of the target process's main window using PrintWindow with " +
+    [Description("Capture a PNG screenshot of the target process's topmost visible window, or the first " +
+                 "visible window whose title contains windowTitle, using PrintWindow with " +
                  "PW_RENDERFULLCONTENT (so DirectX-composed WPF and accelerated surfaces render correctly). " +
+                 "Use windowTitle to target modal dialogs, popups, and secondary windows. " +
                  "If outputPath is omitted, the file is written under WINSIGHT_OUTPUT_DIR " +
                  "(default %TEMP%\\winsight) with a timestamped name. " +
                  "Returns an OperationResult JSON with success/error; on success, data carries " +
@@ -39,14 +41,17 @@ public static class CaptureScreenshotTool
         int processId,
         [Description("Optional absolute output path. Defaults to a timestamped file under " +
                      "WINSIGHT_OUTPUT_DIR (default %TEMP%\\winsight).")]
-        string? outputPath = null)
+        string? outputPath = null,
+        [Description("Optional case-insensitive substring of the target window title. " +
+                     "Use this to capture modal dialogs, popups, or secondary windows.")]
+        string? windowTitle = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
                 ? ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix)
                 : outputPath;
-            ScreenshotResult screenshot = capture.Capture(processId, resolvedPath);
+            ScreenshotResult screenshot = capture.Capture(processId, resolvedPath, windowTitle);
             return JsonSerializer.Serialize(
                 OperationResult.OkWith(screenshot),
                 JsonOptions.Default);

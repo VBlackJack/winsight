@@ -29,7 +29,8 @@ public static class FindElementVisuallyTool
 
     [McpServerTool(Name = "find_element_visually")]
     [Description("Locate a UI element from a natural-language description by capturing a screenshot " +
-                 "of the target window and grounding it via a vision model. Use this when " +
+                 "of the target window and grounding it via a vision model. Use windowTitle to target " +
+                 "modal dialogs, popups, and secondary windows. Use this when " +
                  "inspect_ui_tree returns no useful AutomationId (custom WPF Canvas, SkiaSharp, " +
                  "DirectX surfaces, or any control that does not expose itself to UI Automation). " +
                  "Returns the bounding box center (x, y) plus width/height in pixels of the screenshot, " +
@@ -47,12 +48,15 @@ public static class FindElementVisuallyTool
         [Description("Natural-language description of the element to locate, " +
                      "e.g. 'the increment button in the lower-right of the counter panel'.")]
         string query,
+        [Description("Optional case-insensitive substring of the target window title. " +
+                     "Use this to capture modal dialogs, popups, or secondary windows.")]
+        string? windowTitle = null,
         CancellationToken cancellationToken = default)
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
             var screenshotPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix);
-            capture.Capture(processId, screenshotPath);
+            capture.Capture(processId, screenshotPath, windowTitle);
             GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
             return JsonSerializer.Serialize(grounded, JsonOptions.Default);
         });

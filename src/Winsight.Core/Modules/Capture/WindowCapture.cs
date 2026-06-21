@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using FlaUI.Core.AutomationElements;
-using FlaUI.UIA3;
 using Winsight.Core.Models;
+using Winsight.Core.Modules.UiAutomation;
 
 namespace Winsight.Core.Modules.Capture;
 
@@ -29,16 +29,14 @@ public sealed class WindowCapture
     // including DirectX-composed WPF windows. Without it the bitmap may come back black.
     private const uint PW_RENDERFULLCONTENT = 0x00000002;
 
-    public ScreenshotResult Capture(int processId, string outputPath)
+    public ScreenshotResult Capture(int processId, string outputPath, string? windowTitle = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        var hwnd = ResolveWindowHandle(processId);
-        if (hwnd == IntPtr.Zero)
-        {
-            throw new InvalidOperationException(
-                $"No top-level window found for process {processId}.");
-        }
+        IntPtr hwnd = ResolveWindowHandle(
+            processId,
+            windowTitle,
+            DefaultWindowSelection.TopmostVisible);
 
         if (!NativeMethods.GetWindowRect(hwnd, out Rect rect))
         {
@@ -94,16 +92,14 @@ public sealed class WindowCapture
     /// deterministic visual-regression baselines: the OS chrome varies with theme,
     /// DPI, and focus, which would otherwise produce false diffs.
     /// </summary>
-    public ScreenshotResult CaptureClientArea(int processId, string outputPath)
+    public ScreenshotResult CaptureClientArea(int processId, string outputPath, string? windowTitle = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        IntPtr hwnd = ResolveWindowHandle(processId);
-        if (hwnd == IntPtr.Zero)
-        {
-            throw new InvalidOperationException(
-                $"No top-level window found for process {processId}.");
-        }
+        IntPtr hwnd = ResolveWindowHandle(
+            processId,
+            windowTitle,
+            DefaultWindowSelection.MainWindow);
 
         if (!NativeMethods.GetWindowRect(hwnd, out Rect windowRect))
         {
@@ -181,20 +177,15 @@ public sealed class WindowCapture
             CapturedAtUtc: DateTime.UtcNow);
     }
 
-    private static IntPtr ResolveWindowHandle(int processId)
+    private static IntPtr ResolveWindowHandle(
+        int processId,
+        string? windowTitle,
+        DefaultWindowSelection defaultSelection)
     {
+        List<(IntPtr Handle, string Title)> windows;
         try
         {
-            using var automation = new UIA3Automation();
-            AutomationElement desktop = automation.GetDesktop();
-            AutomationElement? window = desktop.FindAllChildren()
-                .FirstOrDefault(e => e.Properties.ProcessId.ValueOrDefault == processId);
-            if (window is null)
-            {
-                return IntPtr.Zero;
-            }
-
-            return new IntPtr(window.Properties.NativeWindowHandle.ValueOrDefault.ToInt64());
+            windows = NativeWindowEnumerator.VisibleTopLevelWindows(processId);
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
@@ -202,6 +193,65 @@ public sealed class WindowCapture
                 $"Could not enumerate top-level windows while resolving process {processId}.",
                 ex);
         }
+
+        List<(IntPtr Handle, string Title)> candidates = string.IsNullOrWhiteSpace(windowTitle)
+            ? windows
+            : windows
+                .Where(window => window.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (candidates.Count == 0)
+        {
+            throw new InvalidOperationException(BuildNoWindowError(processId, windowTitle, windows));
+        }
+
+        if (string.IsNullOrWhiteSpace(windowTitle) &&
+            defaultSelection == DefaultWindowSelection.MainWindow)
+        {
+            IntPtr mainWindowHandle = TryGetMainWindowHandle(processId);
+            if (mainWindowHandle != IntPtr.Zero)
+            {
+                foreach ((IntPtr handle, _) in candidates)
+                {
+                    if (handle == mainWindowHandle)
+                    {
+                        return handle;
+                    }
+                }
+            }
+        }
+
+        // EnumWindows returns top-level windows in z-order, topmost first.
+        return candidates[0].Handle;
+    }
+
+    private static IntPtr TryGetMainWindowHandle(int processId)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(processId);
+            process.Refresh();
+            return process.MainWindowHandle;
+        }
+        catch (Exception ex) when (!IsFatal(ex))
+        {
+            return IntPtr.Zero;
+        }
+    }
+
+    private static string BuildNoWindowError(
+        int processId,
+        string? windowTitle,
+        List<(IntPtr Handle, string Title)> windows)
+    {
+        if (string.IsNullOrWhiteSpace(windowTitle) || windows.Count == 0)
+        {
+            return $"No top-level window found for process {processId}.";
+        }
+
+        string titles = string.Join(", ", windows.Select(window => $"\"{window.Title}\""));
+        return $"No window of process {processId} has a title containing \"{windowTitle}\". " +
+            $"Available windows: {titles}.";
     }
 
     private static class NativeMethods
@@ -234,6 +284,12 @@ public sealed class WindowCapture
         ex is OutOfMemoryException
             or StackOverflowException
             or ThreadAbortException;
+
+    private enum DefaultWindowSelection
+    {
+        TopmostVisible,
+        MainWindow,
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect

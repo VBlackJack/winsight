@@ -356,17 +356,19 @@ as native JSON numbers / booleans / strings.
 
 ## `capture_screenshot`
 
-Capture a PNG of the target process's main window using `PrintWindow` with
-`PW_RENDERFULLCONTENT`. This flag makes DirectX-composed WPF windows and
+Capture a PNG of the target process's topmost visible window using
+`PrintWindow` with `PW_RENDERFULLCONTENT`, or of the first visible window whose
+title contains `windowTitle`. This flag makes DirectX-composed WPF windows and
 other accelerated surfaces render correctly into the bitmap; without it the
 result is often a black rectangle.
 
 **Parameters**
 
-| Name         | Type   | Required | Description                                            |
-| ------------ | ------ | -------- | ------------------------------------------------------ |
-| `processId`  | int    | yes      | Target process id                                      |
-| `outputPath` | string | no       | Absolute file path. Default: a timestamped `screenshot-{utc-timestamp}.png` under `WINSIGHT_OUTPUT_DIR` (default `%TEMP%\winsight`) |
+| Name          | Type   | Required | Description                                            |
+| ------------- | ------ | -------- | ------------------------------------------------------ |
+| `processId`   | int    | yes      | Target process id                                      |
+| `outputPath`  | string | no       | Absolute file path. Default: a timestamped `screenshot-{utc-timestamp}.png` under `WINSIGHT_OUTPUT_DIR` (default `%TEMP%\winsight`) |
+| `windowTitle` | string | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows. |
 
 > **Output directory** — when `outputPath` is omitted, the capture is written
 > under the directory named by the `WINSIGHT_OUTPUT_DIR` environment variable,
@@ -404,6 +406,10 @@ not writable, target requires administrator and the host does not, …):
   redraw cost (a few ms for typical WPF windows).
 - The capture covers the window's bounding rectangle including non-client
   area (title bar, borders).
+- Window selection uses visible top-level Win32 windows in z-order. When
+  `windowTitle` is omitted, a visible modal dialog or popup owned by the
+  process is usually captured before the main window. Pass `windowTitle` for
+  deterministic dialog capture.
 - Minimized windows, occluded windows, and modern WinUI3 composition
   surfaces (Win11 Notepad, recent Settings panes) may fail `PrintWindow`.
   The error message includes the Win32 error code so the agent can decide
@@ -774,10 +780,11 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
 
 **Parameters**
 
-| Name        | Type   | Required | Description                                      |
-| ----------- | ------ | -------- | ------------------------------------------------ |
-| `processId` | int    | yes      | Target process id (from list_windows)            |
-| `query`     | string | yes      | Natural-language description of the target       |
+| Name          | Type   | Required | Description                                      |
+| ------------- | ------ | -------- | ------------------------------------------------ |
+| `processId`   | int    | yes      | Target process id (from list_windows)            |
+| `query`       | string | yes      | Natural-language description of the target       |
+| `windowTitle` | string | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
 
 **Returns** — JSON `GroundedElement`:
 

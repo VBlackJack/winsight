@@ -120,9 +120,12 @@ this repo). Cross-bitness inspection is not supported.
 Window screenshot capture via the Win32 `PrintWindow` API with the
 `PW_RENDERFULLCONTENT` flag (Windows 8.1+).
 
-- `WindowCapture` — locates a top-level window by process id, allocates a
-  matching `Bitmap`, calls `PrintWindow`, and saves a PNG to the requested
-  path.
+- `WindowCapture` — locates visible top-level Win32 windows by process id,
+  optionally filters by title substring, allocates a matching `Bitmap`, calls
+  `PrintWindow`, and saves a PNG to the requested path. Full-window captures
+  default to the topmost visible window in z-order so modal dialogs and popups
+  are addressable; client-area baseline captures prefer the process main window
+  unless a title scope is provided.
 
 The `PW_RENDERFULLCONTENT` flag is what lets the call render DirectX-composed
 WPF windows correctly. Without it, accelerated surfaces come back as black
