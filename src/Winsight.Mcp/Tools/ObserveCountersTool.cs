@@ -36,16 +36,21 @@ public static class ObserveCountersTool
                  "or any custom EventSource declared in the target app. Target must be .NET Core 3.0+ / .NET 5+.")]
     public static string ObserveCounters(
         DiagnosticsObserver observer,
-        [Description("Process id of the managed target.")]
-        int processId,
+        SessionTarget target,
         [Description("EventCounter provider name. Defaults to 'System.Runtime' which exposes runtime-level counters.")]
         string providerName = DefaultProvider,
         [Description("Observation window in milliseconds. Min 500, max 30000. Default 2000.")]
-        int durationMs = 2000)
+        int durationMs = 2000,
+        [Description("Target managed process id. Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            CounterSnapshot snapshot = observer.ObserveCounters(processId, providerName, durationMs);
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            CounterSnapshot snapshot = observer.ObserveCounters(pid, providerName, durationMs);
             return JsonSerializer.Serialize(snapshot, JsonOptions.Default);
         });
     }

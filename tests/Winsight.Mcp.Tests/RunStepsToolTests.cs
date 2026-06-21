@@ -35,7 +35,7 @@ public class RunStepsToolTests
     public void Empty_steps_is_a_clear_failure()
     {
         string json = RunStepsTool.RunSteps(
-            NewRunner(), new DiagnosticsObserver(), Array.Empty<BatchStep>());
+            NewRunner(), new DiagnosticsObserver(), new SessionTarget(), Array.Empty<BatchStep>());
 
         using JsonDocument document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
@@ -50,6 +50,7 @@ public class RunStepsToolTests
         string json = RunStepsTool.RunSteps(
             NewRunner(),
             new DiagnosticsObserver(),
+            new SessionTarget(),
             new[] { new BatchStep("click", AutomationId: "X", ProcessId: 123) },
             processId: null,
             stopOnError: true,
@@ -58,6 +59,6 @@ public class RunStepsToolTests
         using JsonDocument document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
         document.RootElement.GetProperty("error").GetString()
-            .Should().Contain("captureExceptions requires the batch-level processId");
+            .Should().Contain("captureExceptions requires a process id");
     }
 }

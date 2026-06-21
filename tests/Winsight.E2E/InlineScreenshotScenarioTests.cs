@@ -19,6 +19,7 @@ using ModelContextProtocol.Protocol;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.UiAutomation;
+using Winsight.Mcp;
 using Winsight.Mcp.Tools;
 using Xunit;
 
@@ -42,7 +43,7 @@ public class InlineScreenshotScenarioTests
         try
         {
             CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(
-                new WindowCapture(), process.Id, includeImage: true);
+                new WindowCapture(), new SessionTarget(), includeImage: true, processId: process.Id);
 
             result.IsError.Should().NotBe(true);
 
@@ -71,7 +72,7 @@ public class InlineScreenshotScenarioTests
         try
         {
             CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(
-                new WindowCapture(), process.Id, includeImage: false);
+                new WindowCapture(), new SessionTarget(), includeImage: false, processId: process.Id);
 
             result.Content.Should().ContainSingle("only the JSON text is returned when the image is opted out");
             result.Content[0].Should().BeOfType<TextContentBlock>();

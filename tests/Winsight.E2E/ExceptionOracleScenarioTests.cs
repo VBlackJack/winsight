@@ -20,6 +20,7 @@ using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.Orchestration;
 using Winsight.Core.Modules.UiAutomation;
+using Winsight.Mcp;
 using Winsight.Mcp.Tools;
 using Xunit;
 
@@ -95,6 +96,7 @@ public class ExceptionOracleScenarioTests
         return RunStepsTool.RunSteps(
             runner,
             diagnostics,
+            new SessionTarget(),
             new[] { new BatchStep("click", AutomationId: buttonId) },
             processId,
             stopOnError: true,

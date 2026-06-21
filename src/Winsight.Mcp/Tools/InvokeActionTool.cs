@@ -24,6 +24,9 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class InvokeActionTool
 {
+    private const string ProcessIdDescription =
+        "Target process id. Optional — falls back to the session default set by set_target.";
+
     [McpServerTool(Name = "click_element")]
     [Description("Locate a UI element and click it. Locator criteria are combined with AND across all " +
                  "top-level windows of the process; if several elements match, the call fails and lists " +
@@ -31,8 +34,7 @@ public static class InvokeActionTool
                  "scrolled into view first. Returns an OperationResult JSON with success/error.")]
     public static string ClickElement(
         ActionInvoker invoker,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Exact AutomationId of the element.")]
         string? automationId = null,
         [Description("Exact Name property of the element.")]
@@ -50,10 +52,17 @@ public static class InvokeActionTool
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
         string? windowTitle = null,
         [Description("Click style: single (default, prefers Invoke/Toggle patterns), double, or right.")]
-        string? clickStyle = null)
+        string? clickStyle = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             ClickStyle style = ClickStyle.Primary;
             if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
             {
@@ -65,7 +74,7 @@ public static class InvokeActionTool
 
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
-            OperationResult result = invoker.Click(processId, locator, style, windowTitle);
+            OperationResult result = invoker.Click(pid, locator, style, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -80,8 +89,7 @@ public static class InvokeActionTool
                  "whose data carries the absolute screenX/screenY that was clicked.")]
     public static string ClickPoint(
         ActionInvoker invoker,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("X coordinate of the click. Window-relative by default; see coordinateSpace.")]
         int x,
         [Description("Y coordinate of the click. Window-relative by default; see coordinateSpace.")]
@@ -91,10 +99,17 @@ public static class InvokeActionTool
         [Description("Restrict the target window to those whose title contains this text (modal dialogs, popups).")]
         string? windowTitle = null,
         [Description("Coordinate space: window (default, origin at the target window's top-left) or screen (absolute desktop).")]
-        string? coordinateSpace = null)
+        string? coordinateSpace = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             ClickStyle style = ClickStyle.Primary;
             if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
             {
@@ -122,7 +137,7 @@ public static class InvokeActionTool
                     JsonOptions.Default);
             }
 
-            OperationResult result = invoker.ClickPoint(processId, x, y, style, windowTitle, windowRelative);
+            OperationResult result = invoker.ClickPoint(pid, x, y, style, windowTitle, windowRelative);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -133,8 +148,7 @@ public static class InvokeActionTool
                  "Returns an OperationResult JSON with success/error.")]
     public static string TypeText(
         ActionInvoker invoker,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Text to type into the element.")]
         string text,
         [Description("Exact AutomationId of the element.")]
@@ -154,13 +168,20 @@ public static class InvokeActionTool
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
         string? windowTitle = null,
         [Description("Bring the matched top-level window to the foreground before writing text; fails if focus cannot be verified.")]
-        bool focusWindow = false)
+        bool focusWindow = false,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
-            OperationResult result = invoker.Type(processId, locator, text, windowTitle, focusWindow);
+            OperationResult result = invoker.Type(pid, locator, text, windowTitle, focusWindow);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -171,16 +192,22 @@ public static class InvokeActionTool
                  "Returns an explicit failure if the focus check does not pass.")]
     public static string SendKeyChord(
         ActionInvoker invoker,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Keyboard chord such as Ctrl+Shift+N, Alt+F4, or Ctrl+Enter.")]
         string chord,
         [Description("Restrict focus to windows whose title contains this text.")]
-        string? windowTitle = null)
+        string? windowTitle = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            OperationResult result = invoker.SendKeyChord(processId, chord, windowTitle);
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
+            OperationResult result = invoker.SendKeyChord(pid, chord, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -191,8 +218,7 @@ public static class InvokeActionTool
                  "On failure the available item names are listed. Returns an OperationResult JSON.")]
     public static string SelectItem(
         ActionInvoker invoker,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Visible text of the item to select.")]
         string itemName,
         [Description("Exact AutomationId of the container element.")]
@@ -210,13 +236,20 @@ public static class InvokeActionTool
         [Description("Case-insensitive substring exposed by a descendant's Name or Value, searched to bounded depth.")]
         string? descendantText = null,
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
-        string? windowTitle = null)
+        string? windowTitle = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
-            OperationResult result = invoker.SelectItem(processId, locator, itemName, windowTitle);
+            OperationResult result = invoker.SelectItem(pid, locator, itemName, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -227,8 +260,7 @@ public static class InvokeActionTool
                  "expectedTooltipText is provided, the call fails unless a matching tooltip appears.")]
     public static string HoverElement(
         ActionInvoker invoker,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Exact AutomationId of the element.")]
         string? automationId = null,
         [Description("Exact Name property of the element.")]
@@ -248,14 +280,21 @@ public static class InvokeActionTool
         [Description("Optional tooltip text assertion, matched case-insensitively as a substring.")]
         string? expectedTooltipText = null,
         [Description("Tooltip wait timeout in milliseconds. Defaults to 1500; max 10000.")]
-        int? timeoutMs = null)
+        int? timeoutMs = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = invoker.Hover(
-                processId,
+                pid,
                 locator,
                 expectedTooltipText,
                 windowTitle,

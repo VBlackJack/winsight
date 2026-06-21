@@ -10,6 +10,26 @@ implementation throws and converts it into that shape, so a single rogue
 exception cannot tear down the host process or kill the rest of the agent's
 session.
 
+## Session target (`set_target` / `get_target` / `clear_target`)
+
+Every process-scoped tool takes `processId`, but you do not have to repeat it on
+every call. `set_target` stores a **session default process**; afterwards any
+tool that omits its own `processId` uses it. An explicit `processId` on a call
+still overrides the default. This is the ad-hoc counterpart to the batch-level
+`processId` of [`run_steps`](#run_steps).
+
+| Tool           | Purpose                                                                    |
+| -------------- | -------------------------------------------------------------------------- |
+| `set_target`   | Set the session default process. Param `processId` (int). Returns `{ processId, windowCount }` — `windowCount` is how many top-level windows the process currently exposes (0 is allowed; it may still be starting). Call it right after `launch_app` or `list_windows`. |
+| `get_target`   | Return `{ processId }`, or `{ processId: null }` when none is set.          |
+| `clear_target` | Clear the default; subsequent calls must pass `processId` again.            |
+
+When a tool's `processId` is omitted and no session target is set, the call
+fails with a clear message telling you to pass `processId` or call `set_target`.
+Throughout this reference, `processId` on a process-scoped tool is therefore
+**optional** with this fallback, even where the parameter tables mark it required
+for the underlying engine call.
+
 ## `launch_app`
 
 Start an application and wait until its window is actually present before

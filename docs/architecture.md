@@ -305,6 +305,11 @@ singletons, then plugs them into `AddMcpServer().WithStdioServerTransport()`.
 Tools are discovered by reflection from any `[McpServerToolType]` class in
 the assembly.
 
+A singleton `SessionTarget` holds the session default process: process-scoped
+tools take an optional `processId` and fall back to it (`set_target` /
+`get_target` / `clear_target` manage it), so an agent driving one app need not
+repeat the id.
+
 Logging is forced to stderr — stdout is reserved for the MCP protocol.
 
 ## Threading and lifetime

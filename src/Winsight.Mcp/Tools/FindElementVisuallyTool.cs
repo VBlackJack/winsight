@@ -48,8 +48,7 @@ public static class FindElementVisuallyTool
         IElementGrounder grounder,
         WindowCapture capture,
         ActionInvoker invoker,
-        [Description("Process id of the target application (from list_windows).")]
-        int processId,
+        SessionTarget target,
         [Description("Natural-language description of the element to locate, " +
                      "e.g. 'the increment button in the lower-right of the counter panel'.")]
         string query,
@@ -60,18 +59,25 @@ public static class FindElementVisuallyTool
                      "When set, the point is clicked via click_point and the click result is returned " +
                      "alongside the grounding. Omit to only locate.")]
         string? act = null,
+        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        int? processId = null,
         CancellationToken cancellationToken = default)
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             var screenshotPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix);
-            capture.Capture(processId, screenshotPath, windowTitle);
+            capture.Capture(pid, screenshotPath, windowTitle);
             GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
 
             // Enrich with absolute screen coordinates so the agent never has to
             // add the window origin itself. Best-effort: if the window origin
             // cannot be resolved, the window-relative point is still returned.
-            if (WindowGeometry.TryResolveTopmostBounds(processId, windowTitle, out WindowBounds bounds, out _))
+            if (WindowGeometry.TryResolveTopmostBounds(pid, windowTitle, out WindowBounds bounds, out _))
             {
                 (int screenX, int screenY) =
                     WindowPointMapper.ToScreen(bounds.Left, bounds.Top, grounded.X, grounded.Y);
@@ -92,7 +98,7 @@ public static class FindElementVisuallyTool
             }
 
             OperationResult click = invoker.ClickPoint(
-                processId, grounded.X, grounded.Y, style, windowTitle, windowRelative: true);
+                pid, grounded.X, grounded.Y, style, windowTitle, windowRelative: true);
             return JsonSerializer.Serialize(
                 OperationResult.OkWith(new { grounded, click }),
                 JsonOptions.Default);

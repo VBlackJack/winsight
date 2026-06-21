@@ -46,12 +46,18 @@ public static class DetectWebView2EndpointsTool
                  "explains how to fix the situation when no usable endpoint is found.")]
     public static string DetectWebView2Endpoints(
         WebView2Detector detector,
-        [Description("Host process id (from list_windows). The detector walks the entire descendant tree.")]
-        int hostProcessId)
+        SessionTarget target,
+        [Description("Host process id (from list_windows). The detector walks the entire descendant tree. " +
+                     "Optional — falls back to the session default set by set_target.")]
+        int? hostProcessId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            IReadOnlyList<WebView2Endpoint> endpoints = detector.Detect(hostProcessId);
+            if (!target.TryResolve(hostProcessId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            IReadOnlyList<WebView2Endpoint> endpoints = detector.Detect(pid);
             var hint = ResolveHint(endpoints);
             var response = new
             {

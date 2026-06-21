@@ -83,8 +83,9 @@ public class CompareVisualBaselineToolTests
         Func<CallToolResult> act = () => CompareVisualBaselineTool.CompareVisualBaseline(
             capture,
             differ,
-            NoWindowProcessId,
-            "missing-window.png");
+            new SessionTarget(),
+            "missing-window.png",
+            processId: NoWindowProcessId);
 
         act.Should().NotThrow();
     }
@@ -98,8 +99,9 @@ public class CompareVisualBaselineToolTests
         CallToolResult result = CompareVisualBaselineTool.CompareVisualBaseline(
             capture,
             differ,
-            NoWindowProcessId,
-            "missing-window.png");
+            new SessionTarget(),
+            "missing-window.png",
+            processId: NoWindowProcessId);
 
         result.IsError.Should().BeTrue();
         string json = result.Content.OfType<TextContentBlock>().First().Text;
