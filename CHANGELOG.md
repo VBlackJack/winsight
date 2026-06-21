@@ -225,6 +225,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   returning both the grounding and the click result.
 - 20 total tools; `smoke-mcp.ps1` expected tool count bumped to 20.
 
+#### Phase 2.8 — multi-window discoverability
+
+- `list_windows` now enumerates through Win32 instead of UIA desktop children,
+  so owned surfaces that UIA hides — modal dialogs, MessageBoxes, dropdown
+  menus, flyouts, tooltips — are discoverable, not merely reachable. Each
+  `WindowDescriptor` carries `kind` (main/dialog/popup/menu/tooltip/other),
+  `className`, `ownerHandle`, and `isModal`; windows are returned in z-order
+  (topmost first), so the leading entry is the active overlay.
+- `list_windows` gains an optional `processId`: with it, the listing is
+  exhaustive (including untitled dialogs, popups, and menus of that process),
+  giving an agent the full window stack of the app under test; without it,
+  desktop-wide discovery keeps the named-windows-only contract to avoid noise.
+- `WindowClassifier` — pure, unit-tested classification from Win32 class name,
+  caption/popup styles, and ownership; `isModal` is derived from an owned window
+  whose owner is disabled.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

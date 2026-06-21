@@ -25,16 +25,25 @@ namespace Winsight.Mcp.Tools;
 public static class ListWindowsTool
 {
     [McpServerTool(Name = "list_windows")]
-    [Description("Enumerate every named top-level window currently on the desktop. " +
-                 "Returns process id, native window handle, title, process name, foreground flag, " +
-                 "and bounding rectangle for each window. Use this to discover candidate target processes " +
-                 "before calling other tools. " +
+    [Description("Enumerate top-level windows, in z-order (topmost first). Without processId, returns " +
+                 "every named window on the desktop — use it to discover candidate target processes. " +
+                 "With processId, returns that process's full window stack exhaustively, including " +
+                 "untitled modal dialogs, MessageBoxes, dropdown menus, flyouts, and tooltip overlays " +
+                 "that desktop enumeration hides — use it to find the dialog or overlay to act on, then " +
+                 "scope other tools to it via windowTitle. Each window reports process id, native window " +
+                 "handle, title, process name, foreground flag, bounding rectangle, plus kind " +
+                 "(main/dialog/popup/menu/tooltip/other), className, ownerHandle, and isModal. " +
                  "On failure, returns an OperationResult JSON with success=false and an error message.")]
-    public static string ListWindows(WindowDiscovery discovery)
+    public static string ListWindows(
+        WindowDiscovery discovery,
+        [Description("Optional process id. When set, returns that process's full window stack " +
+                     "(including untitled dialogs, popups, and menus). When omitted, returns every " +
+                     "named top-level window on the desktop.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            IReadOnlyList<WindowDescriptor> windows = discovery.List();
+            IReadOnlyList<WindowDescriptor> windows = discovery.List(processId);
             return JsonSerializer.Serialize(windows, JsonOptions.Default);
         });
     }

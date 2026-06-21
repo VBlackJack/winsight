@@ -12,9 +12,15 @@ session.
 
 ## `list_windows`
 
-Enumerate top-level windows currently on the desktop.
+Enumerate top-level windows, in z-order (topmost first), through Win32 — so
+owned surfaces that UIA desktop enumeration hides (modal dialogs, MessageBoxes,
+dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
 
-**Parameters** — none.
+**Parameters**
+
+| Name        | Type | Default | Description                                                                 |
+| ----------- | ---- | ------- | --------------------------------------------------------------------------- |
+| `processId` | int? | null    | When set, return that process's **full** window stack exhaustively (including untitled dialogs, popups, and menus). When omitted, return every **named** top-level window on the desktop (discovery; avoids helper-window noise). |
 
 **Returns** — JSON array of `WindowDescriptor`:
 
@@ -26,10 +32,27 @@ Enumerate top-level windows currently on the desktop.
     "title": "Winsight Sample - Counter",
     "processName": "SampleWpfApp",
     "isForeground": true,
-    "x": 750, "y": 400, "width": 420, "height": 280
+    "x": 750, "y": 400, "width": 420, "height": 280,
+    "kind": "main",
+    "className": "HwndWrapper[SampleWpfApp;;...]",
+    "ownerHandle": 0,
+    "isModal": false
   }
 ]
 ```
+
+`kind` is one of `main`, `dialog` (owned captioned window or Win32 `#32770`,
+including MessageBox), `popup` (captionless overlay — dropdown, flyout, context
+menu), `menu` (Win32 `#32768`), `tooltip`, or `other`. `ownerHandle` is the
+owning window's handle (`0` when none), and `isModal` is true when the window
+owns a disabled parent (the platform's modal-dialog signal). The classification
+is Win32-style/ownership based and deterministic.
+
+**Typical flow** — call `list_windows` with the target `processId` after an
+action that may open a dialog or menu; pick the entry whose `kind` is `dialog`
+(or `popup`/`menu`), then scope `click_element`, `type_text`, `wait_for_element`,
+`capture_screenshot`, etc. to it with `windowTitle`. The topmost overlay is the
+first matching entry, since the list is ordered front-to-back.
 
 ## Locator semantics (shared by the UIA tools)
 

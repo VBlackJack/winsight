@@ -23,4 +23,8 @@ public sealed record WindowDescriptor(
     int X,
     int Y,
     int Width,
-    int Height);
+    int Height,
+    string Kind = "main",
+    string ClassName = "",
+    long OwnerHandle = 0,
+    bool IsModal = false);
