@@ -32,10 +32,14 @@ public sealed record StepResult(
 /// <see cref="FailedAtIndex"/> is the index of the first failing step (null when
 /// all executed steps succeeded). With stop-on-error, steps after the failure
 /// are not executed and therefore absent from <see cref="Steps"/>.
+/// <see cref="Exceptions"/> is null unless causal exception capture was requested;
+/// when requested it lists the exceptions the target process threw during the
+/// batch (an empty list means none were observed).
 /// </summary>
 public sealed record BatchResult(
     bool Success,
     int Completed,
     int Total,
     int? FailedAtIndex,
-    IReadOnlyList<StepResult> Steps);
+    IReadOnlyList<StepResult> Steps,
+    IReadOnlyList<DiagnosticEvent>? Exceptions = null);

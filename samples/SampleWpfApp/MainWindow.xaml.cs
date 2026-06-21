@@ -65,6 +65,21 @@ public partial class MainWindow : Window
         }
     }
 
+    // Throws and swallows an exception so the runtime still emits an
+    // ExceptionThrown event, giving the causal exception oracle something to
+    // observe without crashing the sample app.
+    private void OnThrowClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            throw new InvalidOperationException("Winsight sample: deliberate exception");
+        }
+        catch (InvalidOperationException)
+        {
+            // Intentionally swallowed.
+        }
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_HOTKEY && wParam.ToInt32() == ShortcutHotKeyId)

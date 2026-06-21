@@ -44,7 +44,7 @@ capabilities under a single tool surface that an LLM can compose:
 | Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
 | Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry)           | FlaUI patterns                                  |
 | Oracle      | Read private fields and managed state without `InternalsVisibleTo`            | Microsoft.Diagnostics.Runtime (CLRMD)           |
-| Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry) | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
+| Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry), capture exceptions causally during a batch | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
 | Capture     | Window screenshot via `PrintWindow` + `PW_RENDERFULLCONTENT`, returned inline as an MCP image | Win32 `PrintWindow`                             |
 | WebView2    | Locate embedded WebView2 instances, surface their CDP debugging endpoint      | WMI process tree + TCP listener cross-reference |
 | Perception  | Visual grounding from a natural-language description (cloud or fully local)   | Anthropic Messages API / local Qwen2.5-VL ONNX  |
@@ -55,7 +55,7 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-179 unit tests green, plus 13 E2E scenarios that drive a live interactive
+181 unit tests green, plus 15 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -67,6 +67,7 @@ Windows desktop.
 | Click / type via UIA            | yes     |         |         |
 | Coordinate clicks (window/screen space) |   | yes     |         |
 | Batch step execution (`run_steps`, one round trip) |   | yes     |         |
+| Causal exception oracle (`run_steps captureExceptions`) |   | yes     |         |
 | Strict locators + modal dialogs |         | yes     |         |
 | Element state oracle + waits    |         | yes     |         |
 | Focused key chords + tooltip hover |      | yes     |         |
@@ -252,7 +253,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
-| `run_steps`                   | Run a sequence of UI steps (act/sync/assert/capture) in one call, with a per-step journal |
+| `run_steps`                   | Run a sequence of UI steps (act/sync/assert/capture) in one call, with a per-step journal and optional causal exception capture |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
 | `close_app`                   | Close a process (graceful with kill fallback, or forced) |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |

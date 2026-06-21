@@ -17,6 +17,8 @@ using System.Globalization;
 using System.Runtime.Versioning;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Parsers.Clr;
 using Winsight.Core.Models;
 
 namespace Winsight.Core.Modules.Diagnostics;
@@ -33,6 +35,119 @@ public sealed class DiagnosticsObserver
 
     public const int DefaultMaxEvents = 500;
     public const int MaxAllowedEvents = 10000;
+
+    /// <summary>The CLR runtime ETW/EventPipe provider that emits exception events.</summary>
+    public const string DotNetRuntimeProvider = "Microsoft-Windows-DotNETRuntime";
+
+    /// <summary>Event name fired by the runtime for every thrown exception (caught or not).</summary>
+    public const string ExceptionThrownEventName = "ExceptionThrown_V1";
+
+    // ExceptionKeyword (0x8000) limits the stream to exception events instead of the
+    // full runtime firehose, keeping the causal capture cheap.
+    private const long ExceptionKeyword = 0x8000L;
+    private const int DefaultSettleMs = 300;
+    private const int DefaultDrainMs = 300;
+
+    /// <summary>
+    /// Capture the exceptions the target process throws <em>during</em> an action,
+    /// turning the time-windowed oracle into a causal one: start an EventPipe
+    /// session, let it settle, run <paramref name="action"/>, drain briefly, then
+    /// stop. Returns the <see cref="ExceptionThrownEventName"/> events observed in
+    /// that window (caught exceptions included — the runtime emits them too).
+    /// </summary>
+    public IReadOnlyList<DiagnosticEvent> CaptureExceptionsDuring(
+        int processId,
+        Action action,
+        int maxEvents = DefaultMaxEvents,
+        int settleMs = DefaultSettleMs,
+        int drainMs = DefaultDrainMs)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (maxEvents <= 0 || maxEvents > MaxAllowedEvents)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxEvents),
+                $"maxEvents must be between 1 and {MaxAllowedEvents}.");
+        }
+
+        var client = new DiagnosticsClient(processId);
+        EventPipeProvider[] providers = new[]
+        {
+            new EventPipeProvider(
+                name: DotNetRuntimeProvider,
+                eventLevel: System.Diagnostics.Tracing.EventLevel.Informational,
+                keywords: ExceptionKeyword),
+        };
+
+        var captured = new ConcurrentQueue<DiagnosticEvent>();
+        var capturedCount = 0;
+
+        using EventPipeSession session = client.StartEventPipeSession(providers, requestRundown: false);
+        using var source = new EventPipeEventSource(session.EventStream);
+
+        // Microsoft-Windows-DotNETRuntime is a manifest provider; over EventPipe
+        // the Dynamic parser cannot decode its payloads. The strongly-typed CLR
+        // parser knows the manifest and surfaces ExceptionType/ExceptionMessage.
+        ClrTraceEventParser clrParser = new(source);
+        clrParser.ExceptionStart += exceptionData =>
+        {
+            if (Volatile.Read(ref capturedCount) >= maxEvents)
+            {
+                return;
+            }
+            Dictionary<string, object?> payload = new(StringComparer.Ordinal)
+            {
+                ["ExceptionType"] = exceptionData.ExceptionType,
+                ["ExceptionMessage"] = exceptionData.ExceptionMessage,
+                ["ExceptionHRESULT"] = exceptionData.ExceptionHRESULT,
+                ["ExceptionFlags"] = exceptionData.ExceptionFlags.ToString(),
+            };
+            captured.Enqueue(new DiagnosticEvent(
+                TimestampUtc: exceptionData.TimeStamp.ToUniversalTime(),
+                ProviderName: exceptionData.ProviderName,
+                EventName: ExceptionThrownEventName,
+                EventId: (int)exceptionData.ID,
+                Level: exceptionData.Level.ToString(),
+                Payload: payload));
+            Interlocked.Increment(ref capturedCount);
+        };
+
+        var processingTask = Task.Run(() =>
+        {
+            try
+            {
+                source.Process();
+            }
+            catch (Exception)
+            {
+                // Session stopped; end-of-stream paths can throw.
+            }
+        });
+
+        // Let the session begin receiving before the action runs, so exceptions at
+        // the very start are not missed at the boundary.
+        Thread.Sleep(settleMs);
+        try
+        {
+            action();
+        }
+        finally
+        {
+            // Let the last in-flight exception events flush before stopping.
+            Thread.Sleep(drainMs);
+            try
+            {
+                session.Stop();
+            }
+            catch (ServerNotAvailableException)
+            {
+                // Target process exited mid-collection.
+            }
+            processingTask.Wait(TimeSpan.FromSeconds(2));
+        }
+
+        return captured.ToArray();
+    }
 
     public CounterSnapshot ObserveCounters(int processId, string providerName, int durationMs)
     {

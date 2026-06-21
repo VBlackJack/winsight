@@ -463,6 +463,7 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `steps`       | `Step[]`    | yes      | Ordered steps to execute                                         |
 | `processId`   | int?        | no       | Default process id for steps that omit their own                 |
 | `stopOnError` | bool        | no       | Stop at the first failing step (default true)                    |
+| `captureExceptions` | bool  | no       | Attach the exceptions the target process threw during the batch (causal oracle). Requires the batch-level `processId`. |
 
 **Step shape** — a flat object with an `action` discriminator plus that action's
 fields. The shared locator fields (`automationId`, `name`, `className`,
@@ -508,6 +509,29 @@ With `stopOnError: true` (default), the run halts at the first failing step;
 absent from `steps`. With `stopOnError: false`, every step runs and
 `failedAtIndex` reports the first failure. `completed` counts successful steps;
 `total` is the number submitted.
+
+**Causal exception oracle** — with `captureExceptions: true`, an EventPipe
+session runs around the whole batch and the result gains an `exceptions` array
+listing the exceptions the target process threw *during* the steps (caught ones
+included — the runtime emits them too), turning a time-windowed oracle into a
+causal one. Each entry carries `ExceptionType` and `ExceptionMessage`. An empty
+array means none were observed; the field is absent when capture was not
+requested. This needs the batch-level `processId` (the session targets one
+managed process) and adds a short settle/drain overhead.
+
+```json
+{
+  "success": true, "completed": 1, "total": 1, "failedAtIndex": null,
+  "steps": [ { "index": 0, "action": "click", "success": true } ],
+  "exceptions": [
+    {
+      "providerName": "Microsoft-Windows-DotNETRuntime",
+      "eventName": "ExceptionThrown_V1",
+      "payload": { "ExceptionType": "System.InvalidOperationException", "ExceptionMessage": "..." }
+    }
+  ]
+}
+```
 
 ## `read_managed_state`
 
