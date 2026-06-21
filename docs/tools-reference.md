@@ -1008,19 +1008,22 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
 | `windowTitle` | string? | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
 | `act`         | string? | no       | `single`, `double`, or `right` to click the grounded point in the same call (via `click_point`). Omitted by default — the tool only locates. |
 
-**Returns** — JSON `GroundedElement`:
+**Returns** — `OperationResult` whose `data` is the `GroundedElement`:
 
 ```json
 {
-  "x": 245,
-  "y": 178,
-  "width": 96,
-  "height": 32,
-  "confidence": 0.94,
-  "reasoning": "Button labeled 'Increment' centered in the lower stack panel.",
-  "source": "claude-sonnet-4-6",
-  "screenX": 995,
-  "screenY": 578
+  "success": true,
+  "data": {
+    "x": 245,
+    "y": 178,
+    "width": 96,
+    "height": 32,
+    "confidence": 0.94,
+    "reasoning": "Button labeled 'Increment' centered in the lower stack panel.",
+    "source": "claude-sonnet-4-6",
+    "screenX": 995,
+    "screenY": 578
+  }
 }
 ```
 
@@ -1061,6 +1064,7 @@ output — the tool returns an `OperationResult` failure object instead:
 | `ANTHROPIC_API_KEY`         | —                                        | Required for `anthropic`         |
 | `WINSIGHT_VISION_MODEL`     | `claude-sonnet-4-6`                      | Anthropic model override         |
 | `WINSIGHT_VISION_API_URL`   | `https://api.anthropic.com/v1/messages`  | Anthropic endpoint override      |
+| `WINSIGHT_VISION_TIMEOUT_MS`| `60000`                                  | Per-request timeout for the Anthropic backend (bounded; transient 429/5xx are retried) |
 | `WINSIGHT_VISION_ONNX_PATH` | —                                        | Local Qwen2.5-VL ONNX model directory |
 | `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` or `dml` (CPU-only in this build) |
 | `WINSIGHT_OUTPUT_DIR`       | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |

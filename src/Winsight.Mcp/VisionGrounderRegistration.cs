@@ -47,7 +47,8 @@ internal static class VisionGrounderRegistration
                 http,
                 getEnvironmentVariable("ANTHROPIC_API_KEY"),
                 getEnvironmentVariable("WINSIGHT_VISION_MODEL"),
-                getEnvironmentVariable("WINSIGHT_VISION_API_URL"));
+                getEnvironmentVariable("WINSIGHT_VISION_API_URL"),
+                ResolveTimeoutMs(getEnvironmentVariable("WINSIGHT_VISION_TIMEOUT_MS")));
         }
 
         if (string.Equals(backend, OnnxLocalGrounder.BackendName, StringComparison.OrdinalIgnoreCase))
@@ -61,6 +62,11 @@ internal static class VisionGrounderRegistration
             $"Unsupported {BackendVariable} value '{backend}'. " +
             $"Expected '{AnthropicBackend}' or '{OnnxLocalGrounder.BackendName}'.");
     }
+
+    private static int ResolveTimeoutMs(string? raw) =>
+        int.TryParse(raw, out int value) && value > 0
+            ? value
+            : AnthropicVisionGrounder.DefaultTimeoutMs;
 
     private sealed class UnavailableVisionGrounder : IElementGrounder
     {

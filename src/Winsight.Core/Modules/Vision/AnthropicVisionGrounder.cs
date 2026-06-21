@@ -27,7 +27,10 @@ public sealed class AnthropicVisionGrounder : IElementGrounder
     public const string DefaultApiUrl = "https://api.anthropic.com/v1/messages";
     public const string DefaultModel = "claude-sonnet-4-6";
     public const string ApiVersion = "2023-06-01";
+    public const int DefaultTimeoutMs = 60_000;
     private const int MaxResponseTokens = 512;
+    private const int MaxAttempts = 3;
+    private const int RetryBaseDelayMs = 300;
     private const string MissingKeyMessage =
         "ANTHROPIC_API_KEY environment variable is not set. " +
         "Vision grounding requires an Anthropic API key.";
@@ -36,18 +39,21 @@ public sealed class AnthropicVisionGrounder : IElementGrounder
     private readonly string? _apiKey;
     private readonly string _model;
     private readonly string _apiUrl;
+    private readonly int _timeoutMs;
 
     public AnthropicVisionGrounder(
         HttpClient http,
         string? apiKey,
         string? model = null,
-        string? apiUrl = null)
+        string? apiUrl = null,
+        int timeoutMs = DefaultTimeoutMs)
     {
         ArgumentNullException.ThrowIfNull(http);
         _http = http;
         _apiKey = apiKey;
         _model = string.IsNullOrWhiteSpace(model) ? DefaultModel : model;
         _apiUrl = string.IsNullOrWhiteSpace(apiUrl) ? DefaultApiUrl : apiUrl;
+        _timeoutMs = timeoutMs > 0 ? timeoutMs : DefaultTimeoutMs;
     }
 
     public async Task<GroundedElement> FindAsync(
@@ -68,23 +74,63 @@ public sealed class AnthropicVisionGrounder : IElementGrounder
         var prompt = BuildPrompt(query, width, height);
         var requestJson = BuildRequestJson(imageBytes, prompt);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl);
-        request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("x-api-key", _apiKey);
-        request.Headers.Add("anthropic-version", ApiVersion);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        using HttpResponseMessage response = await _http.SendAsync(request, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException(
-                $"Anthropic API returned {(int)response.StatusCode}: {responseBody}");
-        }
-
+        string responseBody = await SendWithRetryAsync(requestJson, cancellationToken)
+            .ConfigureAwait(false);
         return AnthropicResponseParser.ParseEnvelope(responseBody, _model);
     }
+
+    /// <summary>
+    /// Send the request with a bounded per-attempt timeout and a short retry on
+    /// transient failures (HTTP 429 and 5xx), so a slow or rate-limited API does
+    /// not hang the agent or fail a recoverable call.
+    /// </summary>
+    private async Task<string> SendWithRetryAsync(string requestJson, CancellationToken cancellationToken)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            using HttpRequestMessage request = new(HttpMethod.Post, _apiUrl);
+            request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+            request.Headers.Add("x-api-key", _apiKey);
+            request.Headers.Add("anthropic-version", ApiVersion);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            using CancellationTokenSource timeoutSource =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutSource.CancelAfter(_timeoutMs);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _http.SendAsync(request, timeoutSource.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The linked token tripped on the timeout, not on the caller's token.
+                throw new TimeoutException(
+                    $"Anthropic API call did not complete within {_timeoutMs} ms.");
+            }
+
+            using (response)
+            {
+                string body = await response.Content.ReadAsStringAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return body;
+                }
+                if (IsTransient(response.StatusCode) && attempt < MaxAttempts)
+                {
+                    await Task.Delay(RetryBaseDelayMs * attempt, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+                throw new HttpRequestException(
+                    $"Anthropic API returned {(int)response.StatusCode}: {body}");
+            }
+        }
+    }
+
+    private static bool IsTransient(System.Net.HttpStatusCode status) =>
+        status == System.Net.HttpStatusCode.TooManyRequests || (int)status >= 500;
 
     private string BuildRequestJson(byte[] imageBytes, string prompt)
     {
