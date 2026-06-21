@@ -287,6 +287,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   identical whether a tool returns a string or rich content.
 - No new tools (23 total); the two capture tools changed return type only.
 
+#### Phase 2.12 — causal exception oracle
+
+- `run_steps` gains `captureExceptions`: an EventPipe session runs around the
+  whole batch and the `BatchResult` gains an `exceptions` array listing the
+  exceptions the target process threw *during* the steps (caught ones included),
+  turning the time-windowed exception oracle into a causal one. Requires the
+  batch-level `processId`; an empty array means none were observed.
+- `DiagnosticsObserver.CaptureExceptionsDuring` backs it: start an EventPipe
+  session (CLR `ExceptionKeyword`), settle, run the action, drain, stop. It uses
+  the strongly-typed `ClrTraceEventParser.ExceptionStart` (the Dynamic parser
+  cannot decode the manifest-based `Microsoft-Windows-DotNETRuntime` payloads
+  over EventPipe), surfacing `ExceptionType` / `ExceptionMessage`.
+- The sample app gained a "Throw Exception" button (`ThrowButton`) that throws
+  and swallows an exception, as the E2E target for the oracle.
+- No new tools (23 total).
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

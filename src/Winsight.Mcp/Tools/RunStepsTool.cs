@@ -16,6 +16,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
+using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.Orchestration;
 using Winsight.Mcp.Serialization;
 
@@ -45,16 +46,22 @@ public static class RunStepsTool
                  "Set processId per step, or rely on the batch-level processId default. With " +
                  "stopOnError=true (default) the run stops at the first failing step. Returns a journal: " +
                  "{ success, completed, total, failedAtIndex, steps:[{ index, action, label, success, " +
-                 "error, data }] }. Use 'label' on a step to tag it in the journal. Does not launch or " +
-                 "close apps — use launch_app/close_app around the batch.")]
+                 "error, data }] }. Use 'label' on a step to tag it in the journal. Set " +
+                 "captureExceptions=true to attach, in 'exceptions', the exceptions the target process " +
+                 "threw during the batch (a causal oracle; requires the batch-level processId). Does not " +
+                 "launch or close apps — use launch_app/close_app around the batch.")]
     public static string RunSteps(
         StepRunner runner,
+        DiagnosticsObserver diagnostics,
         [Description("Ordered steps to execute. Each is an object with 'action' and that action's fields.")]
         IReadOnlyList<BatchStep> steps,
         [Description("Default process id for steps that omit their own processId.")]
         int? processId = null,
         [Description("Stop at the first failing step (default true). When false, every step runs and all outcomes are reported.")]
-        bool stopOnError = true)
+        bool stopOnError = true,
+        [Description("Capture the exceptions the target process throws during the batch (caught ones " +
+                     "included) and attach them in 'exceptions'. Requires the batch-level processId.")]
+        bool captureExceptions = false)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -62,6 +69,13 @@ public static class RunStepsTool
             {
                 return JsonSerializer.Serialize(
                     OperationResult.Failure("steps is required and must contain at least one step."),
+                    JsonOptions.Default);
+            }
+            if (captureExceptions && processId is null)
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure(
+                        "captureExceptions requires the batch-level processId (the exception session targets one process)."),
                     JsonOptions.Default);
             }
 
@@ -75,7 +89,20 @@ public static class RunStepsTool
                         : step)
                 .ToList();
 
-            BatchResult result = runner.Run(prepared, processId, stopOnError);
+            BatchResult result;
+            if (captureExceptions)
+            {
+                BatchResult? batch = null;
+                IReadOnlyList<DiagnosticEvent> exceptions = diagnostics.CaptureExceptionsDuring(
+                    processId!.Value,
+                    () => batch = runner.Run(prepared, processId, stopOnError));
+                result = batch! with { Exceptions = exceptions };
+            }
+            else
+            {
+                result = runner.Run(prepared, processId, stopOnError);
+            }
+
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

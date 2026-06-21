@@ -52,6 +52,12 @@
                     HorizontalAlignment="Center"
                     AutomationProperties.AutomationId="OpenDialogButton"
                     Click="OnOpenDialogClick" />
+            <Button Content="Throw Exception"
+                    Padding="20,10"
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="ThrowButton"
+                    Click="OnThrowClick" />
             <Button Padding="20,10"
                     Margin="0,16,0,0"
                     HorizontalAlignment="Center"

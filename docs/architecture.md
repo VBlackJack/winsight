@@ -198,6 +198,12 @@ flag, and no source code changes in the target.
   matching an exact name filter), normalizes payloads to JSON-safe
   representations, and returns a bounded list with a `Truncated` flag
   when the cap is reached. Default cap is 500 events; max 10,000.
+- `DiagnosticsObserver.CaptureExceptionsDuring` — the causal oracle behind
+  `run_steps captureExceptions`: starts a CLR-exception EventPipe session,
+  settles, runs the supplied action, drains, and stops, returning the exceptions
+  thrown during the action. Uses the strongly-typed `ClrTraceEventParser`
+  (`ExceptionStart`) because the Dynamic parser cannot decode the manifest-based
+  `Microsoft-Windows-DotNETRuntime` payloads over EventPipe.
 - `PayloadNormalizer` — pure-function helper that converts arbitrary
   TraceEvent payload values into a JSON-friendly representation
   (primitives pass through, `DateTime` is converted to UTC, `Guid` and
