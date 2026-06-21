@@ -303,6 +303,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and swallows an exception, as the E2E target for the oracle.
 - No new tools (23 total).
 
+#### Phase 2.15 — change perception (snapshot_ui / diff_ui)
+
+- `snapshot_ui` and `diff_ui` MCP tools — the feedback sense: capture a
+  structural baseline of a process (windows + actionable elements), then report
+  what an action changed (windowsOpened/windowsClosed, elementsAdded/
+  elementsRemoved, and elementsChanged with per-field before/after) without
+  re-inspecting everything. `diff_ui` re-baselines so successive calls chain;
+  with no baseline it returns `verdict: baseline_captured`. A session-scoped
+  `UiSnapshotStore` keeps one baseline per process.
+- `UiDiffer` computes the delta as a pure, unit-tested function (windows matched
+  by handle; elements by a stable key with duplicate occurrences matched in
+  order); `UiSnapshotter` captures a snapshot by composing `WindowDiscovery` and
+  `AffordanceScanner`.
+- 29 total tools; `smoke-mcp.ps1` expected tool count bumped to 29.
+
 #### Phase 2.14 — affordance perception (describe_ui)
 
 - `describe_ui` MCP tool — answers "what can I do here?" by returning a window's

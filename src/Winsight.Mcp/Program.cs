@@ -46,6 +46,8 @@ public static class Program
         builder.Services.AddSingleton<AppLauncher>();
         builder.Services.AddSingleton<UiTreeInspector>();
         builder.Services.AddSingleton<AffordanceScanner>();
+        builder.Services.AddSingleton<UiSnapshotter>();
+        builder.Services.AddSingleton<UiSnapshotStore>();
         builder.Services.AddSingleton<ActionInvoker>();
         builder.Services.AddSingleton<ElementStateReader>();
         builder.Services.AddSingleton<ElementWaiter>();
