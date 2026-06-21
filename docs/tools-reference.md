@@ -10,11 +10,75 @@ implementation throws and converts it into that shape, so a single rogue
 exception cannot tear down the host process or kill the rest of the agent's
 session.
 
+## `launch_app`
+
+Start an application and wait until its window is actually present before
+returning, so an agent never races a still-initializing UI. The returned window
+is already classified (see [`list_windows`](#list_windows)), ready to drive
+without a follow-up `list_windows`/poll.
+
+**Parameters**
+
+| Name                 | Type    | Required | Description                                                            |
+| -------------------- | ------- | -------- | --------------------------------------------------------------------- |
+| `path`               | string  | yes      | Absolute path to the executable to launch                             |
+| `arguments`          | string? | no       | Command-line arguments                                                |
+| `workingDirectory`   | string? | no       | Working directory; defaults to the executable's own directory         |
+| `waitForWindowTitle` | string? | no       | Case-insensitive substring of the window title to wait for. When omitted, waits for the process's main window |
+| `timeoutMs`          | int     | no       | Max wait for the window. Default 15000; max 120000                    |
+
+**Returns** — `OperationResult` wrapping a `LaunchResult`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "processId": 14820,
+    "window": {
+      "processId": 14820,
+      "windowHandle": 1247868,
+      "title": "Winsight Sample - Counter",
+      "processName": "SampleWpfApp",
+      "isForeground": true,
+      "x": 750, "y": 400, "width": 420, "height": 280,
+      "kind": "main", "className": "HwndWrapper[...]", "ownerHandle": 0, "isModal": false
+    }
+  }
+}
+```
+
+The call fails explicitly when the executable is missing, the process exits
+during startup (the exit code is reported), or no matching window appears within
+`timeoutMs`.
+
+## `close_app`
+
+Close a process by id. By default this requests a graceful shutdown
+(`CloseMainWindow`) and falls back to a kill if the process does not exit within
+the grace window; `force=true` kills the process tree immediately.
+
+**Parameters**
+
+| Name        | Type | Required | Description                                            |
+| ----------- | ---- | -------- | ------------------------------------------------------ |
+| `processId` | int  | yes      | Process id to close (from `launch_app` or `list_windows`) |
+| `force`     | bool | no       | Kill the process tree immediately                      |
+
+**Returns** — `OperationResult` whose `data` reports `processId` and whether the
+process was force-killed; a process that is already gone is reported as success
+(`alreadyExited: true`).
+
 ## `list_windows`
 
-Enumerate top-level windows currently on the desktop.
+Enumerate top-level windows, in z-order (topmost first), through Win32 — so
+owned surfaces that UIA desktop enumeration hides (modal dialogs, MessageBoxes,
+dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
 
-**Parameters** — none.
+**Parameters**
+
+| Name        | Type | Default | Description                                                                 |
+| ----------- | ---- | ------- | --------------------------------------------------------------------------- |
+| `processId` | int? | null    | When set, return that process's **full** window stack exhaustively (including untitled dialogs, popups, and menus). When omitted, return every **named** top-level window on the desktop (discovery; avoids helper-window noise). |
 
 **Returns** — JSON array of `WindowDescriptor`:
 
@@ -26,10 +90,27 @@ Enumerate top-level windows currently on the desktop.
     "title": "Winsight Sample - Counter",
     "processName": "SampleWpfApp",
     "isForeground": true,
-    "x": 750, "y": 400, "width": 420, "height": 280
+    "x": 750, "y": 400, "width": 420, "height": 280,
+    "kind": "main",
+    "className": "HwndWrapper[SampleWpfApp;;...]",
+    "ownerHandle": 0,
+    "isModal": false
   }
 ]
 ```
+
+`kind` is one of `main`, `dialog` (owned captioned window or Win32 `#32770`,
+including MessageBox), `popup` (captionless overlay — dropdown, flyout, context
+menu), `menu` (Win32 `#32768`), `tooltip`, or `other`. `ownerHandle` is the
+owning window's handle (`0` when none), and `isModal` is true when the window
+owns a disabled parent (the platform's modal-dialog signal). The classification
+is Win32-style/ownership based and deterministic.
+
+**Typical flow** — call `list_windows` with the target `processId` after an
+action that may open a dialog or menu; pick the entry whose `kind` is `dialog`
+(or `popup`/`menu`), then scope `click_element`, `type_text`, `wait_for_element`,
+`capture_screenshot`, etc. to it with `windowTitle`. The topmost overlay is the
+first matching entry, since the list is ordered front-to-back.
 
 ## Locator semantics (shared by the UIA tools)
 
@@ -144,6 +225,53 @@ or, on ambiguity:
   "data": [ { "index": 0, "automationId": "IncrementButton", "name": "Increment", "controlType": "Button", "className": "Button", "windowTitle": "Winsight Sample - Counter" } ]
 }
 ```
+
+## `click_point`
+
+Click at a coordinate without locating an element through UI Automation. This
+is the action partner of [`find_element_visually`](#find_element_visually) and
+the escape hatch for surfaces UIA cannot address (custom WPF Canvas, SkiaSharp,
+DirectX). The target window should be visible and unoccluded so the click lands
+on it.
+
+**Parameters**
+
+| Name              | Type    | Required | Description                                                        |
+| ----------------- | ------- | -------- | ------------------------------------------------------------------ |
+| `processId`       | int     | yes      | Target process id                                                  |
+| `x`               | int     | yes      | X coordinate of the click (window-relative by default)             |
+| `y`               | int     | yes      | Y coordinate of the click (window-relative by default)             |
+| `clickStyle`      | string? | no       | `single` (default), `double`, or `right`                           |
+| `windowTitle`     | string? | no       | Restrict the target window to those whose title contains this text |
+| `coordinateSpace` | string? | no       | `window` (default) or `screen`                                     |
+
+`coordinateSpace=window` interprets `x,y` in the target window's coordinate
+space — the **same origin as a full-window screenshot**, so the `x,y` returned
+by `find_element_visually` can be passed straight through. The tool resolves the
+window origin (topmost visible window, or the one scoped by `windowTitle`),
+verifies the point falls inside the window bounds, and translates it to screen
+space. `coordinateSpace=screen` treats `x,y` as absolute desktop coordinates and
+clicks them directly.
+
+Unlike `click_element`, there is no UIA pattern resolution: every style is a
+physical mouse action at the computed point.
+
+**Returns** — `OperationResult` whose `data` reports the absolute screen point
+that was clicked:
+
+```json
+{ "success": true, "data": { "screenX": 846, "screenY": 432 } }
+```
+
+A window-relative point outside the resolved window bounds is an explicit
+failure that reports the window size, so the agent can correct the coordinate.
+
+> **Targeting a specific window** — without `windowTitle`, the window origin is
+> the **topmost** visible window of the process, which can be a transient
+> tooltip or popup rather than the one you measured against. When clicking a
+> point relative to a specific surface, pass `windowTitle` (or use
+> `coordinateSpace=screen` with `find_element_visually`'s `screenX/screenY`,
+> which are absolute) so the resolution is deterministic.
 
 ## `type_text`
 
@@ -780,11 +908,12 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
 
 **Parameters**
 
-| Name          | Type   | Required | Description                                      |
-| ------------- | ------ | -------- | ------------------------------------------------ |
-| `processId`   | int    | yes      | Target process id (from list_windows)            |
-| `query`       | string | yes      | Natural-language description of the target       |
-| `windowTitle` | string | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
+| Name          | Type    | Required | Description                                      |
+| ------------- | ------- | -------- | ------------------------------------------------ |
+| `processId`   | int     | yes      | Target process id (from list_windows)            |
+| `query`       | string  | yes      | Natural-language description of the target       |
+| `windowTitle` | string? | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
+| `act`         | string? | no       | `single`, `double`, or `right` to click the grounded point in the same call (via `click_point`). Omitted by default — the tool only locates. |
 
 **Returns** — JSON `GroundedElement`:
 
@@ -796,14 +925,33 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
   "height": 32,
   "confidence": 0.94,
   "reasoning": "Button labeled 'Increment' centered in the lower stack panel.",
-  "source": "claude-sonnet-4-6"
+  "source": "claude-sonnet-4-6",
+  "screenX": 995,
+  "screenY": 578
 }
 ```
 
 `x` and `y` are the **center** of the bounding box, in **screenshot
-pixel space** (origin at the top-left of the captured window). To
-convert to screen coordinates, add the window's origin from
-`list_windows`.
+pixel space** (origin at the top-left of the captured window). `screenX`
+and `screenY` are the same point already translated to **absolute screen
+coordinates** (the window origin is added server-side), so they can be fed
+straight to `click_point` with `coordinateSpace=screen`, or the window-relative
+`x,y` to `click_point` with the default `coordinateSpace=window`. `screenX` /
+`screenY` are null when the window origin could not be resolved.
+
+**Acting in one call** — when `act` is set, the grounded point is clicked
+through the same path as `click_point` (window-relative) and the result wraps
+both the grounding and the click outcome:
+
+```json
+{
+  "success": true,
+  "data": {
+    "grounded": { "x": 245, "y": 178, "...": "...", "screenX": 995, "screenY": 578 },
+    "click": { "success": true, "data": { "screenX": 995, "screenY": 578 } }
+  }
+}
+```
 
 If the call fails — missing API key, network error, or unparseable model
 output — the tool returns an `OperationResult` failure object instead:

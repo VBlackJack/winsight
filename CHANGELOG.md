@@ -206,6 +206,56 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   deterministic structural diff is the chosen first implementation.
 - 19 total tools; `smoke-mcp.ps1` expected tool count bumped to 19.
 
+#### Phase 2.7 — coordinate clicks, closing the perception-to-action loop
+
+- `click_point` MCP tool — clicks a coordinate without UIA element location, the
+  action partner of `find_element_visually` and the escape hatch for surfaces
+  UIA cannot address (custom Canvas, SkiaSharp, DirectX). `coordinateSpace`
+  defaults to `window` (same origin as a full-window screenshot, so a grounded
+  `x,y` passes straight through) or `screen` for absolute desktop coordinates;
+  out-of-bounds window-relative points fail explicitly with the window size.
+  Returns the absolute `screenX/screenY` clicked.
+- `ActionInvoker.ClickPoint` — physical mouse click (single/double/right) at a
+  window-relative or screen point, backed by `WindowGeometry` (resolves the
+  topmost/title-scoped window origin, mirroring `WindowCapture.Capture`) and the
+  pure `WindowPointMapper` (window→screen translation + bounds check).
+- `find_element_visually` now enriches `GroundedElement` with `screenX/screenY`
+  (window origin added server-side, so no manual coordinate math) and accepts an
+  opt-in `act=single|double|right` to click the grounded point in the same call,
+  returning both the grounding and the click result.
+- 20 total tools; `smoke-mcp.ps1` expected tool count bumped to 20.
+
+#### Phase 2.8 — multi-window discoverability
+
+- `list_windows` now enumerates through Win32 instead of UIA desktop children,
+  so owned surfaces that UIA hides — modal dialogs, MessageBoxes, dropdown
+  menus, flyouts, tooltips — are discoverable, not merely reachable. Each
+  `WindowDescriptor` carries `kind` (main/dialog/popup/menu/tooltip/other),
+  `className`, `ownerHandle`, and `isModal`; windows are returned in z-order
+  (topmost first), so the leading entry is the active overlay.
+- `list_windows` gains an optional `processId`: with it, the listing is
+  exhaustive (including untitled dialogs, popups, and menus of that process),
+  giving an agent the full window stack of the app under test; without it,
+  desktop-wide discovery keeps the named-windows-only contract to avoid noise.
+- `WindowClassifier` — pure, unit-tested classification from Win32 class name,
+  caption/popup styles, and ownership; `isModal` is derived from an owned window
+  whose owner is disabled.
+
+#### Phase 2.9 — application lifecycle
+
+- `launch_app` MCP tool — starts an executable and blocks until its window is
+  present (main window, or one matching `waitForWindowTitle`), returning the new
+  `processId` and a classified window descriptor ready to drive. Removes the
+  shell-out-then-poll-`list_windows` startup race. Fails explicitly when the
+  executable is missing, the process exits during startup, or no window appears
+  within the timeout (default 15s, max 120s).
+- `close_app` MCP tool — graceful shutdown (`CloseMainWindow`) with a kill
+  fallback, or `force=true` to kill the process tree immediately; an
+  already-gone process is reported as success.
+- `AppLauncher` (`Winsight.Core/Modules/Lifecycle`) backs both, reusing
+  `WindowDiscovery` to detect the ready window.
+- 22 total tools; `smoke-mcp.ps1` expected tool count bumped to 22.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

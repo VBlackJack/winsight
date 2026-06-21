@@ -21,4 +21,6 @@ public sealed record GroundedElement(
     int Height,
     double Confidence,
     string Reasoning,
-    string Source);
+    string Source,
+    int? ScreenX = null,
+    int? ScreenY = null);

@@ -76,8 +76,20 @@ Pure data records. No behavior, no IO.
 
 Wraps FlaUI (UIA3):
 
-- `WindowDiscovery` — enumerates top-level windows and resolves process metadata.
-  Uses `GetForegroundWindow` for the foreground flag.
+- `WindowDiscovery` — enumerates top-level windows through Win32 `EnumWindows`
+  (so owned dialogs, popups, menus, and tooltips are discoverable, not just
+  reachable), classifies each via `WindowClassifier`, and resolves process
+  metadata. Optional per-process scoping returns the full window stack of one
+  app, including untitled surfaces. Uses `GetForegroundWindow` for the
+  foreground flag.
+- `WindowClassifier` — pure classification of a window into a kind
+  (main/dialog/popup/menu/tooltip/other) plus modality, from its Win32 class
+  name, caption/popup styles, and ownership; unit-testable without live windows.
+- `WindowGeometry` — resolves a process window's screen-space bounds (topmost,
+  or title-scoped), mirroring `WindowCapture`'s window selection.
+- `WindowPointMapper` — pure window-relative ↔ screen coordinate translation and
+  bounds checks; backs `click_point` and the screen coordinates enriched onto
+  `find_element_visually` results.
 - `UiTreeInspector` — bounded BFS traversal of the UIA tree for a given process
   window (default depth 5, capped at 20), with optional window-title scoping
   and controlType/nameContains pruning; nodes carry Value-pattern content.
@@ -94,15 +106,24 @@ Wraps FlaUI (UIA3):
   silent first-match), suggests near misses when nothing matches, and
   tolerates `COMException` from elements tearing down mid-walk.
 - `ActionInvoker` — clicks (Invoke / Toggle / mouse fallback; double and
-  right click variants), types (writable Value pattern / keyboard
-  fallback), selects items in ComboBox/ListBox/Tab containers, and scrolls
-  off-screen elements into view before physical actions.
+  right click variants), coordinate clicks (`ClickPoint`, window- or
+  screen-space, the action partner of visual grounding), types (writable Value
+  pattern / keyboard fallback), selects items in ComboBox/ListBox/Tab
+  containers, and scrolls off-screen elements into view before physical actions.
 - `ElementStateReader` — builds `ElementState` snapshots from located
   elements (the UI-level oracle behind `get_element_state`).
 - `ElementWaiter` — polls a locator until a `WaitCondition` holds or a
   timeout elapses (`UiaDefaults` carries the defaults and caps).
 - `UiaDefaults` — centralized timeouts, poll intervals, and candidate
   caps; wait timeout overridable via `WINSIGHT_UIA_WAIT_TIMEOUT_MS`.
+
+### Winsight.Core/Modules/Lifecycle
+
+- `AppLauncher` — starts an executable and waits until its window is present
+  (main window, or one matching a title fragment) before returning a classified
+  `LaunchResult`, removing the shell-out-then-poll startup race; also closes a
+  process gracefully (`CloseMainWindow`) with a kill fallback, or forced. Reuses
+  `WindowDiscovery` to detect the ready window.
 
 ### Winsight.Core/Modules/ManagedState
 
@@ -307,7 +328,7 @@ The universal guard pins the failure to the calling tool only.
 
 | Situation                                 | Behavior                                              |
 | ----------------------------------------- | ----------------------------------------------------- |
-| Window has no name                        | Skipped from `list_windows` (kept implicit)           |
+| Window has no name                        | Skipped from desktop-wide `list_windows`; included in a per-process listing |
 | COM exception on a single window          | Caught locally, that window is skipped                |
 | Element not found                         | `OperationResult.Failure(...)` (success = false)      |
 | Process has no managed runtime            | `OperationResult.Failure(...)`                        |
