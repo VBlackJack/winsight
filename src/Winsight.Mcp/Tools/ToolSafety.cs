@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using Winsight.Core.Models;
 using Winsight.Mcp.Serialization;
 
@@ -65,6 +66,37 @@ internal static class ToolSafety
             return JsonSerializer.Serialize(
                 OperationResult.Failure(ex.Message),
                 JsonOptions.Default);
+        }
+    }
+
+    /// <summary>
+    /// Variant for tools that return rich content (text plus an inline image).
+    /// Same guard contract as <see cref="SafeInvoke(Func{string})"/>: any
+    /// non-fatal throw becomes an error <see cref="CallToolResult"/> whose single
+    /// text block carries the OperationResult.Failure JSON, so the agent reads
+    /// the same error shape whether the tool returns a string or content.
+    /// </summary>
+    public static CallToolResult SafeInvokeContent(Func<CallToolResult> body)
+    {
+        try
+        {
+            return body();
+        }
+        catch (Exception ex) when (!IsFatal(ex))
+        {
+            Console.Error.WriteLine($"[winsight] tool exception: {ex}");
+            return new CallToolResult
+            {
+                IsError = true,
+                Content =
+                {
+                    new TextContentBlock
+                    {
+                        Text = JsonSerializer.Serialize(
+                            OperationResult.Failure(ex.Message), JsonOptions.Default),
+                    },
+                },
+            };
         }
     }
 

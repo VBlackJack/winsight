@@ -15,6 +15,7 @@
 using System.Runtime.Versioning;
 using System.Text.Json;
 using FluentAssertions;
+using ModelContextProtocol.Protocol;
 using Winsight.Core.Modules.Capture;
 using Winsight.Mcp.Tools;
 using Xunit;
@@ -35,9 +36,10 @@ public class CaptureScreenshotToolTests
     {
         var capture = new WindowCapture();
 
-        var json = CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+        CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
 
-        using var document = JsonDocument.Parse(json);
+        result.IsError.Should().BeTrue();
+        using var document = JsonDocument.Parse(TextOf(result));
         JsonElement root = document.RootElement;
 
         root.GetProperty("success").GetBoolean().Should().BeFalse();
@@ -49,17 +51,28 @@ public class CaptureScreenshotToolTests
     }
 
     [Fact]
-    public void Failure_message_does_not_throw_through_to_mcp_framework()
+    public void Failure_does_not_throw_through_to_mcp_framework()
     {
         // Regression: previously the tool let exceptions propagate, producing a
         // generic "An error occurred invoking 'capture_screenshot'." message that
         // hid the underlying cause from the agent. The wrapping must convert it
-        // into an exploitable OperationResult.
+        // into an exploitable error result.
         var capture = new WindowCapture();
 
-        Func<string> act = () => CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+        Func<CallToolResult> act = () => CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
 
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Failure_carries_no_image_block()
+    {
+        var capture = new WindowCapture();
+
+        CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+
+        result.Content.Should().ContainSingle("a failure returns only the error text, no image");
+        result.Content[0].Should().BeOfType<TextContentBlock>();
     }
 
     [Fact]
@@ -67,11 +80,14 @@ public class CaptureScreenshotToolTests
     {
         var capture = new WindowCapture();
 
-        Func<string> act = () => CaptureScreenshotTool.CaptureScreenshot(
+        Func<CallToolResult> act = () => CaptureScreenshotTool.CaptureScreenshot(
             capture,
             NoWindowProcessId,
             windowTitle: "Missing dialog");
 
         act.Should().NotThrow();
     }
+
+    private static string TextOf(CallToolResult result) =>
+        result.Content.OfType<TextContentBlock>().First().Text;
 }

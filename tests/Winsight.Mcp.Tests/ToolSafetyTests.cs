@@ -15,6 +15,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using FluentAssertions;
+using ModelContextProtocol.Protocol;
 using Winsight.Mcp.Tools;
 using Xunit;
 
@@ -73,6 +74,33 @@ public class ToolSafetyTests
     // pass-through. CA2201 forbids throwing them directly in user code, and
     // synthesizing a real one in a test is unreliable. The IsFatal allowlist in
     // ToolSafety is small enough to review by inspection.
+
+    [Fact]
+    public void SafeInvokeContent_returns_body_result_unchanged_on_success()
+    {
+        CallToolResult expected = new()
+        {
+            Content = { new TextContentBlock { Text = "{\"ok\":true}" } },
+        };
+
+        CallToolResult actual = ToolSafety.SafeInvokeContent(() => expected);
+
+        actual.Should().BeSameAs(expected);
+    }
+
+    [Fact]
+    public void SafeInvokeContent_wraps_exception_into_error_result_with_failure_json()
+    {
+        CallToolResult result = ToolSafety.SafeInvokeContent(() =>
+            throw new InvalidOperationException("capture failed for process 4"));
+
+        result.IsError.Should().BeTrue();
+        string json = result.Content.OfType<TextContentBlock>().First().Text;
+        using var document = JsonDocument.Parse(json);
+        document.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+        document.RootElement.GetProperty("error").GetString()
+            .Should().Be("capture failed for process 4");
+    }
 
     [Fact]
     public async Task Async_overload_returns_body_output_on_success()

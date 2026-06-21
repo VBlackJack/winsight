@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Drawing;
 using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
@@ -32,6 +33,7 @@ public static class CompareVisualBaselineTool
     private const string DiffPrefix = "visual-diff-";
     private const string DefaultBaselineSubdirectory = "winsight\\visual-baselines";
     private const string PngExtension = ".png";
+    private const string MediaTypePng = "image/png";
 
     [McpServerTool(Name = "compare_visual_baseline")]
     [Description("Capture the target process window, compare it to an approved PNG baseline, " +
@@ -48,7 +50,7 @@ public static class CompareVisualBaselineTool
                  "and WINSIGHT_VISUAL_COLOR_THRESHOLD (0.1). Diff heatmaps are written under " +
                  "WINSIGHT_OUTPUT_DIR. Ignore regions are rectangles in screenshot pixel coordinates " +
                  "for clocks, cursors, animations, or other dynamic UI.")]
-    public static string CompareVisualBaseline(
+    public static CallToolResult CompareVisualBaseline(
         WindowCapture capture,
         VisualDiffer differ,
         [Description("Process id of the target application (from list_windows).")]
@@ -72,9 +74,12 @@ public static class CompareVisualBaselineTool
                      "WINSIGHT_VISUAL_COLOR_THRESHOLD, falling back to 0.1.")]
         double? colorThreshold = null,
         [Description("Optional rectangles to exclude from SSIM and pixel diff, in screenshot pixels.")]
-        IReadOnlyList<VisualIgnoreRegion>? ignoreRegions = null)
+        IReadOnlyList<VisualIgnoreRegion>? ignoreRegions = null,
+        [Description("Attach the diff heatmap PNG as an inline image when a comparison runs (default " +
+                     "true). Lets you see where the UI changed without opening the file.")]
+        bool includeImage = true)
     {
-        return ToolSafety.SafeInvoke(() =>
+        return ToolSafety.SafeInvokeContent(() =>
         {
             string baselinePath = ResolveBaselinePath(baselineKey);
             string candidatePath = ScreenshotOutput.BuildTimestampedPath(CandidatePrefix);
@@ -103,7 +108,7 @@ public static class CompareVisualBaselineTool
                     Verdict: verdict,
                     BaselinePath: baselinePath,
                     CandidatePath: candidatePath);
-                return JsonSerializer.Serialize(OperationResult.OkWith(created), JsonOptions.Default);
+                return BuildResult(created, includeImage);
             }
 
             string diffMapPath = ScreenshotOutput.BuildTimestampedPath(DiffPrefix);
@@ -119,8 +124,22 @@ public static class CompareVisualBaselineTool
                 pixelDiffThreshold,
                 colorThreshold);
             VisualDiffResult result = differ.Compare(baselinePath, candidatePath, options);
-            return JsonSerializer.Serialize(OperationResult.OkWith(result), JsonOptions.Default);
+            return BuildResult(result, includeImage);
         });
+    }
+
+    private static CallToolResult BuildResult(VisualDiffResult diff, bool includeImage)
+    {
+        string json = JsonSerializer.Serialize(OperationResult.OkWith(diff), JsonOptions.Default);
+        CallToolResult result = new()
+        {
+            Content = { new TextContentBlock { Text = json } },
+        };
+        if (includeImage && !string.IsNullOrEmpty(diff.DiffMapPath) && File.Exists(diff.DiffMapPath))
+        {
+            result.Content.Add(ImageContentBlock.FromBytes(File.ReadAllBytes(diff.DiffMapPath), MediaTypePng));
+        }
+        return result;
     }
 
     internal static string ResolveBaselineDirectory()

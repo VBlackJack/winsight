@@ -15,6 +15,7 @@
 using System.Runtime.Versioning;
 using System.Text.Json;
 using FluentAssertions;
+using ModelContextProtocol.Protocol;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.VisualRegression;
 using Winsight.Mcp.Tools;
@@ -79,7 +80,7 @@ public class CompareVisualBaselineToolTests
         var capture = new WindowCapture();
         var differ = new VisualDiffer();
 
-        Func<string> act = () => CompareVisualBaselineTool.CompareVisualBaseline(
+        Func<CallToolResult> act = () => CompareVisualBaselineTool.CompareVisualBaseline(
             capture,
             differ,
             NoWindowProcessId,
@@ -94,12 +95,14 @@ public class CompareVisualBaselineToolTests
         var capture = new WindowCapture();
         var differ = new VisualDiffer();
 
-        string json = CompareVisualBaselineTool.CompareVisualBaseline(
+        CallToolResult result = CompareVisualBaselineTool.CompareVisualBaseline(
             capture,
             differ,
             NoWindowProcessId,
             "missing-window.png");
 
+        result.IsError.Should().BeTrue();
+        string json = result.Content.OfType<TextContentBlock>().First().Text;
         using var document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
         root.GetProperty("success").GetBoolean().Should().BeFalse();

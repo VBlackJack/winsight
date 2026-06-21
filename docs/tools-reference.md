@@ -557,6 +557,7 @@ result is often a black rectangle.
 | `processId`   | int    | yes      | Target process id                                      |
 | `outputPath`  | string | no       | Absolute file path. Default: a timestamped `screenshot-{utc-timestamp}.png` under `WINSIGHT_OUTPUT_DIR` (default `%TEMP%\winsight`) |
 | `windowTitle` | string | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows. |
+| `includeImage` | bool  | no       | Attach the captured PNG as an inline image (default true). Set false to return only the JSON path. |
 
 > **Output directory** — when `outputPath` is omitted, the capture is written
 > under the directory named by the `WINSIGHT_OUTPUT_DIR` environment variable,
@@ -564,7 +565,10 @@ result is often a black rectangle.
 > supervisor agent can read (e.g. a shared mount). The directory is created on
 > first write.
 
-**Returns** — `OperationResult` wrapping a `ScreenshotResult` payload:
+**Returns** — MCP content with two blocks: a **text** block carrying the
+`OperationResult` JSON wrapping a `ScreenshotResult`, and (unless
+`includeImage=false`) an **image** block with the captured PNG inline, so a
+supervising agent sees the UI directly without reading the file. The text block:
 
 ```json
 {
@@ -624,6 +628,7 @@ anti-aliased-edge detection. No ML model, GPU, or Python runtime is used.
 | `pixelDiffThreshold`  | double?  | no       | Override `WINSIGHT_VISUAL_PIXEL_THRESHOLD`       |
 | `colorThreshold`      | double?  | no       | Override `WINSIGHT_VISUAL_COLOR_THRESHOLD` (0..1) |
 | `ignoreRegions`       | object[] | no       | Rectangles `{ "x": 0, "y": 0, "width": 100, "height": 20 }` excluded from both metrics |
+| `includeImage`        | bool     | no       | Attach the diff heatmap PNG as an inline image when a comparison runs (default true) |
 
 **Configuration**
 
@@ -639,7 +644,11 @@ anti-aliased-edge detection. No ML model, GPU, or Python runtime is used.
 Baselines live outside the repository by default. `baselineKey` must be a
 relative `.png` path and cannot escape the configured baseline directory.
 
-**Returns** — `OperationResult` wrapping a `VisualDiffResult` payload:
+**Returns** — MCP content: a **text** block with the `OperationResult` JSON
+wrapping a `VisualDiffResult`, plus (when a comparison ran and produced a diff
+map, unless `includeImage=false`) an **image** block with the diff heatmap
+inline, so you can see where the UI changed without opening the file. The text
+block:
 
 ```json
 {

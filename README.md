@@ -45,7 +45,7 @@ capabilities under a single tool surface that an LLM can compose:
 | Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry)           | FlaUI patterns                                  |
 | Oracle      | Read private fields and managed state without `InternalsVisibleTo`            | Microsoft.Diagnostics.Runtime (CLRMD)           |
 | Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry) | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
-| Capture     | Window screenshot via `PrintWindow` + `PW_RENDERFULLCONTENT`                  | Win32 `PrintWindow`                             |
+| Capture     | Window screenshot via `PrintWindow` + `PW_RENDERFULLCONTENT`, returned inline as an MCP image | Win32 `PrintWindow`                             |
 | WebView2    | Locate embedded WebView2 instances, surface their CDP debugging endpoint      | WMI process tree + TCP listener cross-reference |
 | Perception  | Visual grounding from a natural-language description (cloud or fully local)   | Anthropic Messages API / local Qwen2.5-VL ONNX  |
 
@@ -55,7 +55,7 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-176 unit tests green, plus 11 E2E scenarios that drive a live interactive
+179 unit tests green, plus 13 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -217,8 +217,11 @@ calls the Anthropic Claude vision API.
 
 By default `capture_screenshot` and intermediate captures/diff maps taken by
 `find_element_visually` and `compare_visual_baseline` write PNGs under
-`%TEMP%\winsight`. Set the `WINSIGHT_OUTPUT_DIR` environment variable to
-redirect them into a directory a supervisor agent can read — for example a
+`%TEMP%\winsight`. `capture_screenshot` (and the `compare_visual_baseline` diff)
+also return the PNG inline as an MCP image, so an in-process agent sees the UI
+without touching disk; the file path still matters for an out-of-process
+supervisor. Set the `WINSIGHT_OUTPUT_DIR` environment variable to
+redirect captures into a directory a supervisor agent can read — for example a
 folder shared with the agent host. The directory is created on first write;
 an explicit `outputPath` argument to `capture_screenshot` always takes
 precedence.
@@ -263,7 +266,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `get_element_state`           | Read an element's state (value, toggle, selection, focus) |
 | `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value matches, or state is stable |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
-| `capture_screenshot`          | PNG capture of a topmost or title-scoped window (PrintWindow PW_RENDERFULLCONTENT) |
+| `capture_screenshot`          | PNG capture of a topmost or title-scoped window, returned inline as an MCP image (PrintWindow PW_RENDERFULLCONTENT) |
 | `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |
 | `detect_webview2_endpoints`   | Find WebView2 children and report any CDP endpoint     |
 | `list_cdp_targets`            | List debuggable targets exposed by a CDP endpoint      |
