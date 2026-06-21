@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Diagnostics;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.UiAutomation;
@@ -51,17 +52,31 @@ public sealed class StepRunner
     /// Execute the steps in order. <paramref name="defaultProcessId"/> applies
     /// to steps that omit their own <see cref="BatchStep.ProcessId"/>. When
     /// <paramref name="stopOnError"/> is true, the run stops at the first failing
-    /// step; otherwise it runs them all and reports every outcome.
+    /// step; otherwise it runs them all and reports every outcome. When
+    /// <paramref name="maxDurationMs"/> is set, the run stops before a step once
+    /// the elapsed time reaches the budget, marking the result timed out.
     /// </summary>
-    public BatchResult Run(IReadOnlyList<BatchStep> steps, int? defaultProcessId, bool stopOnError)
+    public BatchResult Run(
+        IReadOnlyList<BatchStep> steps,
+        int? defaultProcessId,
+        bool stopOnError,
+        int? maxDurationMs = null)
     {
         ArgumentNullException.ThrowIfNull(steps);
 
         List<StepResult> results = new(steps.Count);
         int? failedAtIndex = null;
+        bool timedOut = false;
+        Stopwatch stopwatch = Stopwatch.StartNew();
 
         for (int i = 0; i < steps.Count; i++)
         {
+            if (maxDurationMs is int budget && stopwatch.ElapsedMilliseconds >= budget)
+            {
+                timedOut = true;
+                break;
+            }
+
             BatchStep step = steps[i];
             OperationResult outcome = ExecuteSafely(step, defaultProcessId);
             results.Add(new StepResult(
@@ -78,7 +93,9 @@ public sealed class StepRunner
         }
 
         int completed = results.Count(r => r.Success);
-        return new BatchResult(failedAtIndex is null, completed, steps.Count, failedAtIndex, results);
+        bool success = failedAtIndex is null && !timedOut;
+        return new BatchResult(
+            success, completed, steps.Count, failedAtIndex, results, Exceptions: null, TimedOut: timedOut);
     }
 
     private OperationResult ExecuteSafely(BatchStep step, int? defaultProcessId)

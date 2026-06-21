@@ -464,6 +464,7 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `processId`   | int?        | no       | Default process id for steps that omit their own                 |
 | `stopOnError` | bool        | no       | Stop at the first failing step (default true)                    |
 | `captureExceptions` | bool  | no       | Attach the exceptions the target process threw during the batch (causal oracle). Requires the batch-level `processId`. |
+| `maxDurationMs` | int?      | no       | Total budget for the batch. When elapsed time reaches it before a step, the run stops and `timedOut` is true. |
 
 **Step shape** — a flat object with an `action` discriminator plus that action's
 fields. The shared locator fields (`automationId`, `name`, `className`,
@@ -510,7 +511,8 @@ With `stopOnError: true` (default), the run halts at the first failing step;
 `failedAtIndex` is that step's index, `success` is false, and steps after it are
 absent from `steps`. With `stopOnError: false`, every step runs and
 `failedAtIndex` reports the first failure. `completed` counts successful steps;
-`total` is the number submitted.
+`total` is the number submitted. When `maxDurationMs` is set and the budget is
+hit before all steps run, the result has `timedOut: true` and `success: false`.
 
 **Causal exception oracle** — with `captureExceptions: true`, an EventPipe
 session runs around the whole batch and the result gains an `exceptions` array

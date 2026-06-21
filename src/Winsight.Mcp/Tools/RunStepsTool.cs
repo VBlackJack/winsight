@@ -61,7 +61,10 @@ public static class RunStepsTool
         bool stopOnError = true,
         [Description("Capture the exceptions the target process throws during the batch (caught ones " +
                      "included) and attach them in 'exceptions'. Requires the batch-level processId.")]
-        bool captureExceptions = false)
+        bool captureExceptions = false,
+        [Description("Optional total budget in milliseconds for the whole batch. When the elapsed time " +
+                     "reaches it before a step, the run stops and the result is flagged timedOut.")]
+        int? maxDurationMs = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -95,12 +98,12 @@ public static class RunStepsTool
                 BatchResult? batch = null;
                 IReadOnlyList<DiagnosticEvent> exceptions = diagnostics.CaptureExceptionsDuring(
                     processId!.Value,
-                    () => batch = runner.Run(prepared, processId, stopOnError));
+                    () => batch = runner.Run(prepared, processId, stopOnError, maxDurationMs));
                 result = batch! with { Exceptions = exceptions };
             }
             else
             {
-                result = runner.Run(prepared, processId, stopOnError);
+                result = runner.Run(prepared, processId, stopOnError, maxDurationMs);
             }
 
             return JsonSerializer.Serialize(result, JsonOptions.Default);

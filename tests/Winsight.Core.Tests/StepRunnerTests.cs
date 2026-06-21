@@ -97,6 +97,35 @@ public sealed class StepRunnerTests
     }
 
     [Fact]
+    public void A_zero_duration_budget_stops_before_any_step_and_flags_timed_out()
+    {
+        BatchStep[] steps =
+        {
+            new("teleport", ProcessId: 1),
+            new("teleport", ProcessId: 1),
+        };
+
+        BatchResult result = NewRunner().Run(steps, defaultProcessId: null, stopOnError: true, maxDurationMs: 0);
+
+        result.TimedOut.Should().BeTrue();
+        result.Success.Should().BeFalse();
+        result.Steps.Should().BeEmpty("the budget is exhausted before the first step runs");
+        result.Total.Should().Be(2);
+    }
+
+    [Fact]
+    public void A_generous_budget_runs_every_step_without_timing_out()
+    {
+        BatchStep[] steps = { new("teleport", ProcessId: 1) };
+
+        BatchResult result = NewRunner().Run(
+            steps, defaultProcessId: null, stopOnError: false, maxDurationMs: 60_000);
+
+        result.TimedOut.Should().BeFalse();
+        result.Steps.Should().ContainSingle();
+    }
+
+    [Fact]
     public void Batch_level_process_id_is_used_when_a_step_omits_its_own()
     {
         // The step omits processId; with a default present it passes validation
