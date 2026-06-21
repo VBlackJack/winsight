@@ -34,6 +34,7 @@ public class ClickPointScenarioTests
     private const string CounterFieldName = "_internalCount";
     private const string IncrementButtonId = "IncrementButton";
     private const string ReadyLabelId = "CountLabel";
+    private const string MainWindowTitleFragment = "Counter";
 
     [Fact]
     public void Window_relative_click_point_increments_the_counter()
@@ -52,20 +53,27 @@ public class ClickPointScenarioTests
                 process.Id, new ElementLocator(AutomationId: ReadyLabelId), WaitCondition.Exists);
             appeared.Success.Should().BeTrue(appeared.Error);
 
-            // Resolve the Increment button's window-relative center from the UIA
-            // tree: node coordinates are screen-space, the window root gives the
-            // origin to subtract — the same mapping find_element_visually produces.
-            UiElementNode root = new UiTreeInspector().Inspect(process.Id, 12, null, null, null);
-            UiElementNode? button = FindByAutomationId(root, IncrementButtonId);
-            button.Should().NotBeNull($"sample app must expose '{IncrementButtonId}'");
+            // Resolve the Increment button's window-relative center via the strict
+            // locator (robust under UIA load) plus the main window origin: element
+            // geometry is screen-space, the window origin gives the offset to
+            // subtract — the same mapping find_element_visually produces.
+            OperationResult buttonState = new ElementStateReader().Read(
+                process.Id, new ElementLocator(AutomationId: IncrementButtonId));
+            buttonState.Success.Should().BeTrue(buttonState.Error);
+            var button = (ElementState)buttonState.Data!;
 
-            int relX = button!.X - root.X + button.Width / 2;
-            int relY = button.Y - root.Y + button.Height / 2;
+            WindowDescriptor main = new WindowDiscovery().List(process.Id)
+                .First(w => w.Kind == "main");
 
-            // The freshly launched sample app owns the foreground window, so the
-            // coordinate click lands on it without an explicit focus step.
+            int relX = button.X - main.X + button.Width / 2;
+            int relY = button.Y - main.Y + button.Height / 2;
+
+            // Scope the coordinate to the main window: a transient tooltip or
+            // popup can otherwise be the topmost window of the process, which is
+            // exactly why click_point takes windowTitle for a specific surface.
             var invoker = new ActionInvoker();
-            OperationResult click = invoker.ClickPoint(process.Id, relX, relY);
+            OperationResult click = invoker.ClickPoint(
+                process.Id, relX, relY, windowTitle: MainWindowTitleFragment);
             click.Success.Should().BeTrue(click.Error);
 
             // Allow the UI thread to flush the binding update before reading state.
@@ -83,22 +91,5 @@ public class ClickPointScenarioTests
                 process.Kill(entireProcessTree: true);
             }
         }
-    }
-
-    private static UiElementNode? FindByAutomationId(UiElementNode node, string automationId)
-    {
-        if (string.Equals(node.AutomationId, automationId, StringComparison.Ordinal))
-        {
-            return node;
-        }
-        foreach (UiElementNode child in node.Children)
-        {
-            UiElementNode? found = FindByAutomationId(child, automationId);
-            if (found is not null)
-            {
-                return found;
-            }
-        }
-        return null;
     }
 }

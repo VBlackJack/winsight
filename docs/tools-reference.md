@@ -266,6 +266,13 @@ that was clicked:
 A window-relative point outside the resolved window bounds is an explicit
 failure that reports the window size, so the agent can correct the coordinate.
 
+> **Targeting a specific window** — without `windowTitle`, the window origin is
+> the **topmost** visible window of the process, which can be a transient
+> tooltip or popup rather than the one you measured against. When clicking a
+> point relative to a specific surface, pass `windowTitle` (or use
+> `coordinateSpace=screen` with `find_element_visually`'s `screenX/screenY`,
+> which are absolute) so the resolution is deterministic.
+
 ## `type_text`
 
 Locate an element and write text into it. Same locator parameters as
