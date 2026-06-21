@@ -272,6 +272,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   actions (the process id is needed to scope steps).
 - 23 total tools; `smoke-mcp.ps1` expected tool count bumped to 23.
 
+#### Phase 2.11 — inline image screenshots
+
+- `capture_screenshot` now returns a `CallToolResult` with a text block (the
+  unchanged `OperationResult`/`ScreenshotResult` JSON, so existing parsers keep
+  working) plus an inline PNG image block, so a supervising agent sees the UI
+  directly instead of reading the file from disk. `includeImage=false` opts back
+  into text-only.
+- `compare_visual_baseline` likewise attaches the diff heatmap PNG inline when a
+  comparison runs, so the agent sees where the UI changed.
+- `ToolSafety.SafeInvokeContent` — content-returning variant of the boundary
+  guard: a non-fatal throw becomes an error `CallToolResult` whose text block
+  carries the same `OperationResult.Failure` JSON, so the error shape is
+  identical whether a tool returns a string or rich content.
+- No new tools (23 total); the two capture tools changed return type only.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

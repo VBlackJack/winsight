@@ -14,6 +14,7 @@
 
 using System.ComponentModel;
 using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
@@ -25,6 +26,7 @@ namespace Winsight.Mcp.Tools;
 public static class CaptureScreenshotTool
 {
     private const string ScreenshotPrefix = "screenshot-";
+    private const string MediaTypePng = "image/png";
 
     [McpServerTool(Name = "capture_screenshot")]
     [Description("Capture a PNG screenshot of the target process's topmost visible window, or the first " +
@@ -33,9 +35,10 @@ public static class CaptureScreenshotTool
                  "Use windowTitle to target modal dialogs, popups, and secondary windows. " +
                  "If outputPath is omitted, the file is written under WINSIGHT_OUTPUT_DIR " +
                  "(default %TEMP%\\winsight) with a timestamped name. " +
-                 "Returns an OperationResult JSON with success/error; on success, data carries " +
-                 "{ path, width, height, capturedAtUtc }.")]
-    public static string CaptureScreenshot(
+                 "Returns a text block with the OperationResult JSON (success/error; on success, data " +
+                 "carries { path, width, height, capturedAtUtc }) and, unless includeImage=false, the " +
+                 "captured PNG as an inline image so you can see the UI directly without reading the file.")]
+    public static CallToolResult CaptureScreenshot(
         WindowCapture capture,
         [Description("Process id of the target application (from list_windows).")]
         int processId,
@@ -44,17 +47,29 @@ public static class CaptureScreenshotTool
         string? outputPath = null,
         [Description("Optional case-insensitive substring of the target window title. " +
                      "Use this to capture modal dialogs, popups, or secondary windows.")]
-        string? windowTitle = null)
+        string? windowTitle = null,
+        [Description("Attach the captured PNG as an inline image (default true). Set false to return " +
+                     "only the JSON path when the bytes are not needed.")]
+        bool includeImage = true)
     {
-        return ToolSafety.SafeInvoke(() =>
+        return ToolSafety.SafeInvokeContent(() =>
         {
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
                 ? ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix)
                 : outputPath;
             ScreenshotResult screenshot = capture.Capture(processId, resolvedPath, windowTitle);
-            return JsonSerializer.Serialize(
-                OperationResult.OkWith(screenshot),
-                JsonOptions.Default);
+            string json = JsonSerializer.Serialize(OperationResult.OkWith(screenshot), JsonOptions.Default);
+
+            CallToolResult result = new()
+            {
+                Content = { new TextContentBlock { Text = json } },
+            };
+            if (includeImage)
+            {
+                byte[] bytes = File.ReadAllBytes(screenshot.Path);
+                result.Content.Add(ImageContentBlock.FromBytes(bytes, MediaTypePng));
+            }
+            return result;
         });
     }
 }
