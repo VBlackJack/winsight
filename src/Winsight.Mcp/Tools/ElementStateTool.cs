@@ -24,6 +24,9 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class ElementStateTool
 {
+    private const string ProcessIdDescription =
+        "Target process id. Optional — falls back to the session default set by set_target.";
+
     [McpServerTool(Name = "get_element_state")]
     [Description("Read the observable state of a located UI element: name, value (Value pattern), " +
                  "toggle state, selection, enabled/visible/focus flags, and bounding rectangle. " +
@@ -32,8 +35,7 @@ public static class ElementStateTool
                  "semantics as click_element.")]
     public static string GetElementState(
         ElementStateReader reader,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Exact AutomationId of the element.")]
         string? automationId = null,
         [Description("Exact Name property of the element.")]
@@ -49,13 +51,20 @@ public static class ElementStateTool
         [Description("Case-insensitive substring exposed by a descendant's Name or Value, searched to bounded depth.")]
         string? descendantText = null,
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
-        string? windowTitle = null)
+        string? windowTitle = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
-            OperationResult result = reader.Read(processId, locator, windowTitle);
+            OperationResult result = reader.Read(pid, locator, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -68,8 +77,7 @@ public static class ElementStateTool
                  "and the element's final state. Fails when the timeout elapses first.")]
     public static string WaitForElement(
         ElementWaiter waiter,
-        [Description("Process id of the target application.")]
-        int processId,
+        SessionTarget target,
         [Description("Condition to wait for: exists, not_exists, enabled, visible, value_equals, value_contains, or stable_for.")]
         string condition,
         [Description("Expected Value-pattern content for value_equals or value_contains.")]
@@ -95,10 +103,17 @@ public static class ElementStateTool
         [Description("Delay between polls in milliseconds. Defaults to 250; min 50.")]
         int? pollIntervalMs = null,
         [Description("Required unchanged-state duration in milliseconds for stable_for.")]
-        int? stableForMs = null)
+        int? stableForMs = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+
             if (!WaitConditionParser.TryParse(condition, out WaitCondition parsed))
             {
                 return JsonSerializer.Serialize(
@@ -110,7 +125,7 @@ public static class ElementStateTool
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = waiter.Wait(
-                processId,
+                pid,
                 locator,
                 parsed,
                 timeoutMs,

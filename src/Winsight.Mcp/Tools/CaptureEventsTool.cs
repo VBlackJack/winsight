@@ -34,8 +34,7 @@ public static class CaptureEventsTool
                  "JSON-safe payloads. Same EDR-safe constraints as observe_counters.")]
     public static string CaptureEvents(
         DiagnosticsObserver observer,
-        [Description("Process id of the managed target.")]
-        int processId,
+        SessionTarget target,
         [Description("EventSource provider names to subscribe to. " +
                      "Examples: 'Microsoft-Windows-DotNETRuntime', 'System.Threading.Tasks.TplEventSource', " +
                      "or any custom EventSource declared in the target app.")]
@@ -47,11 +46,17 @@ public static class CaptureEventsTool
         int maxEvents = 500,
         [Description("Optional exact-match event name filter (case-sensitive). " +
                      "Use it to narrow to a specific event such as 'ExceptionThrown_V1'.")]
-        string? eventNameFilter = null)
+        string? eventNameFilter = null,
+        [Description("Target managed process id. Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            EventCaptureResult result = observer.CaptureEvents(processId, providers, durationMs, maxEvents, eventNameFilter);
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            EventCaptureResult result = observer.CaptureEvents(pid, providers, durationMs, maxEvents, eventNameFilter);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

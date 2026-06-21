@@ -36,7 +36,7 @@ public class CaptureScreenshotToolTests
     {
         var capture = new WindowCapture();
 
-        CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+        CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(capture, new SessionTarget(), processId: NoWindowProcessId);
 
         result.IsError.Should().BeTrue();
         using var document = JsonDocument.Parse(TextOf(result));
@@ -59,7 +59,7 @@ public class CaptureScreenshotToolTests
         // into an exploitable error result.
         var capture = new WindowCapture();
 
-        Func<CallToolResult> act = () => CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+        Func<CallToolResult> act = () => CaptureScreenshotTool.CaptureScreenshot(capture, new SessionTarget(), processId: NoWindowProcessId);
 
         act.Should().NotThrow();
     }
@@ -69,7 +69,7 @@ public class CaptureScreenshotToolTests
     {
         var capture = new WindowCapture();
 
-        CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(capture, NoWindowProcessId);
+        CallToolResult result = CaptureScreenshotTool.CaptureScreenshot(capture, new SessionTarget(), processId: NoWindowProcessId);
 
         result.Content.Should().ContainSingle("a failure returns only the error text, no image");
         result.Content[0].Should().BeOfType<TextContentBlock>();
@@ -82,8 +82,9 @@ public class CaptureScreenshotToolTests
 
         Func<CallToolResult> act = () => CaptureScreenshotTool.CaptureScreenshot(
             capture,
-            NoWindowProcessId,
-            windowTitle: "Missing dialog");
+            new SessionTarget(),
+            windowTitle: "Missing dialog",
+            processId: NoWindowProcessId);
 
         act.Should().NotThrow();
     }

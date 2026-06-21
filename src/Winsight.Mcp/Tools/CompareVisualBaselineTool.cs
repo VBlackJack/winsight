@@ -53,8 +53,7 @@ public static class CompareVisualBaselineTool
     public static CallToolResult CompareVisualBaseline(
         WindowCapture capture,
         VisualDiffer differ,
-        [Description("Process id of the target application (from list_windows).")]
-        int processId,
+        SessionTarget target,
         [Description("Relative logical baseline key, for example 'counter-initial.png' or " +
                      "'SampleWpfApp/counter-initial.png'. The .png extension is added when omitted.")]
         string baselineKey,
@@ -77,13 +76,30 @@ public static class CompareVisualBaselineTool
         IReadOnlyList<VisualIgnoreRegion>? ignoreRegions = null,
         [Description("Attach the diff heatmap PNG as an inline image when a comparison runs (default " +
                      "true). Lets you see where the UI changed without opening the file.")]
-        bool includeImage = true)
+        bool includeImage = true,
+        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvokeContent(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content =
+                    {
+                        new TextContentBlock
+                        {
+                            Text = JsonSerializer.Serialize(
+                                OperationResult.Failure(targetError), JsonOptions.Default),
+                        },
+                    },
+                };
+            }
             string baselinePath = ResolveBaselinePath(baselineKey);
             string candidatePath = ScreenshotOutput.BuildTimestampedPath(CandidatePrefix);
-            capture.CaptureClientArea(processId, candidatePath);
+            capture.CaptureClientArea(pid, candidatePath);
 
             if (!File.Exists(baselinePath) || updateBaseline)
             {

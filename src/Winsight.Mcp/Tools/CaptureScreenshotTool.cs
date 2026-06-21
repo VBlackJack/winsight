@@ -40,8 +40,7 @@ public static class CaptureScreenshotTool
                  "captured PNG as an inline image so you can see the UI directly without reading the file.")]
     public static CallToolResult CaptureScreenshot(
         WindowCapture capture,
-        [Description("Process id of the target application (from list_windows).")]
-        int processId,
+        SessionTarget target,
         [Description("Optional absolute output path. Defaults to a timestamped file under " +
                      "WINSIGHT_OUTPUT_DIR (default %TEMP%\\winsight).")]
         string? outputPath = null,
@@ -50,14 +49,31 @@ public static class CaptureScreenshotTool
         string? windowTitle = null,
         [Description("Attach the captured PNG as an inline image (default true). Set false to return " +
                      "only the JSON path when the bytes are not needed.")]
-        bool includeImage = true)
+        bool includeImage = true,
+        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvokeContent(() =>
         {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content =
+                    {
+                        new TextContentBlock
+                        {
+                            Text = JsonSerializer.Serialize(
+                                OperationResult.Failure(targetError), JsonOptions.Default),
+                        },
+                    },
+                };
+            }
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
                 ? ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix)
                 : outputPath;
-            ScreenshotResult screenshot = capture.Capture(processId, resolvedPath, windowTitle);
+            ScreenshotResult screenshot = capture.Capture(pid, resolvedPath, windowTitle);
             string json = JsonSerializer.Serialize(OperationResult.OkWith(screenshot), JsonOptions.Default);
 
             CallToolResult result = new()

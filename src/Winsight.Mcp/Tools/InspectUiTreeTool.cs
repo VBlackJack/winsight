@@ -32,8 +32,7 @@ public static class InspectUiTreeTool
                  "Filters prune the tree to matching nodes and their ancestors.")]
     public static string InspectUiTree(
         UiTreeInspector inspector,
-        [Description("Process id of the target application (from list_windows).")]
-        int processId,
+        SessionTarget target,
         [Description("Maximum tree depth to walk. Defaults to 5; max 20.")]
         int maxDepth = 5,
         [Description("Inspect the first window whose title contains this text instead of the first window of the process (modal dialogs, popups).")]
@@ -41,11 +40,17 @@ public static class InspectUiTreeTool
         [Description("Keep only nodes of this UIA control type (e.g. Button, Edit), case-insensitive, plus their ancestors.")]
         string? controlType = null,
         [Description("Keep only nodes whose Name contains this text (case-insensitive), plus their ancestors.")]
-        string? nameContains = null)
+        string? nameContains = null,
+        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            UiElementNode node = inspector.Inspect(processId, maxDepth, windowTitle, controlType, nameContains);
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            UiElementNode node = inspector.Inspect(pid, maxDepth, windowTitle, controlType, nameContains);
             return JsonSerializer.Serialize(node, JsonOptions.Default);
         });
     }

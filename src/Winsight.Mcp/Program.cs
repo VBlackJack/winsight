@@ -41,6 +41,7 @@ public static class Program
             options.LogToStandardErrorThreshold = LogLevel.Trace;
         });
 
+        builder.Services.AddSingleton<SessionTarget>();
         builder.Services.AddSingleton<WindowDiscovery>();
         builder.Services.AddSingleton<AppLauncher>();
         builder.Services.AddSingleton<UiTreeInspector>();

@@ -303,6 +303,20 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and swallows an exception, as the E2E target for the oracle.
 - No new tools (23 total).
 
+#### Phase 2.13 — session target
+
+- `set_target` / `get_target` / `clear_target` MCP tools and a session-scoped
+  `SessionTarget` so an agent driving one app can set the target process once
+  instead of repeating `processId` on every call.
+- Every process-scoped tool now takes an optional `processId` that falls back to
+  the session target (an explicit `processId` still overrides it); the parameter
+  was moved last and made nullable across the UIA, capture, diagnostics,
+  lifecycle, and orchestration tools. `run_steps` resolves its batch-level
+  `processId` from the target too.
+- A clear failure is returned when neither an explicit `processId` nor a session
+  target is available.
+- 26 total tools; `smoke-mcp.ps1` expected tool count bumped to 26.
+
 #### Audit hardening
 
 - `find_element_visually` now always returns an `OperationResult` (data is the

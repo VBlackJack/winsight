@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 23 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 26 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -55,7 +55,7 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-181 unit tests green, plus 15 E2E scenarios that drive a live interactive
+191 unit tests green, plus 17 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -63,6 +63,7 @@ Windows desktop.
 | Window discovery                | yes     |         |         |
 | Classified windows (dialog/popup/menu/tooltip, owner, modal) |   | yes     |         |
 | App lifecycle (launch + wait for window, close) |   | yes     |         |
+| Session target (set_target — omit processId per call) |   | yes     |         |
 | UIA tree inspection             | yes     |         |         |
 | Click / type via UIA            | yes     |         |         |
 | Coordinate clicks (window/screen space) |   | yes     |         |
@@ -178,7 +179,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 23 tools.
+server is connected and lists all 26 tools.
 
 ### Smoke check from the shell
 
@@ -253,6 +254,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
+| `set_target` / `get_target` / `clear_target` | Set/read/clear the session default process so process-scoped tools can omit `processId` |
 | `run_steps`                   | Run a sequence of UI steps (act/sync/assert/capture) in one call, with a per-step journal and optional causal exception capture |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
 | `close_app`                   | Close a process (graceful with kill fallback, or forced) |

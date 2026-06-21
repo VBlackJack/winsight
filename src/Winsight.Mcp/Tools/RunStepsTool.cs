@@ -53,9 +53,10 @@ public static class RunStepsTool
     public static string RunSteps(
         StepRunner runner,
         DiagnosticsObserver diagnostics,
+        SessionTarget target,
         [Description("Ordered steps to execute. Each is an object with 'action' and that action's fields.")]
         IReadOnlyList<BatchStep> steps,
-        [Description("Default process id for steps that omit their own processId.")]
+        [Description("Default process id for steps that omit their own processId. Falls back to the session default set by set_target.")]
         int? processId = null,
         [Description("Stop at the first failing step (default true). When false, every step runs and all outcomes are reported.")]
         bool stopOnError = true,
@@ -74,11 +75,15 @@ public static class RunStepsTool
                     OperationResult.Failure("steps is required and must contain at least one step."),
                     JsonOptions.Default);
             }
-            if (captureExceptions && processId is null)
+            // The batch process id falls back to the session default; per-step
+            // processId still overrides it inside the runner.
+            int? effectiveProcessId = processId ?? target.ProcessId;
+            if (captureExceptions && effectiveProcessId is null)
             {
                 return JsonSerializer.Serialize(
                     OperationResult.Failure(
-                        "captureExceptions requires the batch-level processId (the exception session targets one process)."),
+                        "captureExceptions requires a process id (pass processId or call set_target); " +
+                        "the exception session targets one process."),
                     JsonOptions.Default);
             }
 
@@ -97,13 +102,13 @@ public static class RunStepsTool
             {
                 BatchResult? batch = null;
                 IReadOnlyList<DiagnosticEvent> exceptions = diagnostics.CaptureExceptionsDuring(
-                    processId!.Value,
-                    () => batch = runner.Run(prepared, processId, stopOnError, maxDurationMs));
+                    effectiveProcessId!.Value,
+                    () => batch = runner.Run(prepared, effectiveProcessId, stopOnError, maxDurationMs));
                 result = batch! with { Exceptions = exceptions };
             }
             else
             {
-                result = runner.Run(prepared, processId, stopOnError, maxDurationMs);
+                result = runner.Run(prepared, effectiveProcessId, stopOnError, maxDurationMs);
             }
 
             return JsonSerializer.Serialize(result, JsonOptions.Default);

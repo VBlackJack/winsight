@@ -59,14 +59,19 @@ public static class LifecycleTool
                  "already gone is reported as success.")]
     public static string CloseApp(
         AppLauncher launcher,
-        [Description("Process id to close (from launch_app or list_windows).")]
-        int processId,
+        SessionTarget target,
         [Description("Kill the process tree immediately instead of requesting a graceful close.")]
-        bool force = false)
+        bool force = false,
+        [Description("Process id to close (from launch_app or list_windows). Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            OperationResult result = launcher.Close(processId, force);
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            OperationResult result = launcher.Close(pid, force);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

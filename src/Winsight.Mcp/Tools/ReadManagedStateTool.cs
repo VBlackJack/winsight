@@ -31,16 +31,21 @@ public static class ReadManagedStateTool
                  "does not expose through automation. The host process must match the target architecture (x64).")]
     public static string ReadManagedState(
         ManagedStateReader reader,
-        [Description("Process id of the target managed application.")]
-        int processId,
+        SessionTarget target,
         [Description("Fully-qualified .NET type name (namespace + class), e.g. 'MyApp.ViewModels.MainViewModel'.")]
         string typeName,
         [Description("Field name on the type, including backing-field naming, e.g. '_internalCount'.")]
-        string fieldName)
+        string fieldName,
+        [Description("Target managed process id. Optional — falls back to the session default set by set_target.")]
+        int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            OperationResult result = reader.Read(processId, typeName, fieldName);
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            OperationResult result = reader.Read(pid, typeName, fieldName);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
