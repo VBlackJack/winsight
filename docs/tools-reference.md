@@ -566,6 +566,41 @@ timeout failures):
 }
 ```
 
+## `assert_element`
+
+Assert a condition on a located element and get a clear pass/fail — an immediate
+check (no polling, unlike `wait_for_element`). The same operators are available
+as an `assert` step in [`run_steps`](#run_steps).
+
+**Parameters** — the shared locator parameters, plus:
+
+| Name       | Type    | Required | Description                                              |
+| ---------- | ------- | -------- | -------------------------------------------------------- |
+| `operator` | string  | yes      | The assertion operator (below)                           |
+| `expected` | string? | for text/numeric operators | The expected operand                   |
+
+**Operators** — text operators compare the element's Value, falling back to its
+Name (so both inputs and labels work):
+
+| Operator | Holds when |
+| -------- | ---------- |
+| `equals` / `not_equals` | the text equals / does not equal `expected` |
+| `contains` / `not_contains` | the text contains / does not contain `expected` (case-insensitive) |
+| `greater_than` / `less_than` | the text parses as a number and is greater / less than `expected` |
+| `enabled` / `disabled` | the element is enabled / disabled |
+| `visible` / `hidden` | the element is on-screen / off-screen |
+| `checked` / `unchecked` | the toggle state is On / Off |
+| `selected` | the element is selected |
+| `exists` | the element was located (any match) |
+
+**Returns** — `OperationResult`: `success: true` with `data.assertion` (the
+detail) when it holds; `success: false` with an explanatory `error`
+(expected vs actual) when it fails or the element is not found.
+
+```json
+{ "success": false, "error": "Assertion failed: expected value to equal \"Count: 999\" but was \"Count: 1\"" }
+```
+
 ## `run_steps`
 
 Run a sequence of UI steps in a single call, instead of one round trip per
@@ -599,6 +634,7 @@ in the journal.
 | `select`      | `select_item`        | `itemName`                                                    |
 | `hover`       | `hover_element`      | `expectedTooltipText`, `timeoutMs`                             |
 | `wait`        | `wait_for_element`   | `condition`, `expectedValue`, `timeoutMs`, `pollIntervalMs`, `stableForMs` |
+| `assert`      | `assert_element`     | `operator`, `expectedValue` — immediate pass/fail; a failing assert fails the step |
 | `get_state`   | `get_element_state`  | (locator only)                                                |
 | `screenshot`  | `capture_screenshot` | `outputPath` (a timestamped default is used when omitted)      |
 

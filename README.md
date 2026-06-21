@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 29 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 30 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -42,7 +42,7 @@ capabilities under a single tool surface that an LLM can compose:
 | Discovery   | Window enumeration (classified: main/dialog/popup/menu/tooltip, owner, modal), UIA tree inspection (filterable, value-aware), affordance summary (actionable elements + recommended locators) | FlaUI (UIA3) + Win32 window enumeration         |
 | Action      | Strict element location, click styles, coordinate clicks, type, chords, hover, item selection | FlaUI patterns + SendInput / Win32 fallback      |
 | Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
-| Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry)           | FlaUI patterns                                  |
+| Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry), first-class assertions | FlaUI patterns                                  |
 | Feedback    | UI change diff after an action (windows opened/closed, elements added/removed/changed) | Snapshot + pure structural diff          |
 | Oracle      | Read private fields and managed state without `InternalsVisibleTo`            | Microsoft.Diagnostics.Runtime (CLRMD)           |
 | Diagnostics | Subscribe to EventCounters, capture EventPipe events (exceptions, telemetry), capture exceptions causally during a batch | Microsoft.Diagnostics.NETCore.Client + TraceEvent |
@@ -56,7 +56,7 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-202 unit tests green, plus 19 E2E scenarios that drive a live interactive
+212 unit tests green, plus 20 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -71,6 +71,7 @@ Windows desktop.
 | Click / type via UIA            | yes     |         |         |
 | Coordinate clicks (window/screen space) |   | yes     |         |
 | Batch step execution (`run_steps`, one round trip) |   | yes     |         |
+| First-class assertions (`assert_element` + assert step, clear pass/fail) |   | yes     |         |
 | Causal exception oracle (`run_steps captureExceptions`) |   | yes     |         |
 | Strict locators + modal dialogs |         | yes     |         |
 | Element state oracle + waits    |         | yes     |         |
@@ -182,7 +183,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 29 tools.
+server is connected and lists all 30 tools.
 
 ### Smoke check from the shell
 
@@ -273,6 +274,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `select_item`                 | Select an item by text in a ComboBox/ListBox/Tab       |
 | `get_element_state`           | Read an element's state (value, toggle, selection, focus) |
 | `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value matches, or state is stable |
+| `assert_element`              | Assert a condition on an element (equals/contains/greater_than/checked/enabled/…) with clear pass/fail |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
 | `capture_screenshot`          | PNG capture of a topmost or title-scoped window, returned inline as an MCP image (PrintWindow PW_RENDERFULLCONTENT) |
 | `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |

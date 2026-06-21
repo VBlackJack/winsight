@@ -303,6 +303,17 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and swallows an exception, as the E2E target for the oracle.
 - No new tools (23 total).
 
+#### Phase 2.16 — first-class assertions
+
+- `assert_element` MCP tool and an `assert` step in `run_steps` — assert a
+  condition on an element and get a clear pass/fail with expected-vs-actual
+  detail, instead of abusing `wait_for_element`. Operators: equals, not_equals,
+  contains, not_contains (on value, else name); greater_than, less_than
+  (numeric); enabled, disabled, visible, hidden; checked, unchecked; selected;
+  exists. A failing assertion returns `success: false` (and fails the batch step).
+- `AssertionEvaluator` computes the verdict as a pure, unit-tested function.
+- 30 total tools; `smoke-mcp.ps1` expected tool count bumped to 30.
+
 #### Phase 2.15 — change perception (snapshot_ui / diff_ui)
 
 - `snapshot_ui` and `diff_ui` MCP tools — the feedback sense: capture a

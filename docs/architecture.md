@@ -123,6 +123,9 @@ Wraps FlaUI (UIA3):
   containers, and scrolls off-screen elements into view before physical actions.
 - `ElementStateReader` — builds `ElementState` snapshots from located
   elements (the UI-level oracle behind `get_element_state`).
+- `AssertionEvaluator` — pure operator evaluation (equals/contains/greater_than/
+  checked/enabled/…) over an `ElementState`, behind the `assert_element` tool and
+  the `assert` run_steps step; text operators compare Value, falling back to Name.
 - `ElementWaiter` — polls a locator until a `WaitCondition` holds or a
   timeout elapses (`UiaDefaults` carries the defaults and caps).
 - `UiaDefaults` — centralized timeouts, poll intervals, and candidate

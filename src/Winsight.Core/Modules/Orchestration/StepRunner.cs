@@ -134,11 +134,12 @@ public sealed class StepRunner
             "select" => Select(step, pid),
             "hover" => Hover(step, pid),
             "wait" => Wait(step, pid),
+            "assert" => Assert(step, pid),
             "get_state" => GetState(step, pid),
             "screenshot" => Screenshot(step, pid),
             _ => OperationResult.Failure(
                 $"Unknown action \"{step.Action}\". Accepted: click, click_point, type, key_chord, " +
-                "select, hover, wait, get_state, screenshot."),
+                "select, hover, wait, assert, get_state, screenshot."),
         };
     }
 
@@ -218,6 +219,29 @@ public sealed class StepRunner
             step.WindowTitle,
             step.ExpectedValue,
             step.StableForMs);
+    }
+
+    private OperationResult Assert(BatchStep step, int processId)
+    {
+        if (!AssertionEvaluator.TryParseOperator(step.Operator, out AssertionOperator op))
+        {
+            return OperationResult.Failure(
+                $"assert step has unknown operator \"{step.Operator}\". " +
+                $"Accepted: {AssertionEvaluator.AcceptedOperators}.");
+        }
+
+        OperationResult read = _stateReader.Read(processId, Locator(step), step.WindowTitle);
+        if (!read.Success)
+        {
+            // The element could not be located; the assertion cannot hold.
+            return read;
+        }
+
+        ElementState state = (ElementState)read.Data!;
+        AssertionResult outcome = AssertionEvaluator.Evaluate(op, step.ExpectedValue, state);
+        return outcome.Passed
+            ? OperationResult.OkWith(new { assertion = outcome.Detail })
+            : OperationResult.Failure($"Assertion failed: {outcome.Detail}");
     }
 
     private OperationResult GetState(BatchStep step, int processId)
