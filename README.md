@@ -51,16 +51,20 @@ capabilities under a single tool surface that an LLM can compose:
 ## Status
 
 Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
-regression v0 — fully bootable, end-to-end validated against `SampleWpfApp`
+regression v0 + coordinate clicks + multi-window discoverability + app
+lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-151 unit tests green, plus 5 E2E scenarios that drive a live interactive
+170 unit tests green, plus 9 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
 | ------------------------------- | ------- | ------- | ------- |
 | Window discovery                | yes     |         |         |
+| Classified windows (dialog/popup/menu/tooltip, owner, modal) |   | yes     |         |
+| App lifecycle (launch + wait for window, close) |   | yes     |         |
 | UIA tree inspection             | yes     |         |         |
 | Click / type via UIA            | yes     |         |         |
+| Coordinate clicks (window/screen space) |   | yes     |         |
 | Strict locators + modal dialogs |         | yes     |         |
 | Element state oracle + waits    |         | yes     |         |
 | Focused key chords + tooltip hover |      | yes     |         |
@@ -74,6 +78,7 @@ Windows desktop.
 | Vision grounding (Claude API)   |         | yes     |         |
 | Vision grounding (local Qwen2.5-VL ONNX) |  | yes     |         |
 | Visual regression (SSIM + pixel diff) |   | yes     |         |
+| Visually grounded click (find + act) |    | yes     |         |
 | Exploratory agent (Sonnet 4.6)  |         |         | yes     |
 
 ## Repository layout
