@@ -98,6 +98,12 @@ Wraps FlaUI (UIA3):
   `ElementStateReader.BuildState` for each, and pairs them with
   `AffordanceRecommender` (a pure function that picks the smallest unique
   locator) to return a compact, position-ordered affordance list.
+- `UiSnapshotter` / `UiDiffer` — the feedback sense behind `snapshot_ui` /
+  `diff_ui`: `UiSnapshotter` captures a `UiSnapshot` (windows + affordances) by
+  composing `WindowDiscovery` and `AffordanceScanner`; `UiDiffer` is a pure
+  function that diffs two snapshots into a `UiChange` (windows matched by handle,
+  elements by a stable key). The MCP layer keeps the per-process baseline in a
+  session-scoped `UiSnapshotStore`.
 - `NativeWindowEnumerator` (internal) — Win32 `EnumWindows` listing of the
   visible top-level windows of a process. Required because UIA reparents
   owned windows (modal dialogs) under their owner and omits them from both

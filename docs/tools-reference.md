@@ -255,6 +255,55 @@ ready to feed `click_element` / `type_text` / `select_item`:
 The walk is breadth-first over the process windows, so a `controlType=…
 index=N` recommendation uses the same index the locator tools do.
 
+## `snapshot_ui` / `diff_ui`
+
+The feedback sense: see what an action changed without re-inspecting everything.
+`snapshot_ui` captures a structural baseline of the process (its windows plus its
+actionable elements); `diff_ui` captures the current state, reports the delta
+against the baseline, and re-baselines so successive calls chain.
+
+Typical flow: `snapshot_ui` → act → `diff_ui`. With no prior snapshot, `diff_ui`
+captures a baseline and returns `verdict: "baseline_captured"`.
+
+**Parameters** (both tools)
+
+| Name          | Type    | Default | Description                                                  |
+| ------------- | ------- | ------- | ------------------------------------------------------------ |
+| `windowTitle` | string? | null    | Scope the element capture to a window whose title contains this text |
+| `processId`   | int?    | null    | Target process id; falls back to the session target          |
+
+**`snapshot_ui` returns** — `OperationResult` with `{ processId, windowCount, interactableCount }`.
+
+**`diff_ui` returns** — `OperationResult` whose `data` is a `UiChange`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "verdict": "changed",
+    "windowsOpened": [ { "title": "Winsight Sample - Note", "kind": "dialog", "isModal": true, "...": "..." } ],
+    "windowsClosed": [],
+    "elementsAdded": [ { "controlType": "Edit", "automationId": "NoteInput", "recommendedLocator": "automationId=\"NoteInput\"", "...": "..." } ],
+    "elementsRemoved": [],
+    "elementsChanged": [
+      {
+        "controlType": "CheckBox",
+        "automationId": "FeatureToggle",
+        "name": "Enable feature",
+        "windowTitle": "Winsight Sample - Counter",
+        "recommendedLocator": "automationId=\"FeatureToggle\"",
+        "changes": [ { "field": "toggleState", "before": "Off", "after": "On" } ]
+      }
+    ]
+  }
+}
+```
+
+`verdict` is `no_change` when nothing differs. Windows are matched by handle;
+elements by a stable key (window + unique AutomationId, else control type + name,
+with duplicate occurrences matched in order); persisting elements are compared on
+name, value, toggle, selection, enabled, and visible.
+
 ## `click_element`
 
 Locate an element (see [Locator semantics](#locator-semantics-shared-by-the-uia-tools))
