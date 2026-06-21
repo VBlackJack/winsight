@@ -40,7 +40,10 @@ public static class RunStepsTool
                  "'select' (itemName), " +
                  "'hover' (expectedTooltipText, timeoutMs), " +
                  "'wait' (condition, expectedValue, timeoutMs, pollIntervalMs, stableForMs) — the sync " +
-                 "and assertion primitive, " +
+                 "primitive, " +
+                 "'assert' (operator, expectedValue) — an immediate pass/fail check that fails the step " +
+                 "with expected-vs-actual detail (operators like equals/contains/greater_than/checked/" +
+                 "enabled; see assert_element), " +
                  "'get_state' (reads an element's state as an oracle), " +
                  "'screenshot' (outputPath optional; a timestamped default is used when omitted). " +
                  "Set processId per step, or rely on the batch-level processId default. With " +

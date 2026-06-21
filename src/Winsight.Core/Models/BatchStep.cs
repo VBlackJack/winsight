@@ -54,5 +54,7 @@ public sealed record BatchStep(
     int? TimeoutMs = null,
     int? PollIntervalMs = null,
     int? StableForMs = null,
+    // assert (reuses ExpectedValue as the expected operand).
+    string? Operator = null,
     // screenshot.
     string? OutputPath = null);
