@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 20 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 22 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -37,6 +37,7 @@ capabilities under a single tool surface that an LLM can compose:
 
 | Layer       | What it offers                                                                | Backed by                                       |
 | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| Lifecycle   | Launch an app and wait for its window, close it down                          | `Process` + window-ready polling                |
 | Discovery   | Window enumeration (classified: main/dialog/popup/menu/tooltip, owner, modal), UIA tree inspection (filterable, value-aware) | FlaUI (UIA3) + Win32 window enumeration         |
 | Action      | Strict element location, click styles, coordinate clicks, type, chords, hover, item selection | FlaUI patterns + SendInput / Win32 fallback      |
 | Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
@@ -169,7 +170,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 20 tools.
+server is connected and lists all 22 tools.
 
 ### Smoke check from the shell
 
@@ -241,6 +242,8 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
+| `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
+| `close_app`                   | Close a process (graceful with kill fallback, or forced) |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |
 | `inspect_ui_tree`             | Return the UIA tree for a process (filterable, value-aware) |
 | `click_element`               | Click a located element (single/double/right, strict locators) |

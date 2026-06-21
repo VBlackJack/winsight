@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.Cdp;
 using Winsight.Core.Modules.Diagnostics;
+using Winsight.Core.Modules.Lifecycle;
 using Winsight.Core.Modules.ManagedState;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.VisualRegression;
@@ -40,6 +41,7 @@ public static class Program
         });
 
         builder.Services.AddSingleton<WindowDiscovery>();
+        builder.Services.AddSingleton<AppLauncher>();
         builder.Services.AddSingleton<UiTreeInspector>();
         builder.Services.AddSingleton<ActionInvoker>();
         builder.Services.AddSingleton<ElementStateReader>();

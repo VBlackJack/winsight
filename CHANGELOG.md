@@ -241,6 +241,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   caption/popup styles, and ownership; `isModal` is derived from an owned window
   whose owner is disabled.
 
+#### Phase 2.9 — application lifecycle
+
+- `launch_app` MCP tool — starts an executable and blocks until its window is
+  present (main window, or one matching `waitForWindowTitle`), returning the new
+  `processId` and a classified window descriptor ready to drive. Removes the
+  shell-out-then-poll-`list_windows` startup race. Fails explicitly when the
+  executable is missing, the process exits during startup, or no window appears
+  within the timeout (default 15s, max 120s).
+- `close_app` MCP tool — graceful shutdown (`CloseMainWindow`) with a kill
+  fallback, or `force=true` to kill the process tree immediately; an
+  already-gone process is reported as success.
+- `AppLauncher` (`Winsight.Core/Modules/Lifecycle`) backs both, reusing
+  `WindowDiscovery` to detect the ready window.
+- 22 total tools; `smoke-mcp.ps1` expected tool count bumped to 22.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

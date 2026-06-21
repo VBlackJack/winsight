@@ -10,6 +10,64 @@ implementation throws and converts it into that shape, so a single rogue
 exception cannot tear down the host process or kill the rest of the agent's
 session.
 
+## `launch_app`
+
+Start an application and wait until its window is actually present before
+returning, so an agent never races a still-initializing UI. The returned window
+is already classified (see [`list_windows`](#list_windows)), ready to drive
+without a follow-up `list_windows`/poll.
+
+**Parameters**
+
+| Name                 | Type    | Required | Description                                                            |
+| -------------------- | ------- | -------- | --------------------------------------------------------------------- |
+| `path`               | string  | yes      | Absolute path to the executable to launch                             |
+| `arguments`          | string? | no       | Command-line arguments                                                |
+| `workingDirectory`   | string? | no       | Working directory; defaults to the executable's own directory         |
+| `waitForWindowTitle` | string? | no       | Case-insensitive substring of the window title to wait for. When omitted, waits for the process's main window |
+| `timeoutMs`          | int     | no       | Max wait for the window. Default 15000; max 120000                    |
+
+**Returns** — `OperationResult` wrapping a `LaunchResult`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "processId": 14820,
+    "window": {
+      "processId": 14820,
+      "windowHandle": 1247868,
+      "title": "Winsight Sample - Counter",
+      "processName": "SampleWpfApp",
+      "isForeground": true,
+      "x": 750, "y": 400, "width": 420, "height": 280,
+      "kind": "main", "className": "HwndWrapper[...]", "ownerHandle": 0, "isModal": false
+    }
+  }
+}
+```
+
+The call fails explicitly when the executable is missing, the process exits
+during startup (the exit code is reported), or no matching window appears within
+`timeoutMs`.
+
+## `close_app`
+
+Close a process by id. By default this requests a graceful shutdown
+(`CloseMainWindow`) and falls back to a kill if the process does not exit within
+the grace window; `force=true` kills the process tree immediately.
+
+**Parameters**
+
+| Name        | Type | Required | Description                                            |
+| ----------- | ---- | -------- | ------------------------------------------------------ |
+| `processId` | int  | yes      | Process id to close (from `launch_app` or `list_windows`) |
+| `force`     | bool | no       | Kill the process tree immediately                      |
+
+**Returns** — `OperationResult` whose `data` reports `processId` and whether the
+process was force-killed; a process that is already gone is reported as success
+(`alreadyExited: true`).
+
 ## `list_windows`
 
 Enumerate top-level windows, in z-order (topmost first), through Win32 — so
