@@ -45,6 +45,7 @@ public static class Program
         builder.Services.AddSingleton<WindowDiscovery>();
         builder.Services.AddSingleton<AppLauncher>();
         builder.Services.AddSingleton<UiTreeInspector>();
+        builder.Services.AddSingleton<AffordanceScanner>();
         builder.Services.AddSingleton<ActionInvoker>();
         builder.Services.AddSingleton<ElementStateReader>();
         builder.Services.AddSingleton<ElementWaiter>();

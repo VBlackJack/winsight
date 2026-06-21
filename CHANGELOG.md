@@ -303,6 +303,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and swallows an exception, as the E2E target for the oracle.
 - No new tools (23 total).
 
+#### Phase 2.14 — affordance perception (describe_ui)
+
+- `describe_ui` MCP tool — answers "what can I do here?" by returning a window's
+  actionable elements as a compact, position-ordered list (top-to-bottom,
+  left-to-right) instead of a full UIA tree, so an agent orients before acting.
+  Each `UiInteractable` carries control type, label, value/toggle/selection and
+  enabled/visible state, bounds, and a `recommendedLocator` — the smallest
+  criterion (unique automationId, else unique name, else controlType+index) ready
+  to feed click_element / type_text / select_item.
+- `AffordanceScanner` (`Winsight.Core/Modules/UiAutomation`) walks the process
+  windows breadth-first, keeps the interactable control types, and reuses
+  `ElementStateReader.BuildState`; `AffordanceRecommender` computes the locators
+  as a pure, unit-tested function.
+- 27 total tools; `smoke-mcp.ps1` expected tool count bumped to 27.
+
 #### Phase 2.13 — session target
 
 - `set_target` / `get_target` / `clear_target` MCP tools and a session-scoped

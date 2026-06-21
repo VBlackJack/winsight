@@ -34,10 +34,9 @@ public class ClickPointScenarioTests
     private const string CounterFieldName = "_internalCount";
     private const string IncrementButtonId = "IncrementButton";
     private const string ReadyLabelId = "CountLabel";
-    private const string MainWindowTitleFragment = "Counter";
 
     [Fact]
-    public void Window_relative_click_point_increments_the_counter()
+    public void Coordinate_click_point_increments_the_counter()
     {
         string executablePath = SampleAppLocator.ResolveExecutablePath();
         File.Exists(executablePath).Should().BeTrue(
@@ -53,27 +52,22 @@ public class ClickPointScenarioTests
                 process.Id, new ElementLocator(AutomationId: ReadyLabelId), WaitCondition.Exists);
             appeared.Success.Should().BeTrue(appeared.Error);
 
-            // Resolve the Increment button's window-relative center via the strict
-            // locator (robust under UIA load) plus the main window origin: element
-            // geometry is screen-space, the window origin gives the offset to
-            // subtract — the same mapping find_element_visually produces.
+            // Resolve the Increment button via the strict locator (robust under
+            // UIA load); element geometry is screen-space.
             OperationResult buttonState = new ElementStateReader().Read(
                 process.Id, new ElementLocator(AutomationId: IncrementButtonId));
             buttonState.Success.Should().BeTrue(buttonState.Error);
             var button = (ElementState)buttonState.Data!;
 
-            WindowDescriptor main = new WindowDiscovery().List(process.Id)
-                .First(w => w.Kind == "main");
+            // Click the absolute screen center directly. Screen-space click_point
+            // resolves no window, so a transient tooltip (whose title can even
+            // contain the window's words) can never be mistaken for the target.
+            int screenX = button.X + button.Width / 2;
+            int screenY = button.Y + button.Height / 2;
 
-            int relX = button.X - main.X + button.Width / 2;
-            int relY = button.Y - main.Y + button.Height / 2;
-
-            // Scope the coordinate to the main window: a transient tooltip or
-            // popup can otherwise be the topmost window of the process, which is
-            // exactly why click_point takes windowTitle for a specific surface.
             var invoker = new ActionInvoker();
             OperationResult click = invoker.ClickPoint(
-                process.Id, relX, relY, windowTitle: MainWindowTitleFragment);
+                process.Id, screenX, screenY, windowRelative: false);
             click.Success.Should().BeTrue(click.Error);
 
             // Allow the UI thread to flush the binding update before reading state.

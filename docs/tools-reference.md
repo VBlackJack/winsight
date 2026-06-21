@@ -207,6 +207,54 @@ oracle:
 }
 ```
 
+## `describe_ui`
+
+Answer "what can I do here?" — return the window's **actionable** elements as a
+compact, position-ordered list (top-to-bottom, left-to-right) instead of a full
+UIA tree. Use it to orient on an unfamiliar window before acting; reach for
+[`inspect_ui_tree`](#inspect_ui_tree) only when you need the full structure.
+
+**Parameters**
+
+| Name          | Type    | Default | Description                                                        |
+| ------------- | ------- | ------- | ------------------------------------------------------------------ |
+| `windowTitle` | string? | null    | Inspect the first window whose title contains this text (dialogs, popups) |
+| `maxResults`  | int     | 200     | Maximum elements to return                                         |
+| `processId`   | int?    | null    | Target process id; falls back to the session target (see [Session target](#session-target-set_target--get_target--clear_target)) |
+
+Interactable kinds kept: buttons, text inputs, checkboxes, radio buttons, combo
+boxes, lists and list items, tabs and tab items, menu items, hyperlinks, tree
+items, sliders. Static text and layout containers are dropped.
+
+**Returns** — `OperationResult` whose `data` is an array of `UiInteractable`,
+each with a `recommendedLocator` (the smallest criterion that targets it —
+`automationId` if unique, else a unique `name`, else `controlType` + `index`)
+ready to feed `click_element` / `type_text` / `select_item`:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "controlType": "Button",
+      "automationId": "IncrementButton",
+      "name": "Increment",
+      "value": null,
+      "toggleState": null,
+      "isSelected": null,
+      "isEnabled": true,
+      "isVisible": true,
+      "x": 766, "y": 470, "width": 102, "height": 40,
+      "windowTitle": "Winsight Sample - Counter",
+      "recommendedLocator": "automationId=\"IncrementButton\""
+    }
+  ]
+}
+```
+
+The walk is breadth-first over the process windows, so a `controlType=…
+index=N` recommendation uses the same index the locator tools do.
+
 ## `click_element`
 
 Locate an element (see [Locator semantics](#locator-semantics-shared-by-the-uia-tools))

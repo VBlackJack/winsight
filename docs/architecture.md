@@ -93,6 +93,11 @@ Wraps FlaUI (UIA3):
 - `UiTreeInspector` — bounded BFS traversal of the UIA tree for a given process
   window (default depth 5, capped at 20), with optional window-title scoping
   and controlType/nameContains pruning; nodes carry Value-pattern content.
+- `AffordanceScanner` — the perception layer behind `describe_ui`: walks the
+  process windows breadth-first, keeps interactable control types, reuses
+  `ElementStateReader.BuildState` for each, and pairs them with
+  `AffordanceRecommender` (a pure function that picks the smallest unique
+  locator) to return a compact, position-ordered affordance list.
 - `NativeWindowEnumerator` (internal) — Win32 `EnumWindows` listing of the
   visible top-level windows of a process. Required because UIA reparents
   owned windows (modal dialogs) under their owner and omits them from both
