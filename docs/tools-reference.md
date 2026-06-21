@@ -145,6 +145,46 @@ or, on ambiguity:
 }
 ```
 
+## `click_point`
+
+Click at a coordinate without locating an element through UI Automation. This
+is the action partner of [`find_element_visually`](#find_element_visually) and
+the escape hatch for surfaces UIA cannot address (custom WPF Canvas, SkiaSharp,
+DirectX). The target window should be visible and unoccluded so the click lands
+on it.
+
+**Parameters**
+
+| Name              | Type    | Required | Description                                                        |
+| ----------------- | ------- | -------- | ------------------------------------------------------------------ |
+| `processId`       | int     | yes      | Target process id                                                  |
+| `x`               | int     | yes      | X coordinate of the click (window-relative by default)             |
+| `y`               | int     | yes      | Y coordinate of the click (window-relative by default)             |
+| `clickStyle`      | string? | no       | `single` (default), `double`, or `right`                           |
+| `windowTitle`     | string? | no       | Restrict the target window to those whose title contains this text |
+| `coordinateSpace` | string? | no       | `window` (default) or `screen`                                     |
+
+`coordinateSpace=window` interprets `x,y` in the target window's coordinate
+space — the **same origin as a full-window screenshot**, so the `x,y` returned
+by `find_element_visually` can be passed straight through. The tool resolves the
+window origin (topmost visible window, or the one scoped by `windowTitle`),
+verifies the point falls inside the window bounds, and translates it to screen
+space. `coordinateSpace=screen` treats `x,y` as absolute desktop coordinates and
+clicks them directly.
+
+Unlike `click_element`, there is no UIA pattern resolution: every style is a
+physical mouse action at the computed point.
+
+**Returns** — `OperationResult` whose `data` reports the absolute screen point
+that was clicked:
+
+```json
+{ "success": true, "data": { "screenX": 846, "screenY": 432 } }
+```
+
+A window-relative point outside the resolved window bounds is an explicit
+failure that reports the window size, so the agent can correct the coordinate.
+
 ## `type_text`
 
 Locate an element and write text into it. Same locator parameters as
@@ -780,11 +820,12 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
 
 **Parameters**
 
-| Name          | Type   | Required | Description                                      |
-| ------------- | ------ | -------- | ------------------------------------------------ |
-| `processId`   | int    | yes      | Target process id (from list_windows)            |
-| `query`       | string | yes      | Natural-language description of the target       |
-| `windowTitle` | string | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
+| Name          | Type    | Required | Description                                      |
+| ------------- | ------- | -------- | ------------------------------------------------ |
+| `processId`   | int     | yes      | Target process id (from list_windows)            |
+| `query`       | string  | yes      | Natural-language description of the target       |
+| `windowTitle` | string? | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
+| `act`         | string? | no       | `single`, `double`, or `right` to click the grounded point in the same call (via `click_point`). Omitted by default — the tool only locates. |
 
 **Returns** — JSON `GroundedElement`:
 
@@ -796,14 +837,33 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
   "height": 32,
   "confidence": 0.94,
   "reasoning": "Button labeled 'Increment' centered in the lower stack panel.",
-  "source": "claude-sonnet-4-6"
+  "source": "claude-sonnet-4-6",
+  "screenX": 995,
+  "screenY": 578
 }
 ```
 
 `x` and `y` are the **center** of the bounding box, in **screenshot
-pixel space** (origin at the top-left of the captured window). To
-convert to screen coordinates, add the window's origin from
-`list_windows`.
+pixel space** (origin at the top-left of the captured window). `screenX`
+and `screenY` are the same point already translated to **absolute screen
+coordinates** (the window origin is added server-side), so they can be fed
+straight to `click_point` with `coordinateSpace=screen`, or the window-relative
+`x,y` to `click_point` with the default `coordinateSpace=window`. `screenX` /
+`screenY` are null when the window origin could not be resolved.
+
+**Acting in one call** — when `act` is set, the grounded point is clicked
+through the same path as `click_point` (window-relative) and the result wraps
+both the grounding and the click outcome:
+
+```json
+{
+  "success": true,
+  "data": {
+    "grounded": { "x": 245, "y": 178, "...": "...", "screenX": 995, "screenY": 578 },
+    "click": { "success": true, "data": { "screenX": 995, "screenY": 578 } }
+  }
+}
+```
 
 If the call fails — missing API key, network error, or unparseable model
 output — the tool returns an `OperationResult` failure object instead:

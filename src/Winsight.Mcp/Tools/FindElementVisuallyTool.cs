@@ -17,6 +17,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
+using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.Vision;
 using Winsight.Mcp.Serialization;
 
@@ -34,8 +35,10 @@ public static class FindElementVisuallyTool
                  "inspect_ui_tree returns no useful AutomationId (custom WPF Canvas, SkiaSharp, " +
                  "DirectX surfaces, or any control that does not expose itself to UI Automation). " +
                  "Returns the bounding box center (x, y) plus width/height in pixels of the screenshot, " +
-                 "a confidence score, and the model's reasoning. Coordinates are in screenshot space " +
-                 "(window-relative); add the window's origin to get screen-space if needed. " +
+                 "a confidence score, and the model's reasoning. Coordinates are window-relative; the " +
+                 "result also carries screenX/screenY (absolute desktop coordinates) so you can act on " +
+                 "the point directly. Pass act=single|double|right to click the grounded point in the " +
+                 "same call (via click_point); by default the tool only locates. " +
                  "Default backend is the Anthropic Claude Sonnet 4.6 vision API; configure it with " +
                  "the ANTHROPIC_API_KEY environment variable. Set WINSIGHT_VISION_BACKEND=onnx for the " +
                  "fully local Qwen2.5-VL backend (WINSIGHT_VISION_ONNX_PATH), which runs on-host and " +
@@ -43,6 +46,7 @@ public static class FindElementVisuallyTool
     public static Task<string> FindElementVisuallyAsync(
         IElementGrounder grounder,
         WindowCapture capture,
+        ActionInvoker invoker,
         [Description("Process id of the target application (from list_windows).")]
         int processId,
         [Description("Natural-language description of the element to locate, " +
@@ -51,6 +55,10 @@ public static class FindElementVisuallyTool
         [Description("Optional case-insensitive substring of the target window title. " +
                      "Use this to capture modal dialogs, popups, or secondary windows.")]
         string? windowTitle = null,
+        [Description("Optional action to perform on the grounded point: single, double, or right. " +
+                     "When set, the point is clicked via click_point and the click result is returned " +
+                     "alongside the grounding. Omit to only locate.")]
+        string? act = null,
         CancellationToken cancellationToken = default)
     {
         return ToolSafety.SafeInvokeAsync(async () =>
@@ -58,7 +66,35 @@ public static class FindElementVisuallyTool
             var screenshotPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix);
             capture.Capture(processId, screenshotPath, windowTitle);
             GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
-            return JsonSerializer.Serialize(grounded, JsonOptions.Default);
+
+            // Enrich with absolute screen coordinates so the agent never has to
+            // add the window origin itself. Best-effort: if the window origin
+            // cannot be resolved, the window-relative point is still returned.
+            if (WindowGeometry.TryResolveTopmostBounds(processId, windowTitle, out WindowBounds bounds, out _))
+            {
+                (int screenX, int screenY) =
+                    WindowPointMapper.ToScreen(bounds.Left, bounds.Top, grounded.X, grounded.Y);
+                grounded = grounded with { ScreenX = screenX, ScreenY = screenY };
+            }
+
+            if (string.IsNullOrWhiteSpace(act))
+            {
+                return JsonSerializer.Serialize(grounded, JsonOptions.Default);
+            }
+
+            if (!ClickStyleParser.TryParse(act, out ClickStyle style))
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure(
+                        $"Unknown act \"{act}\". Accepted values: {ClickStyleParser.AcceptedValues}."),
+                    JsonOptions.Default);
+            }
+
+            OperationResult click = invoker.ClickPoint(
+                processId, grounded.X, grounded.Y, style, windowTitle, windowRelative: true);
+            return JsonSerializer.Serialize(
+                OperationResult.OkWith(new { grounded, click }),
+                JsonOptions.Default);
         });
     }
 }

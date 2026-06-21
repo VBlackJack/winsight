@@ -77,6 +77,64 @@ public sealed class ActionInvoker
     }
 
     /// <summary>
+    /// Click at a coordinate without locating an element through UI Automation.
+    /// This is the escape hatch for surfaces UIA cannot see (custom Canvas,
+    /// SkiaSharp, DirectX), and the action partner of <c>find_element_visually</c>.
+    /// When <paramref name="windowRelative"/> is true the point is interpreted in
+    /// the target window's coordinate space (same origin as a full-window
+    /// screenshot) and translated to screen space; otherwise it is treated as an
+    /// absolute screen coordinate.
+    /// </summary>
+    public OperationResult ClickPoint(
+        int processId,
+        int x,
+        int y,
+        ClickStyle style = ClickStyle.Primary,
+        string? windowTitle = null,
+        bool windowRelative = true)
+    {
+        int screenX;
+        int screenY;
+        if (windowRelative)
+        {
+            if (!WindowGeometry.TryResolveTopmostBounds(
+                    processId, windowTitle, out WindowBounds bounds, out string? error))
+            {
+                return OperationResult.Failure(error!);
+            }
+            if (!WindowPointMapper.Contains(bounds.Width, bounds.Height, x, y))
+            {
+                return OperationResult.Failure(
+                    $"Window-relative point ({x}, {y}) is outside the target window bounds " +
+                    $"{bounds.Width}x{bounds.Height}. Pass coordinates within the window, or use " +
+                    "screen-space coordinates.");
+            }
+            (screenX, screenY) = WindowPointMapper.ToScreen(bounds.Left, bounds.Top, x, y);
+        }
+        else
+        {
+            screenX = x;
+            screenY = y;
+        }
+
+        System.Drawing.Point point = new(screenX, screenY);
+        switch (style)
+        {
+            case ClickStyle.DoubleClick:
+                Mouse.DoubleClick(point, MouseButton.Left);
+                break;
+            case ClickStyle.RightClick:
+                Mouse.Click(point, MouseButton.Right);
+                break;
+            default:
+                Mouse.Click(point, MouseButton.Left);
+                break;
+        }
+
+        return OperationResult.OkWith(new ClickPointResult(screenX, screenY));
+    }
+
+    /// <summary>
     /// Set the located element's value via the Value pattern, falling back
     /// to focusing the element and typing through the keyboard.
     /// </summary>

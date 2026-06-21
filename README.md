@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 19 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 20 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -38,7 +38,7 @@ capabilities under a single tool surface that an LLM can compose:
 | Layer       | What it offers                                                                | Backed by                                       |
 | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
 | Discovery   | Window enumeration, UIA tree inspection (filterable, value-aware)             | FlaUI (UIA3) + Win32 window enumeration         |
-| Action      | Strict element location, click styles, type, chords, hover, item selection     | FlaUI patterns + SendInput / Win32 fallback      |
+| Action      | Strict element location, click styles, coordinate clicks, type, chords, hover, item selection | FlaUI patterns + SendInput / Win32 fallback      |
 | Sync        | Condition-based waits (exists / not_exists / enabled / visible / value / stable) | UIA polling with structured outcomes          |
 | Oracle (UI) | Element state snapshots (value, toggle, selection, focus, geometry)           | FlaUI patterns                                  |
 | Oracle      | Read private fields and managed state without `InternalsVisibleTo`            | Microsoft.Diagnostics.Runtime (CLRMD)           |
@@ -169,7 +169,7 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 19 tools.
+server is connected and lists all 20 tools.
 
 ### Smoke check from the shell
 
@@ -244,6 +244,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `list_windows`                | Enumerate top-level windows                            |
 | `inspect_ui_tree`             | Return the UIA tree for a process (filterable, value-aware) |
 | `click_element`               | Click a located element (single/double/right, strict locators) |
+| `click_point`                 | Click a window-relative or screen coordinate (acts on a visually grounded point) |
 | `type_text`                   | Type into a located element                            |
 | `send_key_chord`              | Focus a window and send a verified keyboard chord      |
 | `hover_element`               | Hover an element and capture/assert its tooltip        |

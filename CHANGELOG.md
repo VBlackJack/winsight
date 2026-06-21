@@ -206,6 +206,25 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   deterministic structural diff is the chosen first implementation.
 - 19 total tools; `smoke-mcp.ps1` expected tool count bumped to 19.
 
+#### Phase 2.7 — coordinate clicks, closing the perception-to-action loop
+
+- `click_point` MCP tool — clicks a coordinate without UIA element location, the
+  action partner of `find_element_visually` and the escape hatch for surfaces
+  UIA cannot address (custom Canvas, SkiaSharp, DirectX). `coordinateSpace`
+  defaults to `window` (same origin as a full-window screenshot, so a grounded
+  `x,y` passes straight through) or `screen` for absolute desktop coordinates;
+  out-of-bounds window-relative points fail explicitly with the window size.
+  Returns the absolute `screenX/screenY` clicked.
+- `ActionInvoker.ClickPoint` — physical mouse click (single/double/right) at a
+  window-relative or screen point, backed by `WindowGeometry` (resolves the
+  topmost/title-scoped window origin, mirroring `WindowCapture.Capture`) and the
+  pure `WindowPointMapper` (window→screen translation + bounds check).
+- `find_element_visually` now enriches `GroundedElement` with `screenX/screenY`
+  (window origin added server-side, so no manual coordinate math) and accepts an
+  opt-in `act=single|double|right` to click the grounded point in the same call,
+  returning both the grounding and the click result.
+- 20 total tools; `smoke-mcp.ps1` expected tool count bumped to 20.
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at

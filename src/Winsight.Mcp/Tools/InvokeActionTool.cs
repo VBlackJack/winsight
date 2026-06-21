@@ -76,6 +76,63 @@ public static class InvokeActionTool
         });
     }
 
+    [McpServerTool(Name = "click_point")]
+    [Description("Click at a coordinate, bypassing UI Automation element location. Use this to act on " +
+                 "a point returned by find_element_visually, or any control UIA cannot address (custom " +
+                 "Canvas, SkiaSharp, DirectX surfaces). By default x,y are window-relative (the same " +
+                 "origin as a full-window screenshot), so the (x, y) from find_element_visually can be " +
+                 "passed straight through; set coordinateSpace=screen for absolute desktop coordinates. " +
+                 "The target window should be visible and unoccluded. Returns an OperationResult JSON " +
+                 "whose data carries the absolute screenX/screenY that was clicked.")]
+    public static string ClickPoint(
+        ActionInvoker invoker,
+        [Description("Process id of the target application.")]
+        int processId,
+        [Description("X coordinate of the click. Window-relative by default; see coordinateSpace.")]
+        int x,
+        [Description("Y coordinate of the click. Window-relative by default; see coordinateSpace.")]
+        int y,
+        [Description("Click style: single (default), double, or right.")]
+        string? clickStyle = null,
+        [Description("Restrict the target window to those whose title contains this text (modal dialogs, popups).")]
+        string? windowTitle = null,
+        [Description("Coordinate space: window (default, origin at the target window's top-left) or screen (absolute desktop).")]
+        string? coordinateSpace = null)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            ClickStyle style = ClickStyle.Primary;
+            if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure(
+                        $"Unknown clickStyle \"{clickStyle}\". Accepted values: {ClickStyleParser.AcceptedValues}."),
+                    JsonOptions.Default);
+            }
+
+            string space = (coordinateSpace ?? "window").Trim();
+            bool windowRelative;
+            if (string.Equals(space, "window", StringComparison.OrdinalIgnoreCase))
+            {
+                windowRelative = true;
+            }
+            else if (string.Equals(space, "screen", StringComparison.OrdinalIgnoreCase))
+            {
+                windowRelative = false;
+            }
+            else
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure(
+                        $"Unknown coordinateSpace \"{coordinateSpace}\". Accepted values: window, screen."),
+                    JsonOptions.Default);
+            }
+
+            OperationResult result = invoker.ClickPoint(processId, x, y, style, windowTitle, windowRelative);
+            return JsonSerializer.Serialize(result, JsonOptions.Default);
+        });
+    }
+
     [McpServerTool(Name = "type_text")]
     [Description("Locate a UI element and set its value (via the Value pattern) or type into it " +
                  "(via keyboard fallback). Same strict locator semantics as click_element. " +
