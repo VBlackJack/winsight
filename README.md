@@ -281,6 +281,27 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
 See [docs/architecture.md](docs/architecture.md).
 
+## Security model
+
+Winsight is a **developer tool for the machine it runs on**. By design it grants
+the connected agent broad capability over that desktop session:
+
+- `launch_app` starts an arbitrary executable; `close_app` terminates a process tree.
+- `evaluate_javascript` runs arbitrary JavaScript inside an embedded WebView2 page.
+- `read_managed_state` attaches to a managed process and reads its memory (CLRMD);
+  `observe_counters` / `capture_events` open EventPipe sessions on it.
+- `capture_screenshot` writes to any `outputPath` you pass (it is **not** sandboxed
+  to a directory — the agent already has broad file access, so confining this one
+  tool would be theater rather than a boundary). `compare_visual_baseline` is the
+  exception: its `baselineKey` is confined to the baseline directory.
+
+Run the server only on a development machine you control, under the same user
+account as the agent, against applications you are developing or testing. It runs
+as your user — it grants no privilege you do not already have, and it should not
+be exposed to an untrusted client. EventPipe-based oracles
+(`observe_counters`, `capture_events`) are the EDR-friendly path; the CLRMD attach
+in `read_managed_state` uses patterns some endpoint products flag.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

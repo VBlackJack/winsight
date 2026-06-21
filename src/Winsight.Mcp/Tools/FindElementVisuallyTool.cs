@@ -34,11 +34,12 @@ public static class FindElementVisuallyTool
                  "modal dialogs, popups, and secondary windows. Use this when " +
                  "inspect_ui_tree returns no useful AutomationId (custom WPF Canvas, SkiaSharp, " +
                  "DirectX surfaces, or any control that does not expose itself to UI Automation). " +
-                 "Returns the bounding box center (x, y) plus width/height in pixels of the screenshot, " +
-                 "a confidence score, and the model's reasoning. Coordinates are window-relative; the " +
-                 "result also carries screenX/screenY (absolute desktop coordinates) so you can act on " +
+                 "Returns an OperationResult JSON; on success, data is the grounded element: the bounding " +
+                 "box center (x, y) plus width/height in screenshot pixels, a confidence score, the " +
+                 "model's reasoning, and screenX/screenY (absolute desktop coordinates) so you can act on " +
                  "the point directly. Pass act=single|double|right to click the grounded point in the " +
-                 "same call (via click_point); by default the tool only locates. " +
+                 "same call (via click_point); data is then { grounded, click }. By default the tool only " +
+                 "locates. " +
                  "Default backend is the Anthropic Claude Sonnet 4.6 vision API; configure it with " +
                  "the ANTHROPIC_API_KEY environment variable. Set WINSIGHT_VISION_BACKEND=onnx for the " +
                  "fully local Qwen2.5-VL backend (WINSIGHT_VISION_ONNX_PATH), which runs on-host and " +
@@ -79,7 +80,7 @@ public static class FindElementVisuallyTool
 
             if (string.IsNullOrWhiteSpace(act))
             {
-                return JsonSerializer.Serialize(grounded, JsonOptions.Default);
+                return JsonSerializer.Serialize(OperationResult.OkWith(grounded), JsonOptions.Default);
             }
 
             if (!ClickStyleParser.TryParse(act, out ClickStyle style))

@@ -464,6 +464,7 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `processId`   | int?        | no       | Default process id for steps that omit their own                 |
 | `stopOnError` | bool        | no       | Stop at the first failing step (default true)                    |
 | `captureExceptions` | bool  | no       | Attach the exceptions the target process threw during the batch (causal oracle). Requires the batch-level `processId`. |
+| `maxDurationMs` | int?      | no       | Total budget for the batch. When elapsed time reaches it before a step, the run stops and `timedOut` is true. |
 
 **Step shape** — a flat object with an `action` discriminator plus that action's
 fields. The shared locator fields (`automationId`, `name`, `className`,
@@ -485,7 +486,9 @@ in the journal.
 | `screenshot`  | `capture_screenshot` | `outputPath` (a timestamped default is used when omitted)      |
 
 `launch_app`/`close_app` are intentionally not step actions; call them around
-the batch (the process id is needed to scope the steps).
+the batch (the process id is needed to scope the steps). A `screenshot` step
+records the capture's path in its journal `data` (the batch journal is JSON, so
+unlike the standalone `capture_screenshot` tool it does not inline the image).
 
 **Returns** — `OperationResult`-style failure on bad input, otherwise a
 `BatchResult`:
@@ -508,7 +511,8 @@ With `stopOnError: true` (default), the run halts at the first failing step;
 `failedAtIndex` is that step's index, `success` is false, and steps after it are
 absent from `steps`. With `stopOnError: false`, every step runs and
 `failedAtIndex` reports the first failure. `completed` counts successful steps;
-`total` is the number submitted.
+`total` is the number submitted. When `maxDurationMs` is set and the budget is
+hit before all steps run, the result has `timedOut: true` and `success: false`.
 
 **Causal exception oracle** — with `captureExceptions: true`, an EventPipe
 session runs around the whole batch and the result gains an `exceptions` array
@@ -1008,19 +1012,22 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
 | `windowTitle` | string? | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
 | `act`         | string? | no       | `single`, `double`, or `right` to click the grounded point in the same call (via `click_point`). Omitted by default — the tool only locates. |
 
-**Returns** — JSON `GroundedElement`:
+**Returns** — `OperationResult` whose `data` is the `GroundedElement`:
 
 ```json
 {
-  "x": 245,
-  "y": 178,
-  "width": 96,
-  "height": 32,
-  "confidence": 0.94,
-  "reasoning": "Button labeled 'Increment' centered in the lower stack panel.",
-  "source": "claude-sonnet-4-6",
-  "screenX": 995,
-  "screenY": 578
+  "success": true,
+  "data": {
+    "x": 245,
+    "y": 178,
+    "width": 96,
+    "height": 32,
+    "confidence": 0.94,
+    "reasoning": "Button labeled 'Increment' centered in the lower stack panel.",
+    "source": "claude-sonnet-4-6",
+    "screenX": 995,
+    "screenY": 578
+  }
 }
 ```
 
@@ -1061,6 +1068,7 @@ output — the tool returns an `OperationResult` failure object instead:
 | `ANTHROPIC_API_KEY`         | —                                        | Required for `anthropic`         |
 | `WINSIGHT_VISION_MODEL`     | `claude-sonnet-4-6`                      | Anthropic model override         |
 | `WINSIGHT_VISION_API_URL`   | `https://api.anthropic.com/v1/messages`  | Anthropic endpoint override      |
+| `WINSIGHT_VISION_TIMEOUT_MS`| `60000`                                  | Per-request timeout for the Anthropic backend (bounded; transient 429/5xx are retried) |
 | `WINSIGHT_VISION_ONNX_PATH` | —                                        | Local Qwen2.5-VL ONNX model directory |
 | `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` or `dml` (CPU-only in this build) |
 | `WINSIGHT_OUTPUT_DIR`       | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |

@@ -63,14 +63,8 @@ public static class InvokeActionTool
                     JsonOptions.Default);
             }
 
-            ElementLocator locator = new(
-                automationId,
-                name,
-                className,
-                controlType,
-                nameContains,
-                index,
-                descendantText);
+            ElementLocator locator = LocatorFactory.From(
+                automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = invoker.Click(processId, locator, style, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
@@ -164,14 +158,8 @@ public static class InvokeActionTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            ElementLocator locator = new(
-                automationId,
-                name,
-                className,
-                controlType,
-                nameContains,
-                index,
-                descendantText);
+            ElementLocator locator = LocatorFactory.From(
+                automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = invoker.Type(processId, locator, text, windowTitle, focusWindow);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
@@ -226,14 +214,8 @@ public static class InvokeActionTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            ElementLocator locator = new(
-                automationId,
-                name,
-                className,
-                controlType,
-                nameContains,
-                index,
-                descendantText);
+            ElementLocator locator = LocatorFactory.From(
+                automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = invoker.SelectItem(processId, locator, itemName, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
@@ -270,14 +252,8 @@ public static class InvokeActionTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            ElementLocator locator = new(
-                automationId,
-                name,
-                className,
-                controlType,
-                nameContains,
-                index,
-                descendantText);
+            ElementLocator locator = LocatorFactory.From(
+                automationId, name, className, controlType, nameContains, index, descendantText);
             OperationResult result = invoker.Hover(
                 processId,
                 locator,

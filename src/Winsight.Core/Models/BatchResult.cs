@@ -34,7 +34,8 @@ public sealed record StepResult(
 /// are not executed and therefore absent from <see cref="Steps"/>.
 /// <see cref="Exceptions"/> is null unless causal exception capture was requested;
 /// when requested it lists the exceptions the target process threw during the
-/// batch (an empty list means none were observed).
+/// batch (an empty list means none were observed). <see cref="TimedOut"/> is true
+/// when a batch duration budget was hit before all steps ran.
 /// </summary>
 public sealed record BatchResult(
     bool Success,
@@ -42,4 +43,5 @@ public sealed record BatchResult(
     int Total,
     int? FailedAtIndex,
     IReadOnlyList<StepResult> Steps,
-    IReadOnlyList<DiagnosticEvent>? Exceptions = null);
+    IReadOnlyList<DiagnosticEvent>? Exceptions = null,
+    bool TimedOut = false);

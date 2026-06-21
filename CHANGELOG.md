@@ -303,6 +303,24 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and swallows an exception, as the E2E target for the oracle.
 - No new tools (23 total).
 
+#### Audit hardening
+
+- `find_element_visually` now always returns an `OperationResult` (data is the
+  grounded element, or `{ grounded, click }` with `act`), removing the prior
+  three-shape inconsistency.
+- `AnthropicVisionGrounder` gains a bounded per-request timeout
+  (`WINSIGHT_VISION_TIMEOUT_MS`, default 60s) and a short retry on transient
+  429/5xx, so a slow or rate-limited API cannot hang or fail a recoverable call.
+- Window-scoped capture and the screen-coordinate resolver now share a single
+  title-filter in `WindowGeometry`, so they cannot drift apart; `LocatorFactory`
+  centralizes `ElementLocator` assembly across the UIA tools.
+- `ScreenshotOutput` prunes captures to the most recent 50 per prefix on each
+  write (best-effort), so a long session does not fill the output directory.
+- `run_steps` gains `maxDurationMs`: a total batch budget that stops the run and
+  flags `timedOut` when reached.
+- README documents the security/trust model (the server grants the agent broad
+  capability over its desktop session; run it only on dev machines).
+
 #### Tool boundary hardening
 
 - `ToolSafety.SafeInvoke` / `SafeInvokeAsync` — universal outer guard at
