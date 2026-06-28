@@ -13,6 +13,8 @@
 // limitations under the License.
 
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using Winsight.Core.Models;
@@ -118,6 +120,7 @@ public sealed class AffordanceScanner
         for (int i = 0; i < states.Count; i++)
         {
             ElementState s = states[i];
+            string recommendedLocator = recommendations[i];
             result.Add(new UiInteractable(
                 ControlType: s.ControlType,
                 AutomationId: NullIfEmpty(s.AutomationId),
@@ -132,7 +135,8 @@ public sealed class AffordanceScanner
                 Width: s.Width,
                 Height: s.Height,
                 WindowTitle: s.WindowTitle,
-                RecommendedLocator: recommendations[i]));
+                RecommendedLocator: recommendedLocator,
+                AffordanceId: BuildAffordanceId(s, recommendedLocator)));
         }
 
         // Read like the screen: top-to-bottom, then left-to-right.
@@ -144,6 +148,19 @@ public sealed class AffordanceScanner
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrEmpty(value) ? null : value;
+
+    private static string BuildAffordanceId(ElementState state, string recommendedLocator)
+    {
+        string stableKey = string.Join(
+            "|",
+            state.WindowTitle,
+            state.ControlType,
+            state.AutomationId,
+            state.Name,
+            recommendedLocator);
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(stableKey));
+        return "af_" + Convert.ToHexString(hash.AsSpan(0, 8)).ToLowerInvariant();
+    }
 
     private static (string AutomationId, string Name, string ClassName, string ControlType)? TryReadSnapshot(
         AutomationElement element)

@@ -14,6 +14,8 @@
 
 using FluentAssertions;
 using System.Globalization;
+using System.Text.Json;
+using Winsight.Core.Modules.UiAutomation;
 using Winsight.Mcp;
 using Winsight.Mcp.Tools;
 using Xunit;
@@ -121,6 +123,26 @@ public sealed class SessionTargetTests
 
             ok.Should().BeFalse();
             error.Should().Contain("not running");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, before);
+        }
+    }
+
+    [Fact]
+    public void List_windows_with_process_id_honors_the_allowed_id_policy_before_discovery()
+    {
+        string? before = Environment.GetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable);
+        Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, "-1");
+        try
+        {
+            string json = ListWindowsTool.ListWindows(new WindowDiscovery(), Environment.ProcessId);
+
+            using JsonDocument document = JsonDocument.Parse(json);
+            document.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+            document.RootElement.GetProperty("error").GetString()
+                .Should().Contain(ToolAccessPolicy.AllowedProcessIdsVariable);
         }
         finally
         {

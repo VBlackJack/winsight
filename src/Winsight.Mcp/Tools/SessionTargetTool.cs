@@ -39,11 +39,13 @@ public static class SessionTargetTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            int windowCount = discovery.List(processId).Count;
-            if (!target.TrySet(processId, out string error))
+            if (!ToolAccessPolicy.TryAuthorizeProcess(processId, out string error))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(error), JsonOptions.Default);
             }
+
+            int windowCount = discovery.List(processId).Count;
+            target.Set(processId);
             return JsonSerializer.Serialize(
                 OperationResult.OkWith(new { processId, windowCount }),
                 JsonOptions.Default);

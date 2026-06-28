@@ -65,14 +65,24 @@ public static class AgentExperienceTool
             {
                 memory.RecordFailure(nameof(Observe), "missing_target", targetError, "set_target");
                 return JsonSerializer.Serialize(
-                    RepairableFailure("missing_target", targetError, new { tool = "set_target" }),
+                    AgentFailure.Repairable(
+                        "missing_target",
+                        targetError,
+                        cause: "target_resolution",
+                        suggestedTool: "set_target",
+                        suggestedArgs: new { processId = "<target process id>" }),
                     JsonOptions.Default);
             }
             if (maxResults <= 0 || maxResults > UiaDefaults.MaxDescribeResults)
             {
                 string error = $"maxResults must be between 1 and {UiaDefaults.MaxDescribeResults}.";
                 return JsonSerializer.Serialize(
-                    RepairableFailure("invalid_argument", error, new { maxResults = 100 }),
+                    AgentFailure.Repairable(
+                        "invalid_argument",
+                        error,
+                        cause: "argument_validation",
+                        suggestedTool: "observe",
+                        suggestedArgs: new { maxResults = 100 }),
                     JsonOptions.Default);
             }
 
@@ -93,7 +103,7 @@ public static class AgentExperienceTool
                 windowTitle,
                 windows,
                 elements,
-                nextActions = SuggestActions(elements),
+                nextActions = SuggestActions(elements, pid, windowTitle),
                 screenshot,
                 memory = memory.Snapshot(target.ProcessId),
             };
@@ -124,8 +134,14 @@ public static class AgentExperienceTool
         {
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
+                memory.RecordFailure(nameof(PlanSteps), "missing_target", targetError, "set_target");
                 return JsonSerializer.Serialize(
-                    RepairableFailure("missing_target", targetError, new { tool = "set_target" }),
+                    AgentFailure.Repairable(
+                        "missing_target",
+                        targetError,
+                        cause: "target_resolution",
+                        suggestedTool: "set_target",
+                        suggestedArgs: new { processId = "<target process id>" }),
                     JsonOptions.Default);
             }
 
@@ -179,8 +195,14 @@ public static class AgentExperienceTool
         {
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
+                memory.RecordFailure(nameof(RepairLocator), "missing_target", targetError, "set_target");
                 return JsonSerializer.Serialize(
-                    RepairableFailure("missing_target", targetError, new { tool = "set_target" }),
+                    AgentFailure.Repairable(
+                        "missing_target",
+                        targetError,
+                        cause: "target_resolution",
+                        suggestedTool: "set_target",
+                        suggestedArgs: new { processId = "<target process id>" }),
                     JsonOptions.Default);
             }
 
@@ -198,12 +220,13 @@ public static class AgentExperienceTool
                         locatorArgs = LocatorArgs(match.Element),
                     }),
                 memory = memory.Find(query, pid, windowTitle, maxResults: 10),
-                suggestedFix = new
+                suggestedTool = "run_steps",
+                suggestedArgs = new
                 {
-                    useTopCurrentUiCandidate = true,
-                    thenRetryOriginalAction = true,
-                    fallbackTool = "observe",
+                    dryRun = true,
+                    note = "Use currentUi[0].locatorArgs when the top candidate matches the intended control.",
                 },
+                fallbackTool = "observe",
             };
             return JsonSerializer.Serialize(OperationResult.OkWith(response), JsonOptions.Default);
         });
@@ -235,8 +258,14 @@ public static class AgentExperienceTool
         {
             if (!target.TryResolve(processId ?? step.ProcessId, out int pid, out string targetError))
             {
+                memory.RecordFailure(nameof(ActAndObserve), "missing_target", targetError, "set_target");
                 return JsonSerializer.Serialize(
-                    RepairableFailure("missing_target", targetError, new { tool = "set_target" }),
+                    AgentFailure.Repairable(
+                        "missing_target",
+                        targetError,
+                        cause: "target_resolution",
+                        suggestedTool: "set_target",
+                        suggestedArgs: new { processId = "<target process id>" }),
                     JsonOptions.Default);
             }
 
@@ -247,7 +276,11 @@ public static class AgentExperienceTool
                 pid,
                 stopOnError: true,
                 maxDurationMs: null,
-                dryRun: effectiveDryRun) with { DryRun = effectiveDryRun };
+                dryRun: effectiveDryRun)
+                with
+            {
+                DryRun = effectiveDryRun,
+            };
             UiSnapshot after = snapshotter.Capture(pid, windowTitle);
             UiChange change = UiDiffer.Diff(before, after);
             IReadOnlyList<UiInteractable> elements = scanner.Describe(pid, windowTitle, 100);
@@ -312,7 +345,12 @@ public static class AgentExperienceTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(
-                    RepairableFailure("missing_target", targetError, new { tool = "set_target" }),
+                    AgentFailure.Repairable(
+                        "missing_target",
+                        targetError,
+                        cause: "target_resolution",
+                        suggestedTool: "set_target",
+                        suggestedArgs: new { processId = "<target process id>" }),
                     JsonOptions.Default);
             }
             ElementLocator clickLocator = LocatorFactory.From(
@@ -325,21 +363,24 @@ public static class AgentExperienceTool
                 nameContains,
                 index,
                 null);
+            if (!WaitConditionParser.TryParse(condition, out WaitCondition parsed))
+            {
+                return JsonSerializer.Serialize(
+                    AgentFailure.Repairable(
+                        "invalid_wait_condition",
+                        $"Unknown condition \"{condition}\". Accepted values: {WaitConditionParser.AcceptedValues}.",
+                        cause: "argument_validation",
+                        suggestedTool: "click_and_wait",
+                        suggestedArgs: new { condition = "exists" },
+                        candidates: WaitConditionParser.AcceptedValues),
+                    JsonOptions.Default);
+            }
             if (ToolAccessPolicy.DryRunMutation(
                     "click_and_wait",
                     new { processId = pid, clickLocator, waitLocator, condition, stableForMs })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
-            }
-            if (!WaitConditionParser.TryParse(condition, out WaitCondition parsed))
-            {
-                return JsonSerializer.Serialize(
-                    RepairableFailure(
-                        "invalid_wait_condition",
-                        $"Unknown condition \"{condition}\". Accepted values: {WaitConditionParser.AcceptedValues}.",
-                        new { condition = "exists" }),
-                    JsonOptions.Default);
             }
 
             UiSnapshot before = snapshotter.Capture(pid, windowTitle);
@@ -391,7 +432,12 @@ public static class AgentExperienceTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(
-                    RepairableFailure("missing_target", targetError, new { tool = "set_target" }),
+                    AgentFailure.Repairable(
+                        "missing_target",
+                        targetError,
+                        cause: "target_resolution",
+                        suggestedTool: "set_target",
+                        suggestedArgs: new { processId = "<target process id>" }),
                     JsonOptions.Default);
             }
             ElementLocator typeLocator = LocatorFactory.From(
@@ -404,21 +450,35 @@ public static class AgentExperienceTool
                 nameContains,
                 null,
                 null);
+            if (text is null)
+            {
+                return JsonSerializer.Serialize(
+                    AgentFailure.Repairable(
+                        "invalid_argument",
+                        "text is required.",
+                        cause: "argument_validation",
+                        suggestedTool: "type_and_assert",
+                        suggestedArgs: new { text = "<text>" }),
+                    JsonOptions.Default);
+            }
+            if (!AssertionEvaluator.TryParseOperator(@operator, out AssertionOperator parsed))
+            {
+                return JsonSerializer.Serialize(
+                    AgentFailure.Repairable(
+                        "invalid_assertion_operator",
+                        $"Unknown operator \"{@operator}\". Accepted: {AssertionEvaluator.AcceptedOperators}.",
+                        cause: "argument_validation",
+                        suggestedTool: "type_and_assert",
+                        suggestedArgs: new { @operator = "contains" },
+                        candidates: AssertionEvaluator.AcceptedOperators),
+                    JsonOptions.Default);
+            }
             if (ToolAccessPolicy.DryRunMutation(
                     "type_and_assert",
                     new { processId = pid, typeLocator, assertLocator, textLength = text.Length, @operator, expected })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
-            }
-            if (!AssertionEvaluator.TryParseOperator(@operator, out AssertionOperator parsed))
-            {
-                return JsonSerializer.Serialize(
-                    RepairableFailure(
-                        "invalid_assertion_operator",
-                        $"Unknown operator \"{@operator}\". Accepted: {AssertionEvaluator.AcceptedOperators}.",
-                        new { @operator = "contains" }),
-                    JsonOptions.Default);
             }
 
             OperationResult type = invoker.Type(pid, typeLocator, text, windowTitle, focusWindow: false);
@@ -461,6 +521,40 @@ public static class AgentExperienceTool
         });
     }
 
+    [McpServerTool(Name = "get_agent_state")]
+    [Description("Return compact agent-oriented state: target, guardrails, recent memory, last failure, " +
+                 "and available recipes. Use this when the agent is unsure what context it has.")]
+    public static string GetAgentState(SessionTarget target, SessionMemory memory)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            SessionMemorySnapshot snapshot = memory.Snapshot(target.ProcessId);
+            SessionFailure? lastFailure = snapshot.Failures.Count > 0 ? snapshot.Failures[0] : null;
+            var data = new
+            {
+                target = new
+                {
+                    processId = target.ProcessId,
+                    hasTarget = target.ProcessId.HasValue,
+                },
+                guardrails = new
+                {
+                    dryRun = ToolAccessPolicy.IsDryRunEnabled,
+                    allowedProcessIdsConfigured = IsConfigured(ToolAccessPolicy.AllowedProcessIdsVariable),
+                    allowedProcessNamesConfigured = IsConfigured(ToolAccessPolicy.AllowedProcessNamesVariable),
+                    allowedExecutablesConfigured = IsConfigured(ToolAccessPolicy.AllowedExecutablePathsVariable),
+                    traceEnabled = TraceRecorder.IsEnabled,
+                    traceDirectory = TraceRecorder.CurrentDirectory,
+                },
+                memory = snapshot,
+                lastFailure,
+                recommendedNextStep = ResolveRecommendedNextStep(snapshot, target.ProcessId),
+                recipes = AgentRecipeCatalog.All.Select(recipe => new { recipe.Id, recipe.Goal, recipe.WhenToUse }),
+            };
+            return JsonSerializer.Serialize(OperationResult.OkWith(data), JsonOptions.Default);
+        });
+    }
+
     [McpServerTool(Name = "get_winsight_guide")]
     [Description("Return a compact embedded guide for agents: preferred workflows, repair loops, and when to use high-level tools.")]
     public static string GetWinsightGuide()
@@ -473,6 +567,7 @@ public static class AgentExperienceTool
                     preferredTools = new
                     {
                         perceive = "observe",
+                        state = "get_agent_state",
                         cautiousAction = "act_and_observe",
                         batchAction = "run_steps",
                         locatorRepair = "repair_locator",
@@ -485,32 +580,30 @@ public static class AgentExperienceTool
                         locator_not_found = "call repair_locator with the failed label/id",
                         policy_denied = "change WINSIGHT_ALLOWED_* or choose another process",
                     },
+                    recipes = AgentRecipeCatalog.All,
                 }),
                 JsonOptions.Default));
     }
 
-    private static OperationResult RepairableFailure(string code, string message, object? suggestedFix)
-    {
-        return OperationResult.FailureWith(
-            message,
-            new
-            {
-                code,
-                message,
-                suggestedFix,
-            });
-    }
-
-    private static List<object> SuggestActions(IReadOnlyList<UiInteractable> elements)
+    private static List<object> SuggestActions(
+        IReadOnlyList<UiInteractable> elements,
+        int processId,
+        string? windowTitle)
     {
         return elements
             .Where(element => element.IsEnabled && element.IsVisible)
             .Take(20)
             .Select(element => new
             {
+                element.AffordanceId,
                 action = ActionFor(element),
                 label = string.IsNullOrEmpty(element.Name) ? element.AutomationId : element.Name,
                 element.ControlType,
+                tool = SuggestedToolFor(element),
+                requiredInput = RequiredInputFor(element),
+                arguments = SuggestedArgsFor(element, processId, windowTitle),
+                risk = RiskFor(element),
+                expectedFeedback = ExpectedFeedbackFor(element),
                 element.RecommendedLocator,
                 locatorArgs = LocatorArgs(element),
             })
@@ -621,8 +714,69 @@ public static class AgentExperienceTool
         return element.ControlType switch
         {
             "Edit" => "type",
-            "ComboBox" or "List" or "ListItem" or "Tab" or "TabItem" => "select",
             _ => "click",
+        };
+    }
+
+    private static string SuggestedToolFor(UiInteractable element) =>
+        element.ControlType == "Edit" ? "type_and_assert" : "act_and_observe";
+
+    private static string[] RequiredInputFor(UiInteractable element) =>
+        element.ControlType == "Edit" ? new[] { "text" } : Array.Empty<string>();
+
+    private static object SuggestedArgsFor(UiInteractable element, int processId, string? windowTitle)
+    {
+        LocatorParts locator = LocatorArgs(element);
+        if (element.ControlType == "Edit")
+        {
+            return new
+            {
+                processId,
+                text = "<text>",
+                @operator = "contains",
+                expected = "<expected text>",
+                automationId = locator.AutomationId,
+                name = locator.Name,
+                controlType = locator.ControlType,
+                nameContains = (string?)null,
+                windowTitle = windowTitle ?? element.WindowTitle,
+            };
+        }
+
+        BatchStep step = BuildStep(ActionFor(element), element, null, processId, windowTitle);
+        return new
+        {
+            processId,
+            dryRun = true,
+            step,
+        };
+    }
+
+    private static string RiskFor(UiInteractable element)
+    {
+        if (!element.IsEnabled || !element.IsVisible)
+        {
+            return "not_ready";
+        }
+        return element.ControlType switch
+        {
+            "Button" or "SplitButton" or "MenuItem" or "Hyperlink" => "mutates_or_navigates",
+            "Edit" => "writes_text",
+            "ComboBox" or "List" or "ListItem" or "Tab" or "TabItem" => "changes_selection",
+            _ => "low",
+        };
+    }
+
+    private static string ExpectedFeedbackFor(UiInteractable element)
+    {
+        return element.ControlType switch
+        {
+            "Edit" => "type_and_assert should confirm value, or get_element_state should expose the new value.",
+            "Button" or "SplitButton" or "MenuItem" or "Hyperlink" =>
+                "act_and_observe should report changed UI, opened windows, or a follow-up assertion target.",
+            "ComboBox" or "List" or "ListItem" or "Tab" or "TabItem" =>
+                "observe or get_element_state should show selection/value changed.",
+            _ => "act_and_observe should report whether the UI changed.",
         };
     }
 
@@ -676,6 +830,26 @@ public static class AgentExperienceTool
         return int.TryParse(raw, System.Globalization.NumberStyles.Integer, null, out int parsed)
             ? parsed
             : null;
+    }
+
+    private static bool IsConfigured(string variableName) =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variableName));
+
+    private static string ResolveRecommendedNextStep(SessionMemorySnapshot snapshot, int? processId)
+    {
+        if (processId is null)
+        {
+            return "call list_windows or launch_app, then set_target";
+        }
+        if (snapshot.Failures.Count > 0 && snapshot.Failures[0] is { SuggestedTool: not null } failure)
+        {
+            return $"recover with {failure.SuggestedTool} for {failure.Code}";
+        }
+        if (snapshot.LastObservationUtc is null)
+        {
+            return "call observe";
+        }
+        return "plan_steps, run_steps dryRun=true, then act_and_observe or run_steps dryRun=false";
     }
 
     private sealed record RankedInteractable(int Score, string Reason, UiInteractable Element);

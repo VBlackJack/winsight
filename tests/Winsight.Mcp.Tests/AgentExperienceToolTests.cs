@@ -34,9 +34,16 @@ public sealed class AgentExperienceToolTests
         JsonElement data = document.RootElement.GetProperty("data");
         data.GetProperty("preferredTools").GetProperty("perceive").GetString()
             .Should().Be("observe");
+        data.GetProperty("preferredTools").GetProperty("state").GetString()
+            .Should().Be("get_agent_state");
         data.GetProperty("defaultLoop").EnumerateArray()
             .Select(item => item.GetString())
             .Should().Contain(step => step!.Contains("dryRun=true", StringComparison.Ordinal));
+        string[] recipeIds = data.GetProperty("recipes").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString()!)
+            .ToArray();
+        recipeIds.Should().Contain("form_fill");
+        recipeIds.Should().Contain("locator_repair");
     }
 
     [Fact]
@@ -53,8 +60,30 @@ public sealed class AgentExperienceToolTests
         JsonElement root = document.RootElement;
         root.GetProperty("success").GetBoolean().Should().BeFalse();
         root.GetProperty("data").GetProperty("code").GetString().Should().Be("missing_target");
-        root.GetProperty("data").GetProperty("suggestedFix").GetProperty("tool").GetString()
-            .Should().Be("set_target");
+        root.GetProperty("data").GetProperty("cause").GetString().Should().Be("target_resolution");
+        root.GetProperty("data").GetProperty("suggestedTool").GetString().Should().Be("set_target");
+        root.GetProperty("data").GetProperty("suggestedArgs").TryGetProperty("processId", out _)
+            .Should().BeTrue();
+        root.GetProperty("data").GetProperty("retryable").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public void Get_agent_state_reports_compact_context_and_recipes()
+    {
+        SessionMemory memory = new();
+        memory.RecordFailure("observe", "missing_target", "No target.", "set_target");
+
+        string json = AgentExperienceTool.GetAgentState(new SessionTarget(), memory);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement data = document.RootElement.GetProperty("data");
+        data.GetProperty("target").GetProperty("hasTarget").GetBoolean().Should().BeFalse();
+        data.GetProperty("guardrails").TryGetProperty("dryRun", out _).Should().BeTrue();
+        data.GetProperty("lastFailure").GetProperty("code").GetString().Should().Be("missing_target");
+        data.GetProperty("recommendedNextStep").GetString().Should().Contain("set_target");
+        data.GetProperty("recipes").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString())
+            .Should().Contain("visual_click");
     }
 
     [Fact]
@@ -75,13 +104,15 @@ public sealed class AgentExperienceToolTests
             Width: 10,
             Height: 20,
             WindowTitle: "Sample",
-            RecommendedLocator: "automationId=\"IncrementButton\"");
+            RecommendedLocator: "automationId=\"IncrementButton\"",
+            AffordanceId: "af_increment");
 
         memory.RecordObservation(123, "Sample", new[] { element });
 
         IReadOnlyList<LocatorMemoryMatch> matches = memory.Find("increment", processId: 123);
         matches.Should().ContainSingle();
         matches[0].Entry.RecommendedLocator.Should().Be("automationId=\"IncrementButton\"");
+        matches[0].Entry.AffordanceId.Should().Be("af_increment");
     }
 
     [Fact]
@@ -104,6 +135,61 @@ public sealed class AgentExperienceToolTests
             root.GetProperty("success").GetBoolean().Should().BeTrue();
             root.GetProperty("data").GetProperty("dryRun").GetBoolean().Should().BeTrue();
             root.GetProperty("data").GetProperty("action").GetString().Should().Be("click_and_wait");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, before);
+        }
+    }
+
+    [Fact]
+    public void Click_and_wait_dry_run_validates_condition_before_preview()
+    {
+        string? before = Environment.GetEnvironmentVariable(ToolAccessPolicy.DryRunVariable);
+        Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, "true");
+        try
+        {
+            string json = AgentExperienceTool.ClickAndWait(
+                new ActionInvoker(),
+                new ElementWaiter(),
+                new UiSnapshotter(new WindowDiscovery(), new AffordanceScanner()),
+                new SessionTarget(),
+                automationId: "DoesNotMatter",
+                condition: "eventually",
+                processId: Environment.ProcessId);
+
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement root = document.RootElement;
+            root.GetProperty("success").GetBoolean().Should().BeFalse();
+            root.GetProperty("data").GetProperty("code").GetString().Should().Be("invalid_wait_condition");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, before);
+        }
+    }
+
+    [Fact]
+    public void Type_and_assert_dry_run_validates_operator_before_preview()
+    {
+        string? before = Environment.GetEnvironmentVariable(ToolAccessPolicy.DryRunVariable);
+        Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, "true");
+        try
+        {
+            string json = AgentExperienceTool.TypeAndAssert(
+                new ActionInvoker(),
+                new ElementStateReader(),
+                new SessionTarget(),
+                text: "hello",
+                @operator: "eventually",
+                expected: "hello",
+                automationId: "DoesNotMatter",
+                processId: Environment.ProcessId);
+
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement root = document.RootElement;
+            root.GetProperty("success").GetBoolean().Should().BeFalse();
+            root.GetProperty("data").GetProperty("code").GetString().Should().Be("invalid_assertion_operator");
         }
         finally
         {

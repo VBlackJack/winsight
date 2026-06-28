@@ -126,6 +126,11 @@ public sealed class StepRunner
                 $"'{action}' step has no processId and no batch-level processId default was provided.");
         }
 
+        if (ValidateStep(action, step) is { } validationError)
+        {
+            return validationError;
+        }
+
         if (dryRun && IsMutatingAction(action))
         {
             return OperationResult.OkWith(new
@@ -141,7 +146,9 @@ public sealed class StepRunner
                 step.Y,
                 step.ClickStyle,
                 step.CoordinateSpace,
+                step.AllowOutOfWindow,
                 step.WindowTitle,
+                step.OutputPath,
             });
         }
 
@@ -161,6 +168,68 @@ public sealed class StepRunner
                 $"Unknown action \"{step.Action}\". Accepted: click, click_point, type, key_chord, " +
                 "select, hover, wait, assert, get_state, screenshot."),
         };
+    }
+
+    private static OperationResult? ValidateStep(string action, BatchStep step)
+    {
+        return action switch
+        {
+            "click" => ValidateClick(step),
+            "click_point" => ValidateClickPoint(step),
+            "type" => step.Text is null
+                ? OperationResult.Failure("type step requires text.")
+                : null,
+            "key_chord" => ValidateKeyChord(step),
+            "select" => string.IsNullOrEmpty(step.ItemName)
+                ? OperationResult.Failure("select step requires itemName.")
+                : null,
+            "wait" => WaitConditionParser.TryParse(step.Condition, out _)
+                ? null
+                : OperationResult.Failure(
+                    $"wait step has unknown condition \"{step.Condition}\". " +
+                    $"Accepted values: {WaitConditionParser.AcceptedValues}."),
+            "assert" => AssertionEvaluator.TryParseOperator(step.Operator, out _)
+                ? null
+                : OperationResult.Failure(
+                    $"assert step has unknown operator \"{step.Operator}\". " +
+                    $"Accepted: {AssertionEvaluator.AcceptedOperators}."),
+            "screenshot" => string.IsNullOrEmpty(step.OutputPath)
+                ? OperationResult.Failure(ScreenshotMissingPath)
+                : null,
+            "hover" or "get_state" => null,
+            _ => OperationResult.Failure(
+                $"Unknown action \"{step.Action}\". Accepted: click, click_point, type, key_chord, " +
+                "select, hover, wait, assert, get_state, screenshot."),
+        };
+    }
+
+    private static OperationResult? ValidateClick(BatchStep step)
+    {
+        return TryClickStyle(step.ClickStyle, out _, out OperationResult error)
+            ? null
+            : error;
+    }
+
+    private static OperationResult? ValidateClickPoint(BatchStep step)
+    {
+        if (step.X is not int || step.Y is not int)
+        {
+            return OperationResult.Failure("click_point step requires x and y.");
+        }
+        if (!TryClickStyle(step.ClickStyle, out _, out OperationResult clickError))
+        {
+            return clickError;
+        }
+        return TryCoordinateSpace(step.CoordinateSpace, out _, out OperationResult spaceError)
+            ? null
+            : spaceError;
+    }
+
+    private static OperationResult? ValidateKeyChord(BatchStep step)
+    {
+        return KeyboardChordParser.TryParse(step.Chord, out _, out string? parseError)
+            ? null
+            : OperationResult.Failure(parseError!);
     }
 
     private OperationResult Click(BatchStep step, int processId)
@@ -186,7 +255,14 @@ public sealed class StepRunner
         {
             return spaceError;
         }
-        return _invoker.ClickPoint(processId, x, y, style, step.WindowTitle, windowRelative);
+        return _invoker.ClickPoint(
+            processId,
+            x,
+            y,
+            style,
+            step.WindowTitle,
+            windowRelative,
+            step.AllowOutOfWindow ?? false);
     }
 
     private OperationResult Type(BatchStep step, int processId)
@@ -326,7 +402,7 @@ public sealed class StepRunner
     }
 
     private static bool IsMutatingAction(string action) =>
-        action is "click" or "click_point" or "type" or "key_chord" or "select" or "hover";
+        action is "click" or "click_point" or "type" or "key_chord" or "select" or "hover" or "screenshot";
 
     private static bool IsFatal(Exception ex) =>
         ex is OutOfMemoryException or StackOverflowException or ThreadAbortException;

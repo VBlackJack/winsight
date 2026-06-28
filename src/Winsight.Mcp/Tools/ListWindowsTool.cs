@@ -43,6 +43,12 @@ public static class ListWindowsTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (processId is int pid &&
+                !ToolAccessPolicy.TryAuthorizeProcess(pid, out string error))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(error), JsonOptions.Default);
+            }
+
             IReadOnlyList<WindowDescriptor> windows = discovery.List(processId);
             return JsonSerializer.Serialize(windows, JsonOptions.Default);
         });

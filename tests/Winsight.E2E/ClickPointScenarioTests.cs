@@ -60,8 +60,8 @@ public class ClickPointScenarioTests
             var button = (ElementState)buttonState.Data!;
 
             // Click the absolute screen center directly. Screen-space click_point
-            // resolves no window, so a transient tooltip (whose title can even
-            // contain the window's words) can never be mistaken for the target.
+            // is bounds-checked against visible windows of the target process,
+            // so a transient topmost popup cannot steal the coordinate frame.
             int screenX = button.X + button.Width / 2;
             int screenY = button.Y + button.Height / 2;
 

@@ -370,9 +370,12 @@ The universal guard pins the failure to the calling tool only.
 `SessionTarget` is also the process-policy choke point. `TryResolve` and
 `TrySet` enforce optional allowlists before any process-scoped tool runs:
 `WINSIGHT_ALLOWED_PROCESS_IDS`, `WINSIGHT_ALLOWED_PROCESS_NAMES`, and
-`WINSIGHT_ALLOWED_EXECUTABLES` for `launch_app`. `WINSIGHT_DRY_RUN` blocks
-mutating MCP tools (`click_*`, typing, selection, key chords, JS evaluation,
-launch/close) and returns a structured preview instead.
+`WINSIGHT_ALLOWED_EXECUTABLES` for `launch_app`. The CDP tools also require
+the requested port to be a listening socket owned by a WebView2 process
+discovered under the authorized host process, so a raw loopback port is not
+enough to bypass the process policy. `WINSIGHT_DRY_RUN` blocks mutating MCP
+tools (`click_*`, typing, selection, key chords, JS evaluation, launch/close,
+and `run_steps` screenshot writes) and returns a structured preview instead.
 
 `run_steps` can write a replay artifact containing the prepared batch and
 journal. `replay_steps` reads that artifact and re-runs it, dry-run by
@@ -384,17 +387,24 @@ default, so an agent can debug a scenario before repeating side effects.
 
 - `observe` fuses window discovery, affordance scanning, likely next actions,
   session memory, and optional screenshots.
+- Each observed affordance carries a stable `affordanceId`; `nextActions`
+  includes the preferred tool, locator args, dry-run defaults, risk, and
+  expected feedback so agents can act without re-deriving the call shape.
 - `plan_steps` turns a human goal into a conservative `BatchStep` draft that
   should be dry-run before execution.
 - `repair_locator` ranks current UI and memory candidates when a locator fails.
 - `act_and_observe`, `click_and_wait`, and `type_and_assert` collapse common
   act/sync/assert/diff loops into one call.
+- `get_agent_state` returns the current target, guardrails, memory, last
+  failure, recommended next step, and embedded recipes.
 - `get_winsight_guide` exposes the preferred loop directly through MCP, so an
   agent does not need external documentation in context.
 
 `SessionMemory` records recently observed locators by process/window and keeps a
 short list of repairable failures. It is intentionally session-scoped, not
-persisted to disk.
+persisted to disk. Repairable high-level failures share the same data shape:
+`code`, `cause`, `suggestedTool`, optional `suggestedArgs`, optional
+`candidates`, and `retryable`.
 
 ## Failure modes and how they are reported
 

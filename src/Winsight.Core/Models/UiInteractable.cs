@@ -35,4 +35,5 @@ public sealed record UiInteractable(
     int Width,
     int Height,
     string WindowTitle,
-    string RecommendedLocator);
+    string RecommendedLocator,
+    string AffordanceId = "");

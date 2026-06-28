@@ -18,6 +18,7 @@ namespace Winsight.Mcp;
 
 public sealed record LocatorMemoryEntry(
     string Key,
+    string AffordanceId,
     int ProcessId,
     string? WindowTitle,
     string ControlType,
@@ -84,6 +85,7 @@ public sealed class SessionMemory
                     : 1;
                 _locators[key] = new LocatorMemoryEntry(
                     key,
+                    element.AffordanceId,
                     processId,
                     windowTitle,
                     element.ControlType,
@@ -175,6 +177,7 @@ public sealed class SessionMemory
             processId.ToString(System.Globalization.CultureInfo.InvariantCulture),
             windowTitle ?? string.Empty,
             element.ControlType,
+            element.AffordanceId,
             element.AutomationId ?? string.Empty,
             element.Name,
             element.RecommendedLocator);

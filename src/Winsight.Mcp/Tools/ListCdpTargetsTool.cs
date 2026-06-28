@@ -17,6 +17,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Cdp;
+using Winsight.Core.Modules.WebView2;
 using Winsight.Mcp.Serialization;
 
 namespace Winsight.Mcp.Tools;
@@ -29,17 +30,30 @@ public static class ListCdpTargetsTool
         "navigating; retry after the app finishes loading.";
 
     [McpServerTool(Name = "list_cdp_targets")]
-    [Description("List the debuggable targets of a Chrome DevTools Protocol endpoint (use the port " +
-                 "reported by detect_webview2_endpoints). Returns one entry per target with its id, " +
-                 "title, url and type. Pass a 'page' target id to evaluate_javascript or " +
-                 "type_into_webview to drive the embedded web content.")]
+    [Description("List the debuggable targets of an authorized Chrome DevTools Protocol endpoint. " +
+                 "The port must be reported by detect_webview2_endpoints for the session target or " +
+                 "explicit hostProcessId. Returns one entry per target with its id, title, url and " +
+                 "type. Pass a 'page' target id to evaluate_javascript or type_into_webview to drive " +
+                 "the embedded web content.")]
     public static Task<string> ListCdpTargets(
         CdpTargetDiscovery discovery,
+        WebView2Detector detector,
+        SessionTarget target,
         [Description("CDP debugging port (RemoteDebuggingPort from detect_webview2_endpoints).")]
-        int port)
+        int port,
+        [Description("Host process id that owns the WebView2 endpoint. Optional — falls back to the session default set by set_target.")]
+        int? hostProcessId = null)
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
+            if (!target.TryResolve(hostProcessId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (CdpEndpointPolicy.DenyUnauthorizedPort(detector, pid, port) is { } denied)
+            {
+                return JsonSerializer.Serialize(denied, JsonOptions.Default);
+            }
             IReadOnlyList<CdpTarget> targets = await discovery.ListAsync(port).ConfigureAwait(false);
             bool hasPage = targets.Any(t =>
                 string.Equals(t.Type, "page", StringComparison.OrdinalIgnoreCase));

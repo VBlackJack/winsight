@@ -93,7 +93,7 @@ public sealed class UiTreeInspector
         }
         else
         {
-            AutomationElement[] childElements = element.FindAllChildren();
+            AutomationElement[] childElements = SafeChildren(element);
             var childNodes = new UiElementNode[childElements.Length];
             for (var i = 0; i < childElements.Length; i++)
             {
@@ -102,20 +102,74 @@ public sealed class UiTreeInspector
             children = childNodes;
         }
 
-        System.Drawing.Rectangle rect = element.BoundingRectangle;
+        (string automationId, string name, string controlType, string className) = SafeSnapshot(element);
+        System.Drawing.Rectangle rect = SafeBoundingRectangle(element);
         return new UiElementNode(
-            AutomationId: element.Properties.AutomationId.ValueOrDefault ?? string.Empty,
-            Name: element.Properties.Name.ValueOrDefault ?? string.Empty,
-            ControlType: element.Properties.ControlType.ValueOrDefault.ToString(),
-            ClassName: element.Properties.ClassName.ValueOrDefault ?? string.Empty,
-            IsEnabled: element.Properties.IsEnabled.ValueOrDefault,
-            IsVisible: !element.Properties.IsOffscreen.ValueOrDefault,
+            AutomationId: automationId,
+            Name: name,
+            ControlType: controlType,
+            ClassName: className,
+            IsEnabled: SafeReadIsEnabled(element),
+            IsVisible: !SafeReadIsOffscreen(element),
             Value: ReadValue(element),
             X: rect.X,
             Y: rect.Y,
             Width: rect.Width,
             Height: rect.Height,
             Children: children);
+    }
+
+    private static (string AutomationId, string Name, string ControlType, string ClassName) SafeSnapshot(
+        AutomationElement element)
+    {
+        try
+        {
+            return (
+                element.Properties.AutomationId.ValueOrDefault ?? string.Empty,
+                element.Properties.Name.ValueOrDefault ?? string.Empty,
+                element.Properties.ControlType.ValueOrDefault.ToString(),
+                element.Properties.ClassName.ValueOrDefault ?? string.Empty);
+        }
+        catch (COMException)
+        {
+            return (string.Empty, string.Empty, string.Empty, string.Empty);
+        }
+    }
+
+    private static bool SafeReadIsEnabled(AutomationElement element)
+    {
+        try
+        {
+            return element.Properties.IsEnabled.ValueOrDefault;
+        }
+        catch (COMException)
+        {
+            return false;
+        }
+    }
+
+    private static bool SafeReadIsOffscreen(AutomationElement element)
+    {
+        try
+        {
+            return element.Properties.IsOffscreen.ValueOrDefault;
+        }
+        catch (COMException)
+        {
+            return true;
+        }
+    }
+
+    private static System.Drawing.Rectangle SafeBoundingRectangle(AutomationElement element)
+    {
+        try
+        {
+            return element.BoundingRectangle;
+        }
+        catch (COMException)
+        {
+            return System.Drawing.Rectangle.Empty;
+        }
     }
 
     private static string? ReadValue(AutomationElement element)
@@ -127,6 +181,18 @@ public sealed class UiTreeInspector
         catch (COMException)
         {
             return null;
+        }
+    }
+
+    private static AutomationElement[] SafeChildren(AutomationElement element)
+    {
+        try
+        {
+            return element.FindAllChildren();
+        }
+        catch (COMException)
+        {
+            return Array.Empty<AutomationElement>();
         }
     }
 

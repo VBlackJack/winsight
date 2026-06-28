@@ -75,21 +75,21 @@ public sealed class ManagedStateReader
 
         return field.ElementType switch
         {
-            ClrElementType.Boolean   => obj.ReadField<bool>(fieldName),
-            ClrElementType.Char      => obj.ReadField<char>(fieldName),
-            ClrElementType.Int8      => obj.ReadField<sbyte>(fieldName),
-            ClrElementType.UInt8     => obj.ReadField<byte>(fieldName),
-            ClrElementType.Int16     => obj.ReadField<short>(fieldName),
-            ClrElementType.UInt16    => obj.ReadField<ushort>(fieldName),
-            ClrElementType.Int32     => obj.ReadField<int>(fieldName),
-            ClrElementType.UInt32    => obj.ReadField<uint>(fieldName),
-            ClrElementType.Int64     => obj.ReadField<long>(fieldName),
-            ClrElementType.UInt64    => obj.ReadField<ulong>(fieldName),
-            ClrElementType.Float     => obj.ReadField<float>(fieldName),
-            ClrElementType.Double    => obj.ReadField<double>(fieldName),
+            ClrElementType.Boolean => obj.ReadField<bool>(fieldName),
+            ClrElementType.Char => obj.ReadField<char>(fieldName),
+            ClrElementType.Int8 => obj.ReadField<sbyte>(fieldName),
+            ClrElementType.UInt8 => obj.ReadField<byte>(fieldName),
+            ClrElementType.Int16 => obj.ReadField<short>(fieldName),
+            ClrElementType.UInt16 => obj.ReadField<ushort>(fieldName),
+            ClrElementType.Int32 => obj.ReadField<int>(fieldName),
+            ClrElementType.UInt32 => obj.ReadField<uint>(fieldName),
+            ClrElementType.Int64 => obj.ReadField<long>(fieldName),
+            ClrElementType.UInt64 => obj.ReadField<ulong>(fieldName),
+            ClrElementType.Float => obj.ReadField<float>(fieldName),
+            ClrElementType.Double => obj.ReadField<double>(fieldName),
             ClrElementType.NativeInt => obj.ReadField<long>(fieldName),
-            ClrElementType.String    => obj.ReadStringField(fieldName),
-            _                        => $"<unsupported element type: {field.ElementType}>",
+            ClrElementType.String => obj.ReadStringField(fieldName),
+            _ => $"<unsupported element type: {field.ElementType}>",
         };
     }
 }

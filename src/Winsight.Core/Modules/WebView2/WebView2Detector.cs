@@ -13,8 +13,6 @@
 // limitations under the License.
 
 using System.Management;
-using System.Net;
-using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
 using Winsight.Core.Models;
 
@@ -28,7 +26,7 @@ public sealed class WebView2Detector
     public IReadOnlyList<WebView2Endpoint> Detect(int hostProcessId)
     {
         Dictionary<int, List<ProcessSnapshot>> processTree = BuildProcessTree();
-        HashSet<int> listeningPorts = GetListeningTcpPorts();
+        Dictionary<int, HashSet<int>> listeningPortOwners = TcpListenerProcessTable.GetListenerOwnersByPort();
         IEnumerable<ProcessSnapshot> descendants = EnumerateDescendants(hostProcessId, processTree);
 
         var endpoints = new List<WebView2Endpoint>();
@@ -44,22 +42,19 @@ public sealed class WebView2Detector
                 HostProcessId: hostProcessId,
                 WebView2ProcessId: process.ProcessId,
                 RemoteDebuggingPort: port,
-                IsPortListening: port.HasValue && listeningPorts.Contains(port.Value),
+                IsPortListening: IsPortOwnedByProcess(listeningPortOwners, port, process.ProcessId),
                 CommandLine: process.CommandLine ?? string.Empty));
         }
         return endpoints;
     }
 
-    private static HashSet<int> GetListeningTcpPorts()
-    {
-        IPEndPoint[] listeners = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
-        var ports = new HashSet<int>(listeners.Length);
-        foreach (IPEndPoint endpoint in listeners)
-        {
-            ports.Add(endpoint.Port);
-        }
-        return ports;
-    }
+    private static bool IsPortOwnedByProcess(
+        Dictionary<int, HashSet<int>> listeningPortOwners,
+        int? port,
+        int processId) =>
+        port is int value &&
+        listeningPortOwners.TryGetValue(value, out HashSet<int>? owners) &&
+        owners.Contains(processId);
 
     private static Dictionary<int, List<ProcessSnapshot>> BuildProcessTree()
     {

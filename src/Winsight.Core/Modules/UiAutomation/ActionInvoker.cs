@@ -91,7 +91,8 @@ public sealed class ActionInvoker
         int y,
         ClickStyle style = ClickStyle.Primary,
         string? windowTitle = null,
-        bool windowRelative = true)
+        bool windowRelative = true,
+        bool allowOutOfWindow = false)
     {
         int screenX;
         int screenY;
@@ -115,6 +116,19 @@ public sealed class ActionInvoker
         {
             screenX = x;
             screenY = y;
+            if (!allowOutOfWindow)
+            {
+                if (!WindowGeometry.TryResolveBoundsContainingPoint(
+                        processId,
+                        windowTitle,
+                        screenX,
+                        screenY,
+                        out _,
+                        out string? error))
+                {
+                    return OperationResult.Failure(error!);
+                }
+            }
         }
 
         System.Drawing.Point point = new(screenX, screenY);

@@ -39,6 +39,7 @@ public sealed record BatchStep(
     int? X = null,
     int? Y = null,
     string? CoordinateSpace = null,
+    bool? AllowOutOfWindow = null,
     // type.
     string? Text = null,
     bool? FocusWindow = null,

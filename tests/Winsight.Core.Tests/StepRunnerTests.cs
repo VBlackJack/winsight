@@ -153,4 +153,37 @@ public sealed class StepRunnerTests
         result.Steps[0].Success.Should().BeTrue();
         JsonSerializer.Serialize(result.Steps[0].Data).Should().Contain("\"dryRun\":true");
     }
+
+    [Fact]
+    public void Dry_run_still_rejects_invalid_mutating_steps()
+    {
+        BatchResult result = NewRunner().Run(
+            new[] { new BatchStep("select", AutomationId: "Options", ProcessId: 1) },
+            defaultProcessId: null,
+            stopOnError: true,
+            dryRun: true);
+
+        result.Success.Should().BeFalse();
+        result.Steps[0].Success.Should().BeFalse();
+        result.Steps[0].Error.Should().Contain("itemName");
+    }
+
+    [Fact]
+    public void Dry_run_journals_screenshot_steps_without_writing_a_file()
+    {
+        string outputPath = Path.Combine(
+            Path.GetTempPath(),
+            "winsight-tests",
+            $"dry-run-screenshot-{Guid.NewGuid():N}.png");
+
+        BatchResult result = NewRunner().Run(
+            new[] { new BatchStep("screenshot", ProcessId: 4, OutputPath: outputPath) },
+            defaultProcessId: null,
+            stopOnError: true,
+            dryRun: true);
+
+        result.Success.Should().BeTrue();
+        File.Exists(outputPath).Should().BeFalse();
+        JsonSerializer.Serialize(result.Steps[0].Data).Should().Contain(outputPath.Replace("\\", "\\\\"));
+    }
 }

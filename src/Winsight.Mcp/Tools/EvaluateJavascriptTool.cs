@@ -17,6 +17,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Cdp;
+using Winsight.Core.Modules.WebView2;
 using Winsight.Mcp.Serialization;
 
 namespace Winsight.Mcp.Tools;
@@ -25,12 +26,15 @@ namespace Winsight.Mcp.Tools;
 public static class EvaluateJavascriptTool
 {
     [McpServerTool(Name = "evaluate_javascript")]
-    [Description("Evaluate a JavaScript expression inside a WebView2 page over the Chrome DevTools " +
-                 "Protocol (promises are awaited, the result is returned by value as JSON). Use this " +
-                 "to read DOM state, extract visible text (e.g. document.body.innerText), or perform " +
-                 "ad-hoc actions UIA cannot reach. Get the port from detect_webview2_endpoints and " +
-                 "the targetId from list_cdp_targets.")]
+    [Description("Evaluate a JavaScript expression inside an authorized WebView2 page over the Chrome " +
+                 "DevTools Protocol (promises are awaited, the result is returned by value as JSON). " +
+                 "Use this to read DOM state, extract visible text (e.g. document.body.innerText), or " +
+                 "perform ad-hoc actions UIA cannot reach. The port must come from " +
+                 "detect_webview2_endpoints for the session target or explicit hostProcessId; get the " +
+                 "targetId from list_cdp_targets.")]
     public static Task<string> EvaluateJavascript(
+        WebView2Detector detector,
+        SessionTarget target,
         [Description("CDP debugging port.")]
         int port,
         [Description("Target id of the page (from list_cdp_targets).")]
@@ -39,13 +43,31 @@ public static class EvaluateJavascriptTool
         string expression,
         [Description("Optional per-command timeout in milliseconds. Defaults to " +
                      "WINSIGHT_CDP_TIMEOUT_MS or 10000.")]
-        int? timeoutMs = null)
+        int? timeoutMs = null,
+        [Description("Host process id that owns the WebView2 endpoint. Optional — falls back to the session default set by set_target.")]
+        int? hostProcessId = null)
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
+            if (!target.TryResolve(hostProcessId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (CdpEndpointPolicy.DenyUnauthorizedPort(detector, pid, port) is { } denied)
+            {
+                return JsonSerializer.Serialize(denied, JsonOptions.Default);
+            }
+            if (string.IsNullOrWhiteSpace(targetId))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure("targetId is required."), JsonOptions.Default);
+            }
+            if (expression is null)
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure("expression is required."), JsonOptions.Default);
+            }
             if (ToolAccessPolicy.DryRunMutation(
                     "evaluate_javascript",
-                    new { port, targetId, expressionLength = expression.Length })
+                    new { hostProcessId = pid, port, targetId, expressionLength = expression.Length })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);

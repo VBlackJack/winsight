@@ -51,11 +51,14 @@ internal static class ScreenshotOutput
     /// Builds a timestamped PNG path under <see cref="ResolveDirectory"/> using
     /// the given file-name prefix (for example "screenshot-").
     /// </summary>
-    public static string BuildTimestampedPath(string filePrefix)
+    public static string BuildTimestampedPath(string filePrefix, bool pruneOldCaptures = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePrefix);
         string directory = ResolveDirectory();
-        PruneOldCaptures(directory, filePrefix);
+        if (pruneOldCaptures)
+        {
+            PruneOldCaptures(directory, filePrefix);
+        }
         string timestamp = DateTime.UtcNow.ToString(TimestampFormat, CultureInfo.InvariantCulture);
         return Path.Combine(directory, filePrefix + timestamp + Extension);
     }

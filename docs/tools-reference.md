@@ -44,6 +44,7 @@ repairable action.
 | `act_and_observe` | Execute one `BatchStep` and return the action journal plus before/after structural diff |
 | `click_and_wait` | Click a locator and wait for a post-click condition in one call |
 | `type_and_assert` | Type text and immediately assert observable state |
+| `get_agent_state` | Return compact target, guardrail, memory, last-failure, and recipe context |
 | `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
 | `get_winsight_guide` | Return the embedded playbook for agents |
 
@@ -61,7 +62,10 @@ capture.
 | `maxResults` | int | 100 | Max actionable elements |
 
 The response is an `OperationResult` whose `data` has `windows`, `elements`,
-`nextActions`, optional `screenshot`, and `memory`.
+`nextActions`, optional `screenshot`, and `memory`. Each actionable element
+includes a stable `affordanceId` plus its `recommendedLocator`; each
+`nextActions` entry names the preferred tool, ready-to-fill arguments,
+required inputs, risk, expected feedback, and `locatorArgs`.
 
 ### Planning and Repair
 
@@ -77,10 +81,27 @@ return structured failure data:
   "error": "No processId given ...",
   "data": {
     "code": "missing_target",
-    "suggestedFix": { "tool": "set_target" }
+    "message": "No processId given ...",
+    "cause": "target_resolution",
+    "suggestedTool": "set_target",
+    "suggestedArgs": { "processId": "<target process id>" },
+    "retryable": true
   }
 }
 ```
+
+### Agent State and Embedded Recipes
+
+`get_agent_state` is the compact orientation call for agents that have lost
+context. It returns:
+
+- `target`: current session process id and whether a target exists.
+- `guardrails`: dry-run, allowlist, and trace status.
+- `memory`: recently observed locators and recent repairable failures.
+- `lastFailure`: most recent failure, if any.
+- `recommendedNextStep`: the next recovery/action step as a short string.
+- `recipes`: built-in workflows such as `form_fill`, `dialog_flow`,
+  `visual_click`, `webview_cdp`, and `locator_repair`.
 
 ### Macro Tools
 
@@ -464,14 +485,17 @@ on it.
 | `clickStyle`      | string? | no       | `single` (default), `double`, or `right`                           |
 | `windowTitle`     | string? | no       | Restrict the target window to those whose title contains this text |
 | `coordinateSpace` | string? | no       | `window` (default) or `screen`                                     |
+| `allowOutOfWindow` | bool   | no       | With `coordinateSpace=screen`, allow points outside the target window bounds. Default false. |
 
 `coordinateSpace=window` interprets `x,y` in the target window's coordinate
 space — the **same origin as a full-window screenshot**, so the `x,y` returned
 by `find_element_visually` can be passed straight through. The tool resolves the
 window origin (topmost visible window, or the one scoped by `windowTitle`),
 verifies the point falls inside the window bounds, and translates it to screen
-space. `coordinateSpace=screen` treats `x,y` as absolute desktop coordinates and
-clicks them directly.
+space. `coordinateSpace=screen` treats `x,y` as absolute desktop coordinates,
+but still verifies the point falls inside a visible window of the target process
+(after any `windowTitle` filter) unless `allowOutOfWindow=true` is set
+intentionally.
 
 Unlike `click_element`, there is no UIA pattern resolution: every style is a
 physical mouse action at the computed point.
@@ -483,15 +507,14 @@ that was clicked:
 { "success": true, "data": { "screenX": 846, "screenY": 432 } }
 ```
 
-A window-relative point outside the resolved window bounds is an explicit
-failure that reports the window size, so the agent can correct the coordinate.
+A point outside the resolved window bounds is an explicit failure that reports
+the window size, so the agent can correct the coordinate.
 
 > **Targeting a specific window** — without `windowTitle`, the window origin is
 > the **topmost** visible window of the process, which can be a transient
 > tooltip or popup rather than the one you measured against. When clicking a
-> point relative to a specific surface, pass `windowTitle` (or use
-> `coordinateSpace=screen` with `find_element_visually`'s `screenX/screenY`,
-> which are absolute) so the resolution is deterministic.
+> point relative to a specific surface, pass `windowTitle`; this also narrows
+> `coordinateSpace=screen` bounds checks to the intended window family.
 
 ## `type_text`
 
@@ -720,7 +743,7 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `stopOnError` | bool        | no       | Stop at the first failing step (default true)                    |
 | `captureExceptions` | bool  | no       | Attach the exceptions the target process threw during the batch (causal oracle). Requires the batch-level `processId`. |
 | `maxDurationMs` | int?      | no       | Total budget for the batch. When elapsed time reaches it before a step, the run stops and `timedOut` is true. |
-| `dryRun`      | bool        | no       | Validate and journal mutating steps without clicking, typing, selecting, or hovering. Also enabled globally by `WINSIGHT_DRY_RUN`. |
+| `dryRun`      | bool        | no       | Validate and journal mutating steps without clicking, typing, selecting, hovering, or writing screenshots. Also enabled globally by `WINSIGHT_DRY_RUN`. |
 | `traceRun`    | bool        | no       | Write a replay JSON artifact even when global tracing is off. |
 
 **Step shape** — a flat object with an `action` discriminator plus that action's
@@ -733,7 +756,7 @@ in the journal.
 | `action`      | Maps to              | Step-specific fields                                            |
 | ------------- | -------------------- | -------------------------------------------------------------- |
 | `click`       | `click_element`      | `clickStyle`                                                   |
-| `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`                       |
+| `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`, `allowOutOfWindow`    |
 | `type`        | `type_text`          | `text`, `focusWindow`                                          |
 | `key_chord`   | `send_key_chord`     | `chord`                                                        |
 | `select`      | `select_item`        | `itemName`                                                    |
@@ -772,8 +795,8 @@ absent from `steps`. With `stopOnError: false`, every step runs and
 `total` is the number submitted. When `maxDurationMs` is set and the budget is
 hit before all steps run, the result has `timedOut: true` and `success: false`.
 When `dryRun` is true, mutating actions report `data.dryRun=true` and do not
-touch the target UI. Read-only steps such as `wait`, `assert`, `get_state`, and
-`screenshot` still run.
+touch the target UI or write screenshots. Read-only steps such as `wait`,
+`assert`, and `get_state` still run.
 
 **Replay artifacts** — set `traceRun: true`, `WINSIGHT_TRACE=1`, or
 `WINSIGHT_TRACE_DIR` to write a replay JSON file. `BatchResult.tracePath` points
@@ -1058,9 +1081,13 @@ List the debuggable targets of a Chrome DevTools Protocol endpoint
 
 **Parameters**
 
-| Name   | Type | Default | Description                                  |
-| ------ | ---- | ------- | -------------------------------------------- |
-| `port` | int  | —       | CDP debugging port (`remoteDebuggingPort`).   |
+| Name            | Type | Default | Description                                  |
+| --------------- | ---- | ------- | -------------------------------------------- |
+| `port`          | int  | —       | CDP debugging port (`remoteDebuggingPort`).   |
+| `hostProcessId` | int? | null    | Host process that owns the WebView2 endpoint. Falls back to `set_target`. |
+
+The port must match a listening `remoteDebuggingPort` reported by
+`detect_webview2_endpoints` for the authorized host process.
 
 **Returns**
 
@@ -1098,6 +1125,10 @@ ad-hoc actions UIA cannot reach.
 | `targetId`   | string  | —       | Page target id from `list_cdp_targets`.                   |
 | `expression` | string  | —       | JavaScript expression evaluated in the page context.      |
 | `timeoutMs`  | int?    | null    | Per-command timeout; defaults to `WINSIGHT_CDP_TIMEOUT_MS` or 10000. |
+| `hostProcessId` | int? | null    | Host process that owns the WebView2 endpoint. Falls back to `set_target`. |
+
+The port must match a listening WebView2 endpoint owned by the authorized host
+process; raw loopback CDP ports are rejected.
 
 **Returns** — a `CdpEvaluationResult`:
 
@@ -1130,6 +1161,10 @@ typing against embedded WebView2 content.
 | `text`          | string  | —       | Text to type. `\n` / `\r\n` become Enter, `\t` becomes Tab.        |
 | `focusSelector` | string? | null    | CSS selector focused before typing (e.g. `.xterm-helper-textarea`). Fails explicitly when nothing matches. |
 | `timeoutMs`     | int?    | null    | Per-command timeout; defaults to `WINSIGHT_CDP_TIMEOUT_MS` or 10000. |
+| `hostProcessId` | int?    | null    | Host process that owns the WebView2 endpoint. Falls back to `set_target`. |
+
+The port must match a listening WebView2 endpoint owned by the authorized host
+process; raw loopback CDP ports are rejected.
 
 **Returns**
 

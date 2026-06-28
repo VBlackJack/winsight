@@ -34,7 +34,7 @@ public static class RunStepsTool
                  "(automationId, name, className, controlType, nameContains, index, descendantText, " +
                  "windowTitle) work like click_element. Actions: " +
                  "'click' (clickStyle), " +
-                 "'click_point' (x, y, clickStyle, coordinateSpace), " +
+                 "'click_point' (x, y, clickStyle, coordinateSpace, allowOutOfWindow), " +
                  "'type' (text, focusWindow), " +
                  "'key_chord' (chord), " +
                  "'select' (itemName), " +
@@ -99,17 +99,25 @@ public static class RunStepsTool
                     JsonOptions.Default);
             }
 
+            bool effectiveDryRun = dryRun || ToolAccessPolicy.IsDryRunEnabled;
+
             // Fill a default capture path for screenshot steps that omit one, so
             // the engine layer stays free of the output-directory convention.
+            // Dry-run still reports the path it would use, but does not prune or
+            // write captures.
             List<BatchStep> prepared = steps
                 .Select(step =>
                     string.Equals(step.Action?.Trim(), ScreenshotAction, StringComparison.OrdinalIgnoreCase)
                     && string.IsNullOrEmpty(step.OutputPath)
-                        ? step with { OutputPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix) }
+                        ? step with
+                        {
+                            OutputPath = ScreenshotOutput.BuildTimestampedPath(
+                                ScreenshotPrefix,
+                                pruneOldCaptures: !effectiveDryRun),
+                        }
                         : step)
                 .ToList();
 
-            bool effectiveDryRun = dryRun || ToolAccessPolicy.IsDryRunEnabled;
             BatchResult result;
             if (captureExceptions)
             {

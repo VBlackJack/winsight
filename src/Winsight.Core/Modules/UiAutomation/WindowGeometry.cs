@@ -55,18 +55,68 @@ public static class WindowGeometry
 
         // EnumWindows returns top-level windows in z-order, topmost first.
         IntPtr hwnd = candidates[0].Handle;
-        if (!GetWindowRect(hwnd, out Rect rect))
+        if (!TryReadBounds(hwnd, out bounds))
         {
             error = $"GetWindowRect failed for window 0x{hwnd.ToInt64():x} (process {processId}).";
             return false;
         }
 
-        bounds = new WindowBounds(
-            Left: rect.Left,
-            Top: rect.Top,
-            Width: rect.Right - rect.Left,
-            Height: rect.Bottom - rect.Top);
         return true;
+    }
+
+    /// <summary>
+    /// Resolve the visible process window that contains an absolute screen point.
+    /// For screen-space input this is safer than using the topmost process window:
+    /// transient popups can be topmost while the clicked point still belongs to
+    /// the main target window.
+    /// </summary>
+    public static bool TryResolveBoundsContainingPoint(
+        int processId,
+        string? windowTitle,
+        int screenX,
+        int screenY,
+        out WindowBounds bounds,
+        out string? error)
+    {
+        bounds = default!;
+        error = null;
+
+        List<(IntPtr Handle, string Title)> windows =
+            NativeWindowEnumerator.VisibleTopLevelWindows(processId);
+        List<(IntPtr Handle, string Title)> candidates = FilterByTitle(windows, windowTitle);
+
+        if (candidates.Count == 0)
+        {
+            error = string.IsNullOrWhiteSpace(windowTitle) || windows.Count == 0
+                ? $"No top-level window found for process {processId}."
+                : $"No window of process {processId} has a title containing \"{windowTitle}\". " +
+                  $"Available windows: {string.Join(", ", windows.Select(w => $"\"{w.Title}\""))}.";
+            return false;
+        }
+
+        List<WindowBounds> candidateBounds = new(candidates.Count);
+        foreach ((IntPtr handle, _) in candidates)
+        {
+            if (!TryReadBounds(handle, out WindowBounds candidate))
+            {
+                continue;
+            }
+
+            candidateBounds.Add(candidate);
+            if (ContainsScreenPoint(candidate, screenX, screenY))
+            {
+                bounds = candidate;
+                return true;
+            }
+        }
+
+        error = candidateBounds.Count == 0
+            ? $"Could not read any window bounds for process {processId}."
+            : $"Screen-space point ({screenX}, {screenY}) is outside every visible target window. " +
+              $"Available bounds: {string.Join(", ", candidateBounds.Select(FormatBounds))}. " +
+              "Use window-relative coordinates, pass windowTitle for the intended window, or set " +
+              "allowOutOfWindow=true intentionally.";
+        return false;
     }
 
     /// <summary>
@@ -85,6 +135,32 @@ public static class WindowGeometry
                 .Where(window => window.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase))
                 .ToList();
     }
+
+    private static bool TryReadBounds(IntPtr hwnd, out WindowBounds bounds)
+    {
+        bounds = default!;
+        if (!GetWindowRect(hwnd, out Rect rect))
+        {
+            return false;
+        }
+
+        bounds = new WindowBounds(
+            Left: rect.Left,
+            Top: rect.Top,
+            Width: rect.Right - rect.Left,
+            Height: rect.Bottom - rect.Top);
+        return true;
+    }
+
+    private static bool ContainsScreenPoint(WindowBounds bounds, int screenX, int screenY) =>
+        WindowPointMapper.Contains(
+            bounds.Width,
+            bounds.Height,
+            screenX - bounds.Left,
+            screenY - bounds.Top);
+
+    private static string FormatBounds(WindowBounds bounds) =>
+        $"left={bounds.Left}, top={bounds.Top}, width={bounds.Width}, height={bounds.Height}";
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

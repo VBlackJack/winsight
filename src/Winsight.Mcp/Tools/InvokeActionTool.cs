@@ -62,14 +62,6 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
-                    "click_element",
-                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, clickStyle })
-                is { } dryRun)
-            {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
-            }
-
             ClickStyle style = ClickStyle.Primary;
             if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
             {
@@ -77,6 +69,13 @@ public static class InvokeActionTool
                     OperationResult.Failure(
                         $"Unknown clickStyle \"{clickStyle}\". Accepted values: {ClickStyleParser.AcceptedValues}."),
                     JsonOptions.Default);
+            }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "click_element",
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, clickStyle })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(
@@ -92,8 +91,9 @@ public static class InvokeActionTool
                  "Canvas, SkiaSharp, DirectX surfaces). By default x,y are window-relative (the same " +
                  "origin as a full-window screenshot), so the (x, y) from find_element_visually can be " +
                  "passed straight through; set coordinateSpace=screen for absolute desktop coordinates. " +
-                 "The target window should be visible and unoccluded. Returns an OperationResult JSON " +
-                 "whose data carries the absolute screenX/screenY that was clicked.")]
+                 "Screen coordinates are still required to fall inside a visible target process window " +
+                 "unless allowOutOfWindow=true. The target window should be visible and unoccluded. Returns " +
+                 "an OperationResult JSON whose data carries the absolute screenX/screenY that was clicked.")]
     public static string ClickPoint(
         ActionInvoker invoker,
         SessionTarget target,
@@ -107,6 +107,8 @@ public static class InvokeActionTool
         string? windowTitle = null,
         [Description("Coordinate space: window (default, origin at the target window's top-left) or screen (absolute desktop).")]
         string? coordinateSpace = null,
+        [Description("When coordinateSpace=screen, allow the point to be outside the target window bounds. Default false.")]
+        bool allowOutOfWindow = false,
         [Description(ProcessIdDescription)]
         int? processId = null)
     {
@@ -116,14 +118,6 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
-                    "click_point",
-                    new { processId = pid, x, y, clickStyle, windowTitle, coordinateSpace })
-                is { } dryRun)
-            {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
-            }
-
             ClickStyle style = ClickStyle.Primary;
             if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
             {
@@ -151,7 +145,15 @@ public static class InvokeActionTool
                     JsonOptions.Default);
             }
 
-            OperationResult result = invoker.ClickPoint(pid, x, y, style, windowTitle, windowRelative);
+            if (ToolAccessPolicy.DryRunMutation(
+                    "click_point",
+                    new { processId = pid, x, y, clickStyle, windowTitle, coordinateSpace, allowOutOfWindow })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+            }
+
+            OperationResult result = invoker.ClickPoint(pid, x, y, style, windowTitle, windowRelative, allowOutOfWindow);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -192,6 +194,10 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
+            if (text is null)
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure("text is required."), JsonOptions.Default);
+            }
             if (ToolAccessPolicy.DryRunMutation(
                     "type_text",
                     new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, focusWindow, textLength = text.Length })
@@ -226,6 +232,10 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (!KeyboardChordParser.TryParse(chord, out _, out string? parseError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(parseError!), JsonOptions.Default);
             }
             if (ToolAccessPolicy.DryRunMutation(
                     "send_key_chord",
@@ -273,6 +283,10 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (string.IsNullOrEmpty(itemName))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure("itemName is required."), JsonOptions.Default);
             }
             if (ToolAccessPolicy.DryRunMutation(
                     "select_item",

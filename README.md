@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 40 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 41 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -56,7 +56,7 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-212 unit tests green, plus 20 E2E scenarios that drive a live interactive
+249 unit tests green, plus 21 E2E scenarios that drive a live interactive
 Windows desktop.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
@@ -170,7 +170,7 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 40 tools.
+server is connected and lists all 41 tools.
 
 ### Smoke check from the shell
 
@@ -270,6 +270,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `act_and_observe`             | Execute one step and return before/after UI diff plus current affordances |
 | `click_and_wait`              | Click and synchronize in one call, returning action/wait/diff feedback |
 | `type_and_assert`             | Type and immediately assert observable state |
+| `get_agent_state`             | Compact target, guardrail, memory, last-failure, and embedded recipe context |
 | `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
 | `get_winsight_guide`          | Embedded agent playbook for the preferred loop and repair policy |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
@@ -279,7 +280,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `describe_ui`                 | List a window's actionable elements with ready-to-use locators ("what can I do here?") |
 | `snapshot_ui` / `diff_ui`     | Capture a UI baseline and report what an action changed (windows, elements, field values) |
 | `click_element`               | Click a located element (single/double/right, strict locators) |
-| `click_point`                 | Click a window-relative or screen coordinate (acts on a visually grounded point) |
+| `click_point`                 | Click a window-relative or bounded screen coordinate (acts on a visually grounded point) |
 | `type_text`                   | Type into a located element                            |
 | `send_key_chord`              | Focus a window and send a verified keyboard chord      |
 | `hover_element`               | Hover an element and capture/assert its tooltip        |
@@ -291,9 +292,9 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `capture_screenshot`          | PNG capture of a topmost or title-scoped window, returned inline as an MCP image (PrintWindow PW_RENDERFULLCONTENT) |
 | `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |
 | `detect_webview2_endpoints`   | Find WebView2 children and report any CDP endpoint     |
-| `list_cdp_targets`            | List debuggable targets exposed by a CDP endpoint      |
-| `evaluate_javascript`         | Evaluate JavaScript inside a WebView2 page over CDP    |
-| `type_into_webview`           | Type into WebView2 content using CDP key events        |
+| `list_cdp_targets`            | List debuggable targets exposed by an authorized WebView2 CDP endpoint |
+| `evaluate_javascript`         | Evaluate JavaScript inside an authorized WebView2 page over CDP |
+| `type_into_webview`           | Type into authorized WebView2 content using CDP key events |
 | `observe_counters`            | Subscribe to EventCounters via EventPipe (non-intrusive oracle) |
 | `capture_events`              | Capture arbitrary EventPipe events (exceptions, custom EventSource) |
 | `find_element_visually`       | Locate an element from a natural-language query using a vision model |
@@ -309,6 +310,8 @@ the connected agent broad capability over that desktop session:
 
 - `launch_app` starts an arbitrary executable; `close_app` terminates a process tree.
 - `evaluate_javascript` runs arbitrary JavaScript inside an embedded WebView2 page.
+  CDP tools only connect to ports reported by `detect_webview2_endpoints` for
+  the authorized session target or explicit host process.
 - `read_managed_state` attaches to a managed process and reads its memory (CLRMD);
   `observe_counters` / `capture_events` open EventPipe sessions on it.
 - `capture_screenshot` writes to any `outputPath` you pass (it is **not** sandboxed
@@ -330,7 +333,7 @@ Optional guardrails:
 | `WINSIGHT_ALLOWED_PROCESS_IDS` | Comma/semicolon allowlist of process ids every process-scoped tool must pass |
 | `WINSIGHT_ALLOWED_PROCESS_NAMES` | Comma/semicolon allowlist of process names every process-scoped tool must pass |
 | `WINSIGHT_ALLOWED_EXECUTABLES` | Comma/semicolon allowlist for `launch_app` executable paths |
-| `WINSIGHT_DRY_RUN` | `1`/`true`/`yes` blocks mutating tools and returns what would have run |
+| `WINSIGHT_DRY_RUN` | `1`/`true`/`yes` blocks mutating tools and `run_steps` screenshot writes, returning what would have run |
 | `WINSIGHT_TRACE` / `WINSIGHT_TRACE_DIR` | Write tool JSONL traces and `run_steps` replay artifacts |
 
 ## License
