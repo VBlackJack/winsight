@@ -105,4 +105,26 @@ public sealed class SessionTargetTests
             Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, before);
         }
     }
+
+    [Fact]
+    public void Resolve_rejects_allowed_but_non_running_process_ids()
+    {
+        string? before = Environment.GetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable);
+        Environment.SetEnvironmentVariable(
+            ToolAccessPolicy.AllowedProcessIdsVariable,
+            int.MaxValue.ToString(CultureInfo.InvariantCulture));
+        try
+        {
+            SessionTarget target = new();
+
+            bool ok = target.TryResolve(int.MaxValue, out _, out string error);
+
+            ok.Should().BeFalse();
+            error.Should().Contain("not running");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, before);
+        }
+    }
 }

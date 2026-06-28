@@ -33,13 +33,13 @@ jobs:
         run: dotnet build Winsight.slnx -c Release --no-restore
 
       - name: Core tests
-        run: dotnet test tests\Winsight.Core.Tests -c Release --no-build
+        run: dotnet test tests\Winsight.Core.Tests -c Release --no-build --logger "trx" --results-directory TestResults\Core
 
       - name: MCP tests
-        run: dotnet test tests\Winsight.Mcp.Tests -c Release --no-build
+        run: dotnet test tests\Winsight.Mcp.Tests -c Release --no-build --logger "trx" --results-directory TestResults\Mcp
 
       - name: E2E tests
-        run: dotnet test tests\Winsight.E2E -c Release --no-build
+        run: dotnet test tests\Winsight.E2E -c Release --no-build --logger "trx" --results-directory TestResults\E2E
 
       - name: MCP smoke
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke-mcp.ps1 -ExpectedToolCount 40
@@ -52,3 +52,14 @@ jobs:
 
       - name: NuGet outdated package audit
         run: dotnet list Winsight.slnx package --outdated
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: winsight-test-diagnostics
+          if-no-files-found: ignore
+          path: |
+            TestResults/**
+            ${{ runner.temp }}\winsight/**
+            ${{ runner.temp }}\winsight-tests/**

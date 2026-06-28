@@ -13,7 +13,7 @@ development — going beyond what UI Automation alone can do.
 git clone <this-repo> winsight
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 30 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 40 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -130,49 +130,36 @@ can make focus-dependent cases fail in background or remote sessions.
 
 ## Running the MCP server
 
-The server speaks MCP over stdio. There are two ways to wire it into a
-client.
-
-### Development (project path, manual rebuild)
-
-```json
-{
-  "mcpServers": {
-    "winsight": {
-      "command": "dotnet",
-      "args": [
-        "run",
-        "--project",
-        "G:\\_Projects\\winsight\\src\\Winsight.Mcp",
-        "-c", "Release",
-        "--no-build"
-      ]
-    }
-  }
-}
-```
-
-Pair this with running `dotnet build -c Release` manually whenever the
-source changes. Adding `--no-build` keeps client startup fast.
-
-### Production (run the compiled binary)
+The server speaks MCP over stdio. Build it once, then register the wrapper
+script with your client:
 
 ```powershell
 dotnet build src\Winsight.Mcp -c Release
 ```
 
+### Recommended client config
+
 ```json
 {
   "mcpServers": {
     "winsight": {
-      "command": "dotnet",
+      "command": "powershell",
       "args": [
-        "G:\\_Projects\\winsight\\src\\Winsight.Mcp\\bin\\Release\\net10.0-windows\\winsight-mcp.dll"
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "G:\\_Projects\\winsight\\tools\\run-mcp.ps1"
       ]
     }
   }
 }
 ```
+
+`tools\run-mcp.ps1` copies the built MCP server to `%TEMP%\winsight-mcp-runtime`
+before launching it. That keeps `src\Winsight.Mcp\bin` rebuildable while a client
+is connected; direct launches of `src\Winsight.Mcp\bin\...\winsight-mcp.dll`
+hold a file lock and can block `dotnet build`.
 
 ### Where to put the config
 
@@ -183,14 +170,14 @@ dotnet build src\Winsight.Mcp -c Release
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 30 tools.
+server is connected and lists all 40 tools.
 
 ### Smoke check from the shell
 
 To confirm the server starts cleanly (independent of any client):
 
 ```powershell
-dotnet run --project src\Winsight.Mcp -c Release --no-build
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-mcp.ps1
 ```
 
 The process should remain open waiting for stdio input. Press

@@ -16,6 +16,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
+using Winsight.Core.Modules.Orchestration;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Mcp.Tools;
 using Xunit;
@@ -108,5 +109,108 @@ public sealed class AgentExperienceToolTests
         {
             Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, before);
         }
+    }
+
+    [Fact]
+    public void Macro_result_fails_when_any_inner_operation_fails()
+    {
+        var data = new { click = OperationResult.Failure("missing button") };
+
+        OperationResult result = AgentMacroResult.FromParts(
+            "click_and_wait",
+            data,
+            OperationResult.Ok(),
+            OperationResult.Failure("missing button"));
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("click_and_wait failed");
+        result.Data.Should().BeSameAs(data);
+    }
+
+    [Fact]
+    public void Batch_macro_result_reports_the_failing_step()
+    {
+        BatchResult batch = new(
+            Success: false,
+            Completed: 0,
+            Total: 1,
+            FailedAtIndex: 0,
+            Steps: new[]
+            {
+                new StepResult(0, "click", "missing", Success: false, Error: "not found", Data: null),
+            });
+
+        OperationResult result = AgentMacroResult.FromBatch("act_and_observe", batch, new { batch });
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("step 0 (click) failed: not found");
+    }
+
+    [Fact]
+    public void Planner_does_not_emit_a_select_step_without_item_name()
+    {
+        UiInteractable combo = new(
+            ControlType: "ComboBox",
+            AutomationId: "OptionSelector",
+            Name: string.Empty,
+            Value: "Alpha",
+            ToggleState: null,
+            IsSelected: null,
+            IsEnabled: true,
+            IsVisible: true,
+            X: 1,
+            Y: 2,
+            Width: 10,
+            Height: 20,
+            WindowTitle: "Sample",
+            RecommendedLocator: "automationId=\"OptionSelector\"");
+
+        PlannedAgentAction action = AgentStepPlanner.ChooseAction("select beta", text: null, combo);
+
+        action.Action.Should().Be("click");
+        action.RequiresReview.Should().BeTrue();
+        action.ReviewReason.Should().Contain("itemName");
+    }
+
+    [Fact]
+    public void Click_and_wait_failure_is_reported_at_the_top_level()
+    {
+        string json = AgentExperienceTool.ClickAndWait(
+            new ActionInvoker(),
+            new ElementWaiter(),
+            new UiSnapshotter(new WindowDiscovery(), new AffordanceScanner()),
+            new SessionTarget(),
+            automationId: "DefinitelyMissingElement",
+            condition: "exists",
+            processId: Environment.ProcessId);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        root.GetProperty("success").GetBoolean().Should().BeFalse();
+        root.GetProperty("error").GetString().Should().Contain("click_and_wait failed");
+        root.GetProperty("data").GetProperty("click").GetProperty("success").GetBoolean().Should().BeFalse();
+        root.GetProperty("data").GetProperty("wait").GetProperty("success").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Type_and_assert_skips_assertion_and_fails_when_type_fails()
+    {
+        string json = AgentExperienceTool.TypeAndAssert(
+            new ActionInvoker(),
+            new ElementStateReader(),
+            new SessionTarget(),
+            text: "hello",
+            @operator: "contains",
+            expected: "hello",
+            automationId: "DefinitelyMissingInput",
+            processId: Environment.ProcessId);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        root.GetProperty("success").GetBoolean().Should().BeFalse();
+        root.GetProperty("error").GetString().Should().Contain("type_and_assert failed");
+        root.GetProperty("data").GetProperty("type").GetProperty("success").GetBoolean().Should().BeFalse();
+        root.GetProperty("data").GetProperty("assertion").GetProperty("error").GetString()
+            .Should().Contain("skipped");
     }
 }

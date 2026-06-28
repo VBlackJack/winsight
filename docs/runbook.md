@@ -15,6 +15,11 @@ Use the high-level agent tools first:
 `get_winsight_guide` returns this playbook through MCP. Use it when an agent
 needs to recover without external documentation in context.
 
+`plan_steps` is intentionally conservative for selection controls. If the goal
+looks like "select" or the best candidate is a combo/list/tab, the draft clicks
+the candidate and sets `requiresReview=true`; observe the opened options, then
+use `select_item` or a `run_steps` `select` step with an explicit `itemName`.
+
 ## Drive UIA Through MCP
 
 Do not script UIA by nesting ad-hoc PowerShell inside an agent session.

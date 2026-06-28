@@ -42,18 +42,23 @@ internal static class ToolAccessPolicy
         }
 
         string[] allowedNames = SplitList(Environment.GetEnvironmentVariable(AllowedProcessNamesVariable));
-        if (allowedNames.Length > 0)
+        Process? process = null;
+        if (allowedIds.Length > 0 || allowedNames.Length > 0)
         {
-            string processName;
             try
             {
-                processName = Process.GetProcessById(processId).ProcessName;
+                process = Process.GetProcessById(processId);
             }
             catch (ArgumentException)
             {
                 error = $"Process {processId} is not running.";
                 return false;
             }
+        }
+
+        if (allowedNames.Length > 0)
+        {
+            string processName = process!.ProcessName;
 
             if (!allowedNames.Any(name => string.Equals(name, processName, StringComparison.OrdinalIgnoreCase)))
             {

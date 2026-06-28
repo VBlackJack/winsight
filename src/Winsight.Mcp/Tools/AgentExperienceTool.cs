@@ -27,6 +27,7 @@ namespace Winsight.Mcp.Tools;
 public static class AgentExperienceTool
 {
     private const string ObservePrefix = "observe-";
+    private const int DefaultStableForMs = 350;
     private static readonly char[] TermSeparators = { ' ', '-', '_', '.', ':' };
     private static readonly string[] DefaultLoop =
     {
@@ -133,11 +134,11 @@ public static class AgentExperienceTool
             List<RankedInteractable> ranked = RankElements(goal, elements, maxResults: 5);
             RankedInteractable? first = ranked.Count > 0 ? ranked[0] : null;
             UiInteractable? best = first?.Element;
-            string action = ChooseAction(goal, text, best);
+            PlannedAgentAction plannedAction = AgentStepPlanner.ChooseAction(goal, text, best);
             List<BatchStep> steps = new();
             if (best is not null)
             {
-                steps.Add(BuildStep(action, best, text, pid, windowTitle));
+                steps.Add(BuildStep(plannedAction.Action, best, text, pid, windowTitle));
                 if (!string.IsNullOrEmpty(expectedValue))
                 {
                     steps.Add(BuildAssertionStep(best, expectedValue, pid, windowTitle));
@@ -148,7 +149,8 @@ public static class AgentExperienceTool
             {
                 goal,
                 confidence = first?.Score ?? 0,
-                requiresReview = steps.Count == 0 || (first?.Score ?? 0) < 30,
+                requiresReview = steps.Count == 0 || (first?.Score ?? 0) < 30 || plannedAction.RequiresReview,
+                reviewReason = plannedAction.ReviewReason,
                 suggestedTool = "run_steps",
                 suggestedRun = new { dryRun = true, processId = pid, steps },
                 candidates = ranked,
@@ -239,11 +241,6 @@ public static class AgentExperienceTool
             }
 
             bool effectiveDryRun = dryRun || ToolAccessPolicy.IsDryRunEnabled;
-            if (ToolAccessPolicy.DryRunMutation("act_and_observe", new { processId = pid, step }) is { } dryPreview)
-            {
-                return JsonSerializer.Serialize(dryPreview, JsonOptions.Default);
-            }
-
             UiSnapshot before = snapshotter.Capture(pid, windowTitle);
             BatchResult result = runner.Run(
                 new[] { step },
@@ -259,16 +256,16 @@ public static class AgentExperienceTool
             ScreenshotResult? screenshot = includeScreenshot
                 ? capture.Capture(pid, ScreenshotOutput.BuildTimestampedPath(ObservePrefix), windowTitle)
                 : null;
-            return JsonSerializer.Serialize(
-                OperationResult.OkWith(new
-                {
-                    processId = pid,
-                    action = result,
-                    change,
-                    elements,
-                    screenshot,
-                }),
-                JsonOptions.Default);
+            var data = new
+            {
+                processId = pid,
+                dryRun = effectiveDryRun,
+                action = result,
+                change,
+                elements,
+                screenshot,
+            };
+            return JsonSerializer.Serialize(AgentMacroResult.FromBatch("act_and_observe", result, data), JsonOptions.Default);
         });
     }
 
@@ -303,6 +300,8 @@ public static class AgentExperienceTool
         string? waitControlType = null,
         [Description("Timeout in milliseconds.")]
         int? timeoutMs = null,
+        [Description("Required unchanged-state duration for stable_for. Defaults to 350 ms.")]
+        int? stableForMs = null,
         [Description("Scope to a window title substring.")]
         string? windowTitle = null,
         [Description("Target process id. Optional; falls back to set_target.")]
@@ -328,7 +327,7 @@ public static class AgentExperienceTool
                 null);
             if (ToolAccessPolicy.DryRunMutation(
                     "click_and_wait",
-                    new { processId = pid, clickLocator, waitLocator, condition })
+                    new { processId = pid, clickLocator, waitLocator, condition, stableForMs })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
@@ -345,13 +344,15 @@ public static class AgentExperienceTool
 
             UiSnapshot before = snapshotter.Capture(pid, windowTitle);
             OperationResult click = invoker.Click(pid, clickLocator, ClickStyle.Primary, windowTitle);
+            int? effectiveStableForMs = parsed == WaitCondition.StableFor
+                ? ResolveStableForMs(stableForMs, timeoutMs)
+                : stableForMs;
             OperationResult wait = click.Success
-                ? waiter.Wait(pid, waitLocator, parsed, timeoutMs, null, windowTitle, expectedValue, null)
-                : OperationResult.OkWith(new { skipped = true, reason = "click_failed" });
+                ? waiter.Wait(pid, waitLocator, parsed, timeoutMs, null, windowTitle, expectedValue, effectiveStableForMs)
+                : OperationResult.FailureWith("Wait skipped because click failed.", new { skipped = true, reason = "click_failed" });
             UiSnapshot after = snapshotter.Capture(pid, windowTitle);
-            return JsonSerializer.Serialize(
-                OperationResult.OkWith(new { click, wait, change = UiDiffer.Diff(before, after) }),
-                JsonOptions.Default);
+            var data = new { click, wait, change = UiDiffer.Diff(before, after) };
+            return JsonSerializer.Serialize(AgentMacroResult.FromParts("click_and_wait", data, click, wait), JsonOptions.Default);
         });
     }
 
@@ -421,11 +422,23 @@ public static class AgentExperienceTool
             }
 
             OperationResult type = invoker.Type(pid, typeLocator, text, windowTitle, focusWindow: false);
-            OperationResult read = reader.Read(pid, assertLocator, windowTitle);
-            OperationResult assertion = read.Success
-                ? BuildAssertion(parsed, expected, (ElementState)read.Data!)
-                : read;
-            return JsonSerializer.Serialize(OperationResult.OkWith(new { type, assertion }), JsonOptions.Default);
+            OperationResult assertion;
+            if (type.Success)
+            {
+                OperationResult read = reader.Read(pid, assertLocator, windowTitle);
+                assertion = read.Success
+                    ? BuildAssertion(parsed, expected, (ElementState)read.Data!)
+                    : read;
+            }
+            else
+            {
+                assertion = OperationResult.FailureWith(
+                    "Assertion skipped because type failed.",
+                    new { skipped = true, reason = "type_failed" });
+            }
+
+            var data = new { type, assertion };
+            return JsonSerializer.Serialize(AgentMacroResult.FromParts("type_and_assert", data, type, assertion), JsonOptions.Default);
         });
     }
 
@@ -563,24 +576,6 @@ public static class AgentExperienceTool
         return new RankedInteractable(Math.Max(0, score), string.Join(", ", reasons.Distinct()), element);
     }
 
-    private static string ChooseAction(string goal, string? text, UiInteractable? element)
-    {
-        if (!string.IsNullOrEmpty(text) ||
-            goal.Contains("type", StringComparison.OrdinalIgnoreCase) ||
-            goal.Contains("enter", StringComparison.OrdinalIgnoreCase) ||
-            goal.Contains("fill", StringComparison.OrdinalIgnoreCase) ||
-            element?.ControlType == "Edit")
-        {
-            return "type";
-        }
-        if (goal.Contains("select", StringComparison.OrdinalIgnoreCase) ||
-            element?.ControlType is "ComboBox" or "List" or "ListItem" or "TabItem")
-        {
-            return "select";
-        }
-        return "click";
-    }
-
     private static BatchStep BuildStep(
         string action,
         UiInteractable element,
@@ -640,6 +635,17 @@ public static class AgentExperienceTool
         return outcome.Passed
             ? OperationResult.OkWith(new { assertion = outcome.Detail })
             : OperationResult.Failure($"Assertion failed: {outcome.Detail}");
+    }
+
+    private static int ResolveStableForMs(int? stableForMs, int? timeoutMs)
+    {
+        if (stableForMs is int configured)
+        {
+            return configured;
+        }
+
+        int timeout = timeoutMs ?? UiaDefaults.ResolveWaitTimeoutMs();
+        return Math.Min(DefaultStableForMs, timeout);
     }
 
     private static LocatorParts LocatorArgs(UiInteractable element)

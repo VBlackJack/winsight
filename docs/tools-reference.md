@@ -87,7 +87,49 @@ return structured failure data:
 `act_and_observe` is the generic one-step macro. Pass a single `BatchStep`; it
 returns the action result, structural `change`, current `elements`, and optional
 screenshot path. `click_and_wait` and `type_and_assert` are narrower macros for
-common loops. All mutating high-level tools honor `WINSIGHT_DRY_RUN`.
+common loops. Macro tools return `success=false` at the top level when an inner
+action, wait, or assertion fails; the `data` object still carries the detailed
+inner result journal for repair.
+
+All mutating high-level tools honor `WINSIGHT_DRY_RUN`. For `act_and_observe`,
+global dry-run behaves like the explicit `dryRun=true` argument: Winsight still
+captures before/after observations and journals the would-run step, but does not
+click, type, select, or hover.
+
+#### `act_and_observe`
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `step` | `BatchStep` | required | One step to execute or dry-run |
+| `windowTitle` | string? | null | Scope observation to a window title substring |
+| `includeScreenshot` | bool | false | Include an after-action screenshot path |
+| `dryRun` | bool | false | Journal mutating actions without executing them |
+| `processId` | int? | session target or step process | Target process |
+
+#### `click_and_wait`
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `automationId` / `name` / `controlType` / `nameContains` / `index` | locator fields | null | Click target |
+| `condition` | string | `stable_for` | Wait condition after the click |
+| `expectedValue` | string? | null | Required for `value_equals` / `value_contains` |
+| `waitAutomationId` / `waitName` / `waitControlType` | locator fields | click locator | Optional distinct wait target |
+| `timeoutMs` | int? | default wait timeout | Wait budget |
+| `stableForMs` | int? | `350` for `stable_for`, capped by `timeoutMs` | Required unchanged-state duration |
+| `windowTitle` | string? | null | Scope to a window title substring |
+| `processId` | int? | session target | Target process |
+
+#### `type_and_assert`
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `text` | string | required | Text to type |
+| `operator` | string | required | Assertion operator such as `equals`, `contains`, `enabled`, `checked` |
+| `expected` | string? | null | Expected assertion operand |
+| `automationId` / `name` / `controlType` / `nameContains` | locator fields | null | Type target |
+| `assertAutomationId` / `assertName` | locator fields | type locator | Optional distinct assertion target |
+| `windowTitle` | string? | null | Scope to a window title substring |
+| `processId` | int? | session target | Target process |
 
 ## `launch_app`
 
