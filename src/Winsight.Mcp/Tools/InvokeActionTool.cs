@@ -62,6 +62,13 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "click_element",
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, clickStyle })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+            }
 
             ClickStyle style = ClickStyle.Primary;
             if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
@@ -108,6 +115,13 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "click_point",
+                    new { processId = pid, x, y, clickStyle, windowTitle, coordinateSpace })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
             }
 
             ClickStyle style = ClickStyle.Primary;
@@ -178,6 +192,13 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "type_text",
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, focusWindow, textLength = text.Length })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+            }
 
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
@@ -205,6 +226,13 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "send_key_chord",
+                    new { processId = pid, chord, windowTitle })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
             }
 
             OperationResult result = invoker.SendKeyChord(pid, chord, windowTitle);
@@ -245,6 +273,13 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "select_item",
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, itemName })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(
@@ -289,6 +324,13 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "hover_element",
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, expectedTooltipText, timeoutMs })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(

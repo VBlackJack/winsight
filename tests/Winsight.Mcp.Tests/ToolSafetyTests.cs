@@ -123,4 +123,28 @@ public class ToolSafetyTests
         document.RootElement.GetProperty("error").GetString()
             .Should().Be("vision API call timed out");
     }
+
+    [Fact]
+    public void SafeInvoke_writes_trace_event_when_trace_directory_is_set()
+    {
+        string traceDir = Path.Combine(Path.GetTempPath(), "winsight-tests", Guid.NewGuid().ToString("N"));
+        string? before = Environment.GetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable);
+        Environment.SetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable, traceDir);
+        try
+        {
+            ToolSafety.SafeInvoke(() => "{\"success\":true}");
+
+            Directory.GetFiles(traceDir, "*.jsonl").Should().ContainSingle();
+            File.ReadAllText(Directory.GetFiles(traceDir, "*.jsonl").Single())
+                .Should().Contain("\"success\": true");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable, before);
+            if (Directory.Exists(traceDir))
+            {
+                Directory.Delete(traceDir, recursive: true);
+            }
+        }
+    }
 }

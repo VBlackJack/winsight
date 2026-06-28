@@ -46,6 +46,14 @@ public static class TypeIntoWebViewTool
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
+            if (ToolAccessPolicy.DryRunMutation(
+                    "type_into_webview",
+                    new { port, targetId, textLength = text.Length, focusSelector })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+            }
+
             await using CdpClient client = await CdpClient
                 .ConnectAsync(port, targetId, timeoutMs)
                 .ConfigureAwait(false);

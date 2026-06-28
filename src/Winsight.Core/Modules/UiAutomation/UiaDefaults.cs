@@ -43,6 +43,15 @@ public static class UiaDefaults
     /// <summary>Maximum descendant depth inspected for semantic descendant text locators.</summary>
     public const int MaxDescendantTextDepth = 5;
 
+    /// <summary>Hard cap for a single UIA breadth-first walk.</summary>
+    public const int MaxTraversalNodes = 10_000;
+
+    /// <summary>Hard cap for descendant text collection below one candidate element.</summary>
+    public const int MaxDescendantTextNodes = 500;
+
+    /// <summary>Upper bound for describe_ui output.</summary>
+    public const int MaxDescribeResults = 1_000;
+
     /// <summary>
     /// Resolve the effective default wait timeout: environment override when
     /// set and valid, fallback constant otherwise.

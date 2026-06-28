@@ -16,7 +16,6 @@ using FluentAssertions;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Vision;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Winsight.Core.Tests;
 
@@ -46,7 +45,10 @@ public class OnnxLocalGrounderIntegrationTests
 
         using OnnxLocalGrounder grounder = new(new OnnxLocalGrounderOptions(modelPath, "cpu"));
 
-        GroundedElement result = await grounder.FindAsync(imagePath, "Click the Increment button.");
+        GroundedElement result = await grounder.FindAsync(
+            imagePath,
+            "Click the Increment button.",
+            TestContext.Current.CancellationToken);
 
         _output.WriteLine($"grounded point = ({result.X}, {result.Y}); source={result.Source}");
         result.Source.Should().Be(OnnxLocalGrounder.SourceModel);

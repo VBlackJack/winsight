@@ -40,7 +40,10 @@ public static class SessionTargetTool
         return ToolSafety.SafeInvoke(() =>
         {
             int windowCount = discovery.List(processId).Count;
-            target.Set(processId);
+            if (!target.TrySet(processId, out string error))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(error), JsonOptions.Default);
+            }
             return JsonSerializer.Serialize(
                 OperationResult.OkWith(new { processId, windowCount }),
                 JsonOptions.Default);

@@ -59,7 +59,7 @@ public sealed class CdpClient : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(port);
         ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
 
-        int timeout = commandTimeoutMs ?? CdpDefaults.ResolveCommandTimeoutMs();
+        int timeout = CdpDefaults.NormalizeCommandTimeoutMs(commandTimeoutMs);
         ClientWebSocket socket = new();
         try
         {
@@ -243,6 +243,11 @@ public sealed class CdpClient : IAsyncDisposable
                 throw new WebSocketException("CDP endpoint closed the connection.");
             }
             accumulated.Write(buffer, 0, result.Count);
+            if (accumulated.Length > CdpDefaults.MaxReceiveMessageBytes)
+            {
+                throw new InvalidOperationException(
+                    $"CDP response exceeded {CdpDefaults.MaxReceiveMessageBytes} bytes.");
+            }
             if (result.EndOfMessage)
             {
                 return Encoding.UTF8.GetString(accumulated.ToArray());

@@ -43,6 +43,14 @@ public static class EvaluateJavascriptTool
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
+            if (ToolAccessPolicy.DryRunMutation(
+                    "evaluate_javascript",
+                    new { port, targetId, expressionLength = expression.Length })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+            }
+
             await using CdpClient client = await CdpClient
                 .ConnectAsync(port, targetId, timeoutMs)
                 .ConfigureAwait(false);

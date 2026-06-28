@@ -1,9 +1,13 @@
 {
   "mcpServers": {
     "winsight": {
-      "command": "dotnet",
+      "command": "powershell",
       "args": [
-        "${workspaceFolder}/src/Winsight.Mcp/bin/Release/net10.0-windows/winsight-mcp.dll"
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/run-mcp.ps1"
       ],
       "env": {}
     }

@@ -1,5 +1,20 @@
 # Winsight UIA Runbook
 
+## Preferred AI Loop
+
+Use the high-level agent tools first:
+
+1. `launch_app` or `list_windows`, then `set_target`.
+2. `observe` to get windows, actionable elements, recommended locators, likely
+   actions, recent memory, and an optional screenshot path.
+3. `plan_steps` with the user goal.
+4. `run_steps` with `dryRun=true`.
+5. `act_and_observe` or `run_steps` with `dryRun=false`.
+6. `repair_locator` when an element is not found or a locator is ambiguous.
+
+`get_winsight_guide` returns this playbook through MCP. Use it when an agent
+needs to recover without external documentation in context.
+
 ## Drive UIA Through MCP
 
 Do not script UIA by nesting ad-hoc PowerShell inside an agent session.
@@ -8,8 +23,8 @@ failures behind process boundaries, race desktop focus, and bypass the
 tool boundary that converts COM/UIA failures into recoverable
 `OperationResult` JSON.
 
-Use `inspect_ui_tree` to discover locators, then drive the target with the
-MCP tools:
+For low-level debugging, use `inspect_ui_tree` to discover locators, then drive
+the target with the MCP tools:
 
 ```json
 {

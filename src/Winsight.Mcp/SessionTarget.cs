@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Winsight.Mcp.Tools;
+
 namespace Winsight.Mcp;
 
 /// <summary>
@@ -40,9 +42,24 @@ public sealed class SessionTarget
     /// <summary>Set the session default target process.</summary>
     public void Set(int processId)
     {
+        if (!TrySet(processId, out string error))
+        {
+            throw new InvalidOperationException(error);
+        }
+    }
+
+    /// <summary>Set the session default target process after policy validation.</summary>
+    public bool TrySet(int processId, out string error)
+    {
         lock (_gate)
         {
+            if (!ToolAccessPolicy.TryAuthorizeProcess(processId, out error))
+            {
+                return false;
+            }
             _processId = processId;
+            error = string.Empty;
+            return true;
         }
     }
 
@@ -63,6 +80,11 @@ public sealed class SessionTarget
     {
         if (explicitProcessId is int explicitId)
         {
+            if (!ToolAccessPolicy.TryAuthorizeProcess(explicitId, out error))
+            {
+                processId = 0;
+                return false;
+            }
             processId = explicitId;
             error = string.Empty;
             return true;
@@ -72,6 +94,11 @@ public sealed class SessionTarget
         {
             if (_processId is int defaultId)
             {
+                if (!ToolAccessPolicy.TryAuthorizeProcess(defaultId, out error))
+                {
+                    processId = 0;
+                    return false;
+                }
                 processId = defaultId;
                 error = string.Empty;
                 return true;

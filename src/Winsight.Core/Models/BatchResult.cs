@@ -44,4 +44,14 @@ public sealed record BatchResult(
     int? FailedAtIndex,
     IReadOnlyList<StepResult> Steps,
     IReadOnlyList<DiagnosticEvent>? Exceptions = null,
-    bool TimedOut = false);
+    bool TimedOut = false,
+    string? TracePath = null,
+    bool DryRun = false);
+
+public sealed record BatchReplay(
+    DateTime CapturedAtUtc,
+    IReadOnlyList<BatchStep> Steps,
+    int? DefaultProcessId,
+    bool StopOnError,
+    int? MaxDurationMs,
+    BatchResult Result);

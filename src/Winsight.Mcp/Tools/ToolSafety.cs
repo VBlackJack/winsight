@@ -13,6 +13,8 @@
 // limitations under the License.
 
 using System.Text.Json;
+using System.Runtime.CompilerServices;
+using System.Diagnostics;
 using ModelContextProtocol.Protocol;
 using Winsight.Core.Models;
 using Winsight.Mcp.Serialization;
@@ -34,38 +36,50 @@ internal static class ToolSafety
     /// On any exception (excluding truly fatal ones the runtime cannot recover
     /// from), return an OperationResult.Failure JSON carrying the message.
     /// </summary>
-    public static string SafeInvoke(Func<string> body)
+    public static string SafeInvoke(Func<string> body, [CallerMemberName] string toolName = "")
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
-            return body();
+            string result = body();
+            TraceRecorder.RecordToolResult(toolName, stopwatch.Elapsed, result);
+            return result;
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
             // Mirror the message to stderr so a human attaching to the host
             // can see the original stack. Stdout is reserved for protocol.
             Console.Error.WriteLine($"[winsight] tool exception: {ex}");
-            return JsonSerializer.Serialize(
+            string result = JsonSerializer.Serialize(
                 OperationResult.Failure(ex.Message),
                 JsonOptions.Default);
+            TraceRecorder.RecordToolResult(toolName, stopwatch.Elapsed, result, isError: true);
+            return result;
         }
     }
 
     /// <summary>
     /// Async overload with the same contract as <see cref="SafeInvoke(Func{string})"/>.
     /// </summary>
-    public static async Task<string> SafeInvokeAsync(Func<Task<string>> body)
+    public static async Task<string> SafeInvokeAsync(
+        Func<Task<string>> body,
+        [CallerMemberName] string toolName = "")
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
-            return await body().ConfigureAwait(false);
+            string result = await body().ConfigureAwait(false);
+            TraceRecorder.RecordToolResult(toolName, stopwatch.Elapsed, result);
+            return result;
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
             Console.Error.WriteLine($"[winsight] tool exception: {ex}");
-            return JsonSerializer.Serialize(
+            string result = JsonSerializer.Serialize(
                 OperationResult.Failure(ex.Message),
                 JsonOptions.Default);
+            TraceRecorder.RecordToolResult(toolName, stopwatch.Elapsed, result, isError: true);
+            return result;
         }
     }
 
@@ -76,16 +90,21 @@ internal static class ToolSafety
     /// text block carries the OperationResult.Failure JSON, so the agent reads
     /// the same error shape whether the tool returns a string or content.
     /// </summary>
-    public static CallToolResult SafeInvokeContent(Func<CallToolResult> body)
+    public static CallToolResult SafeInvokeContent(
+        Func<CallToolResult> body,
+        [CallerMemberName] string toolName = "")
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
-            return body();
+            CallToolResult result = body();
+            TraceRecorder.RecordContentResult(toolName, stopwatch.Elapsed, result);
+            return result;
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
             Console.Error.WriteLine($"[winsight] tool exception: {ex}");
-            return new CallToolResult
+            CallToolResult result = new()
             {
                 IsError = true,
                 Content =
@@ -97,6 +116,8 @@ internal static class ToolSafety
                     },
                 },
             };
+            TraceRecorder.RecordContentResult(toolName, stopwatch.Elapsed, result);
+            return result;
         }
     }
 

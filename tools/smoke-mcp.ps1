@@ -13,7 +13,7 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
-    [int]$ExpectedToolCount = 30,
+    [int]$ExpectedToolCount = 40,
     [int]$ResponseTimeoutSeconds = 10
 )
 
@@ -28,8 +28,14 @@ if (-not (Test-Path $dll)) {
 }
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "dotnet"
-$psi.Arguments = "`"$dll`""
+$runner = Join-Path $repoRoot "tools\run-mcp.ps1"
+if (-not (Test-Path $runner)) {
+    Write-Error "MCP runner not found: $runner"
+    exit 1
+}
+
+$psi.FileName = "powershell"
+$psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$runner`" -Configuration $Configuration"
 $psi.RedirectStandardInput = $true
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true

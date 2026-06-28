@@ -25,4 +25,6 @@ public sealed record ElementCandidate(
     string Name,
     string ControlType,
     string ClassName,
-    string WindowTitle);
+    string WindowTitle,
+    int Score = 0,
+    string Reason = "");

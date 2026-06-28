@@ -58,6 +58,21 @@ public class OnnxLocalGrounderTests
             .WithMessage("*WINSIGHT_VISION_EP*");
     }
 
+    [Theory]
+    [InlineData("dml")]
+    [InlineData("directml")]
+    public async Task FindAsync_rejects_directml_until_the_backend_implements_it(string provider)
+    {
+        string screenshotPath = CreateTempScreenshotFile();
+        string modelPath = Directory.CreateTempSubdirectory("winsight-onnx-test-").FullName;
+        var grounder = new OnnxLocalGrounder(new OnnxLocalGrounderOptions(modelPath, provider));
+
+        Func<Task> act = () => grounder.FindAsync(screenshotPath, "increment button");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*must be 'cpu'*");
+    }
+
     [Fact]
     public async Task FindAsync_fails_explicitly_when_model_files_are_absent()
     {

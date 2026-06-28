@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using FluentAssertions;
+using System.Text.Json;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.Orchestration;
@@ -135,5 +136,21 @@ public sealed class StepRunnerTests
 
         result.Steps[0].Error.Should().Contain("Unknown action");
         result.Steps[0].Error.Should().NotContain("processId");
+    }
+
+    [Fact]
+    public void Dry_run_journals_mutating_steps_without_touching_live_uia()
+    {
+        BatchResult result = NewRunner().Run(
+            new[] { new BatchStep("click", AutomationId: "IncrementButton", ProcessId: 1) },
+            defaultProcessId: null,
+            stopOnError: true,
+            dryRun: true);
+
+        result.Success.Should().BeTrue();
+        result.DryRun.Should().BeFalse("the runner is reusable outside MCP; the tool stamps batch-level dryRun");
+        result.Steps.Should().ContainSingle();
+        result.Steps[0].Success.Should().BeTrue();
+        JsonSerializer.Serialize(result.Steps[0].Data).Should().Contain("\"dryRun\":true");
     }
 }

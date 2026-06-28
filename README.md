@@ -209,7 +209,7 @@ calls the Anthropic Claude vision API.
 | `WINSIGHT_VISION_MODEL`     | no       | `claude-sonnet-4-6`                      |
 | `WINSIGHT_VISION_API_URL`   | no       | `https://api.anthropic.com/v1/messages`  |
 | `WINSIGHT_VISION_ONNX_PATH` | yes, for `onnx` | —                                |
-| `WINSIGHT_VISION_EP`        | no, for `onnx` | `cpu` (`cpu` or `dml`)              |
+| `WINSIGHT_VISION_EP`        | no, for `onnx` | `cpu` (DirectML is not enabled in this build) |
 
 > **Privacy note** — with the `anthropic` backend, the screenshot is sent to
 > the configured API. `WINSIGHT_VISION_BACKEND=onnx` runs a local Qwen2.5-VL
@@ -236,6 +236,22 @@ precedence.
 | -------------------- | -------- | ------------------ |
 | `WINSIGHT_OUTPUT_DIR`| no       | `%TEMP%\winsight`  |
 
+## Recommended agent loop
+
+For AI agents, prefer the high-level tools first and fall back to primitives only
+when needed:
+
+1. `launch_app` or `list_windows`, then `set_target`.
+2. `observe` to get windows, actionable elements, recommended locators, likely
+   actions, session memory, and optionally a screenshot.
+3. `plan_steps` with the user goal.
+4. `run_steps` with `dryRun=true`.
+5. `act_and_observe` or `run_steps` with `dryRun=false`.
+6. `repair_locator` if a locator fails or becomes ambiguous.
+
+`get_winsight_guide` exposes this playbook directly through MCP so an agent can
+recover even when external docs are not in context.
+
 ### Optional: visual regression baselines
 
 `compare_visual_baseline` captures the target window and compares it to a
@@ -259,7 +275,16 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
 | `set_target` / `get_target` / `clear_target` | Set/read/clear the session default process so process-scoped tools can omit `processId` |
-| `run_steps`                   | Run a sequence of UI steps (act/sync/assert/capture) in one call, with a per-step journal and optional causal exception capture |
+| `observe`                     | One-call orientation: windows, actionable elements, recommended locators, likely actions, memory, optional screenshot |
+| `plan_steps`                  | Draft a conservative `run_steps` plan from a natural-language goal |
+| `repair_locator`              | Rank replacement locators from the current UI and session memory |
+| `run_steps`                   | Run a sequence of UI steps (act/sync/assert/capture) in one call, with a per-step journal, dry-run mode, trace replay, and optional causal exception capture |
+| `replay_steps`                | Re-run a `run_steps` replay artifact, dry-run by default |
+| `act_and_observe`             | Execute one step and return before/after UI diff plus current affordances |
+| `click_and_wait`              | Click and synchronize in one call, returning action/wait/diff feedback |
+| `type_and_assert`             | Type and immediately assert observable state |
+| `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
+| `get_winsight_guide`          | Embedded agent playbook for the preferred loop and repair policy |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
 | `close_app`                   | Close a process (graceful with kill fallback, or forced) |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |
@@ -310,6 +335,16 @@ as your user — it grants no privilege you do not already have, and it should n
 be exposed to an untrusted client. EventPipe-based oracles
 (`observe_counters`, `capture_events`) are the EDR-friendly path; the CLRMD attach
 in `read_managed_state` uses patterns some endpoint products flag.
+
+Optional guardrails:
+
+| Variable | Purpose |
+| -------- | ------- |
+| `WINSIGHT_ALLOWED_PROCESS_IDS` | Comma/semicolon allowlist of process ids every process-scoped tool must pass |
+| `WINSIGHT_ALLOWED_PROCESS_NAMES` | Comma/semicolon allowlist of process names every process-scoped tool must pass |
+| `WINSIGHT_ALLOWED_EXECUTABLES` | Comma/semicolon allowlist for `launch_app` executable paths |
+| `WINSIGHT_DRY_RUN` | `1`/`true`/`yes` blocks mutating tools and returns what would have run |
+| `WINSIGHT_TRACE` / `WINSIGHT_TRACE_DIR` | Write tool JSONL traces and `run_steps` replay artifacts |
 
 ## License
 

@@ -260,10 +260,11 @@ bounding box.
 - `OnnxLocalGrounder` — selectable with `WINSIGHT_VISION_BACKEND=onnx`. A fully
   local backend running Qwen2.5-VL-3B as a 3-ONNX split (vision encoder + token
   embedding + decoder) on plain ONNX Runtime with a hand-rolled mRoPE generation
-  loop. It validates `WINSIGHT_VISION_ONNX_PATH` and `WINSIGHT_VISION_EP=cpu|dml`,
-  fails explicitly when misconfigured, and never falls back to the cloud.
-  Execution is CPU-only in this build (the decoder's fused MultiHeadAttention op
-  is not yet supported on the DirectML EP — a tracked follow-up).
+  loop. It validates `WINSIGHT_VISION_ONNX_PATH` and requires
+  `WINSIGHT_VISION_EP=cpu`, fails explicitly when misconfigured, and never falls
+  back to the cloud. Execution is CPU-only in this build (the decoder's fused
+  MultiHeadAttention op is not yet supported on the DirectML EP — a tracked
+  follow-up).
 - `QwenImagePreprocessing` / `QwenVisionTokenizer` — C# reimplementations of the
   Qwen2.5-VL smart-resize + patchify and the byte-level BPE tokenizer (via
   `CodeGenTokenizer` over a vocab patched with Qwen special tokens).
@@ -349,6 +350,9 @@ image-returning capture tools). The guard:
 - Mirrors the original exception (with full stack) to **stderr** so a
   human attaching to the host process can see what happened. Stdout
   remains reserved for MCP protocol traffic.
+- Records a compact JSONL tool event when `WINSIGHT_TRACE` or
+  `WINSIGHT_TRACE_DIR` is set: tool name, duration, success/error, and
+  payload byte count.
 - Lets truly fatal exceptions propagate (`OutOfMemoryException`,
   `StackOverflowException`, `ThreadAbortException`) — masking those
   would hide a process-wide failure.
@@ -360,6 +364,37 @@ inaccessible process) was observed to **terminate the .NET host
 process**, which in turn closes the stdio transport and renders every
 other tool permanently unusable for the rest of the agent's session.
 The universal guard pins the failure to the calling tool only.
+
+## Policy and replay
+
+`SessionTarget` is also the process-policy choke point. `TryResolve` and
+`TrySet` enforce optional allowlists before any process-scoped tool runs:
+`WINSIGHT_ALLOWED_PROCESS_IDS`, `WINSIGHT_ALLOWED_PROCESS_NAMES`, and
+`WINSIGHT_ALLOWED_EXECUTABLES` for `launch_app`. `WINSIGHT_DRY_RUN` blocks
+mutating MCP tools (`click_*`, typing, selection, key chords, JS evaluation,
+launch/close) and returns a structured preview instead.
+
+`run_steps` can write a replay artifact containing the prepared batch and
+journal. `replay_steps` reads that artifact and re-runs it, dry-run by
+default, so an agent can debug a scenario before repeating side effects.
+
+## Agent experience layer
+
+`AgentExperienceTool` is the high-level surface intended for AI agents:
+
+- `observe` fuses window discovery, affordance scanning, likely next actions,
+  session memory, and optional screenshots.
+- `plan_steps` turns a human goal into a conservative `BatchStep` draft that
+  should be dry-run before execution.
+- `repair_locator` ranks current UI and memory candidates when a locator fails.
+- `act_and_observe`, `click_and_wait`, and `type_and_assert` collapse common
+  act/sync/assert/diff loops into one call.
+- `get_winsight_guide` exposes the preferred loop directly through MCP, so an
+  agent does not need external documentation in context.
+
+`SessionMemory` records recently observed locators by process/window and keeps a
+short list of repairable failures. It is intentionally session-scoped, not
+persisted to disk.
 
 ## Failure modes and how they are reported
 

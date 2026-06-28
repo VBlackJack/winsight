@@ -19,7 +19,6 @@ using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.VisualRegression;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Winsight.E2E;
 

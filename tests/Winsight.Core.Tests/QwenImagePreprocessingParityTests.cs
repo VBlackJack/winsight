@@ -15,7 +15,6 @@
 using FluentAssertions;
 using Winsight.Core.Modules.Vision;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Winsight.Core.Tests;
 

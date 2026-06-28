@@ -9,6 +9,18 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Agent-first workflow and hardening
+
+- Added high-level MCP tools for AI agents: `observe`, `plan_steps`,
+  `repair_locator`, `act_and_observe`, `click_and_wait`, `type_and_assert`,
+  `get_session_memory`, `clear_session_memory`, and `get_winsight_guide`.
+- Added session-scoped locator memory and replay artifacts for `run_steps`.
+- Added configurable guardrails: process/executable allowlists, global dry-run,
+  JSONL traces, and an MCP runner that avoids locking build outputs.
+- Added Windows CI for build, unit tests, E2E, MCP smoke, and NuGet audits.
+- Added explainable locator scores and reasons in candidate diagnostics.
+- Added UIA/CDP/diagnostics payload bounds and CPU-only ONNX validation.
+
 #### Phase 1 — UIA + CLRMD foundation
 
 - `Winsight.Core` engine targeting `net10.0-windows`, x64.

@@ -60,7 +60,8 @@ public sealed class StepRunner
         IReadOnlyList<BatchStep> steps,
         int? defaultProcessId,
         bool stopOnError,
-        int? maxDurationMs = null)
+        int? maxDurationMs = null,
+        bool dryRun = false)
     {
         ArgumentNullException.ThrowIfNull(steps);
 
@@ -78,7 +79,7 @@ public sealed class StepRunner
             }
 
             BatchStep step = steps[i];
-            OperationResult outcome = ExecuteSafely(step, defaultProcessId);
+            OperationResult outcome = ExecuteSafely(step, defaultProcessId, dryRun);
             results.Add(new StepResult(
                 i, step.Action ?? string.Empty, step.Label, outcome.Success, outcome.Error, outcome.Data));
 
@@ -98,11 +99,11 @@ public sealed class StepRunner
             success, completed, steps.Count, failedAtIndex, results, Exceptions: null, TimedOut: timedOut);
     }
 
-    private OperationResult ExecuteSafely(BatchStep step, int? defaultProcessId)
+    private OperationResult ExecuteSafely(BatchStep step, int? defaultProcessId, bool dryRun)
     {
         try
         {
-            return Execute(step, defaultProcessId);
+            return Execute(step, defaultProcessId, dryRun);
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
@@ -110,7 +111,7 @@ public sealed class StepRunner
         }
     }
 
-    private OperationResult Execute(BatchStep step, int? defaultProcessId)
+    private OperationResult Execute(BatchStep step, int? defaultProcessId, bool dryRun)
     {
         string action = (step.Action ?? string.Empty).Trim().ToLowerInvariant();
         if (action.Length == 0)
@@ -123,6 +124,25 @@ public sealed class StepRunner
         {
             return OperationResult.Failure(
                 $"'{action}' step has no processId and no batch-level processId default was provided.");
+        }
+
+        if (dryRun && IsMutatingAction(action))
+        {
+            return OperationResult.OkWith(new
+            {
+                dryRun = true,
+                action,
+                processId = pid,
+                locator = Locator(step),
+                step.Text,
+                step.Chord,
+                step.ItemName,
+                step.X,
+                step.Y,
+                step.ClickStyle,
+                step.CoordinateSpace,
+                step.WindowTitle,
+            });
         }
 
         return action switch
@@ -304,6 +324,9 @@ public sealed class StepRunner
             $"Unknown coordinateSpace \"{raw}\". Accepted values: window, screen.");
         return false;
     }
+
+    private static bool IsMutatingAction(string action) =>
+        action is "click" or "click_point" or "type" or "key_chord" or "select" or "hover";
 
     private static bool IsFatal(Exception ex) =>
         ex is OutOfMemoryException or StackOverflowException or ThreadAbortException;

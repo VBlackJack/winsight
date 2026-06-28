@@ -19,7 +19,6 @@ using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.Vision;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Winsight.E2E;
 
@@ -96,7 +95,10 @@ public class VisionGroundingPrecisionTests
 
                 int rx = node!.X - originX;
                 int ry = node.Y - originY;
-                GroundedElement grounded = await grounder.FindAsync(screenshotPath, query);
+                GroundedElement grounded = await grounder.FindAsync(
+                    screenshotPath,
+                    query,
+                    TestContext.Current.CancellationToken);
 
                 bool hit = grounded.X >= rx && grounded.X <= rx + node.Width
                     && grounded.Y >= ry && grounded.Y <= ry + node.Height;

@@ -17,7 +17,6 @@ using FluentAssertions;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.UiAutomation;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Winsight.E2E;
 

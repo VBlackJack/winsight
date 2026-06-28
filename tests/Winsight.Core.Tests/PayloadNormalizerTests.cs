@@ -65,6 +65,28 @@ public class PayloadNormalizerTests
     }
 
     [Fact]
+    public void Large_byte_array_is_truncated()
+    {
+        byte[] bytes = Enumerable.Repeat((byte)0xAB, PayloadNormalizer.MaxByteArrayBytes + 1).ToArray();
+
+        string normalized = (string)PayloadNormalizer.Normalize(bytes)!;
+
+        normalized.Should().StartWith("ABAB");
+        normalized.Should().EndWith("...<1 byte(s) omitted>");
+    }
+
+    [Fact]
+    public void Large_string_is_truncated()
+    {
+        string value = new('x', PayloadNormalizer.MaxStringChars + 1);
+
+        string normalized = (string)PayloadNormalizer.Normalize(value)!;
+
+        normalized.Should().HaveLength(PayloadNormalizer.MaxStringChars + "...<truncated>".Length);
+        normalized.Should().EndWith("...<truncated>");
+    }
+
+    [Fact]
     public void Typed_dictionary_is_recursively_normalized()
     {
         var input = new Dictionary<string, object>
@@ -114,6 +136,31 @@ public class PayloadNormalizerTests
         list[0].Should().Be("a");
         list[1].Should().Be(1);
         list[2].Should().Be(true);
+    }
+
+    [Fact]
+    public void Large_list_is_truncated()
+    {
+        object[] input = Enumerable.Range(0, PayloadNormalizer.MaxCollectionItems + 2)
+            .Cast<object>()
+            .ToArray();
+
+        var normalized = (IReadOnlyList<object?>)PayloadNormalizer.Normalize(input)!;
+
+        normalized.Should().HaveCount(PayloadNormalizer.MaxCollectionItems + 1);
+        normalized[^1].Should().Be("<truncated>");
+    }
+
+    [Fact]
+    public void Large_dictionary_is_truncated()
+    {
+        Dictionary<string, object> input = Enumerable.Range(0, PayloadNormalizer.MaxCollectionItems + 2)
+            .ToDictionary(i => "k" + i, i => (object)i);
+
+        var normalized = (IDictionary<string, object?>)PayloadNormalizer.Normalize(input)!;
+
+        normalized.Should().HaveCount(PayloadNormalizer.MaxCollectionItems + 1);
+        normalized["<truncated>"].Should().Be("2 item(s) omitted");
     }
 
     [Fact]

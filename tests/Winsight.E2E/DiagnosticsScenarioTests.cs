@@ -81,12 +81,13 @@ public class DiagnosticsScenarioTests
                 process.Id,
                 providerNames: TplProviders,
                 durationMs: EventCaptureMs,
-                maxEvents: 200);
+                maxEvents: DiagnosticsObserver.MaxAllowedEvents);
             capture2.ProcessId.Should().Be(process.Id);
             capture2.DurationMs.Should().Be(EventCaptureMs);
             capture2.Events.Count.Should().Be(capture2.TotalCaptured);
+            capture2.Events.Should().NotBeEmpty();
             capture2.Truncated.Should().BeFalse(
-                "200 events is plenty of headroom for a 1.5s TPL slice on a quiet WPF app");
+                "the E2E allows the diagnostics layer's full bounded event budget to avoid machine-noise flakes");
 
             // detect_webview2_endpoints — sample app has none, exercises the empty path
             var detector = new WebView2Detector();

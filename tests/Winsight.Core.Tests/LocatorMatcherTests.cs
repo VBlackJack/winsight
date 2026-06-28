@@ -127,4 +127,42 @@ public class LocatorMatcherTests
 
         LocatorMatcher.IsNearMiss(locator, "CancelLink", "Cancel").Should().BeFalse();
     }
+
+    [Fact]
+    public void Score_explains_exact_and_semantic_locator_matches()
+    {
+        var locator = new ElementLocator(
+            AutomationId: "IncrementButton",
+            ControlType: "Button",
+            DescendantText: "Semantic Label");
+
+        LocatorScore score = LocatorMatcher.Score(
+            locator,
+            "IncrementButton",
+            "Increment",
+            "Button",
+            "Button",
+            SemanticLabelTexts);
+
+        score.Score.Should().BeGreaterThan(0);
+        score.Reason.Should().Contain("automationId");
+        score.Reason.Should().Contain("controlType");
+        score.Reason.Should().Contain("descendantText");
+    }
+
+    [Fact]
+    public void Score_reports_partial_text_for_near_misses()
+    {
+        var locator = new ElementLocator(AutomationId: "IncrementButton");
+
+        LocatorScore score = LocatorMatcher.Score(
+            locator,
+            "Other",
+            "The IncrementButton action",
+            null,
+            "Button");
+
+        score.Score.Should().BeGreaterThan(0);
+        score.Reason.Should().Contain("partialText");
+    }
 }

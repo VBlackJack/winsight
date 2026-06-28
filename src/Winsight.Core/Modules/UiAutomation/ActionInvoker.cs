@@ -298,6 +298,7 @@ public sealed class ActionInvoker
 
         Mouse.MoveTo(center);
 
+        string? helpText = SafeReadHelpText(element);
         Stopwatch stopwatch = Stopwatch.StartNew();
         TooltipSnapshot? lastTooltip = null;
         while (stopwatch.ElapsedMilliseconds <= timeout)
@@ -312,6 +313,17 @@ public sealed class ActionInvoker
             if (tooltip is not null)
             {
                 return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip));
+            }
+
+            if (TooltipTextMatches(helpText, expectedTooltipText))
+            {
+                TooltipSnapshot synthetic = new(
+                    helpText!,
+                    rect.X,
+                    rect.Y,
+                    rect.Width,
+                    rect.Height);
+                return OperationResult.OkWith(new HoverResult(center.X, center.Y, synthetic));
             }
 
             lastTooltip = CaptureTooltips(automation)
@@ -419,8 +431,15 @@ public sealed class ActionInvoker
     {
         Queue<AutomationElement> queue = new();
         queue.Enqueue(container);
+        var visited = 0;
         while (queue.Count > 0)
         {
+            if (++visited > UiaDefaults.MaxTraversalNodes)
+            {
+                return OperationResult.Failure(
+                    $"Selection search exceeded {UiaDefaults.MaxTraversalNodes} nodes. Narrow the locator.");
+            }
+
             AutomationElement current = queue.Dequeue();
             FlaUI.Core.Patterns.ISelectionItemPattern? selectionItem =
                 current.Patterns.SelectionItem.PatternOrDefault;
@@ -430,7 +449,7 @@ public sealed class ActionInvoker
                 selectionItem.Select();
                 return OperationResult.Ok();
             }
-            foreach (AutomationElement child in current.FindAllChildren())
+            foreach (AutomationElement child in SafeChildren(current))
             {
                 queue.Enqueue(child);
             }
@@ -551,6 +570,13 @@ public sealed class ActionInvoker
             tooltip.Text.Contains(expectedTooltipText, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool TooltipTextMatches(string? tooltipText, string? expectedTooltipText)
+    {
+        return !string.IsNullOrEmpty(tooltipText) &&
+            (expectedTooltipText is null ||
+                tooltipText.Contains(expectedTooltipText, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string TooltipSignature(TooltipSnapshot tooltip)
     {
         return string.Join(
@@ -579,6 +605,18 @@ public sealed class ActionInvoker
         try
         {
             return element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+    private static string? SafeReadHelpText(AutomationElement element)
+    {
+        try
+        {
+            return element.HelpText;
         }
         catch (COMException)
         {

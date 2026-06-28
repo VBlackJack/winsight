@@ -61,4 +61,38 @@ public class RunStepsToolTests
         document.RootElement.GetProperty("error").GetString()
             .Should().Contain("captureExceptions requires a process id");
     }
+
+    [Fact]
+    public void Dry_run_with_trace_writes_a_replay_artifact()
+    {
+        string traceDir = Path.Combine(Path.GetTempPath(), "winsight-tests", Guid.NewGuid().ToString("N"));
+        string? before = Environment.GetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable);
+        Environment.SetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable, traceDir);
+        try
+        {
+            string json = RunStepsTool.RunSteps(
+                NewRunner(),
+                new DiagnosticsObserver(),
+                new SessionTarget(),
+                new[] { new BatchStep("click", AutomationId: "X", ProcessId: Environment.ProcessId) },
+                dryRun: true,
+                traceRun: true);
+
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement root = document.RootElement;
+            root.GetProperty("success").GetBoolean().Should().BeTrue();
+            root.GetProperty("dryRun").GetBoolean().Should().BeTrue();
+            string tracePath = root.GetProperty("tracePath").GetString()!;
+            File.Exists(tracePath).Should().BeTrue();
+            Path.GetDirectoryName(tracePath).Should().Be(Path.GetFullPath(traceDir));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable, before);
+            if (Directory.Exists(traceDir))
+            {
+                Directory.Delete(traceDir, recursive: true);
+            }
+        }
+    }
 }

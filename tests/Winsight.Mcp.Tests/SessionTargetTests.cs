@@ -13,7 +13,9 @@
 // limitations under the License.
 
 using FluentAssertions;
+using System.Globalization;
 using Winsight.Mcp;
+using Winsight.Mcp.Tools;
 using Xunit;
 
 namespace Winsight.Mcp.Tests;
@@ -60,5 +62,47 @@ public sealed class SessionTargetTests
 
         target.ProcessId.Should().BeNull();
         target.TryResolve(null, out _, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Resolve_rejects_processes_outside_the_allowed_id_policy()
+    {
+        string? before = Environment.GetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable);
+        Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, "-1");
+        try
+        {
+            SessionTarget target = new();
+
+            bool ok = target.TryResolve(Environment.ProcessId, out _, out string error);
+
+            ok.Should().BeFalse();
+            error.Should().Contain(ToolAccessPolicy.AllowedProcessIdsVariable);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, before);
+        }
+    }
+
+    [Fact]
+    public void Resolve_accepts_processes_inside_the_allowed_id_policy()
+    {
+        string? before = Environment.GetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable);
+        Environment.SetEnvironmentVariable(
+            ToolAccessPolicy.AllowedProcessIdsVariable,
+            Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+        try
+        {
+            SessionTarget target = new();
+
+            bool ok = target.TryResolve(Environment.ProcessId, out int pid, out _);
+
+            ok.Should().BeTrue();
+            pid.Should().Be(Environment.ProcessId);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.AllowedProcessIdsVariable, before);
+        }
     }
 }

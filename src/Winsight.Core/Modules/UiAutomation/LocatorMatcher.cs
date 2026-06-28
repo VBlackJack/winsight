@@ -23,6 +23,14 @@ namespace Winsight.Core.Modules.UiAutomation;
 /// </summary>
 public static class LocatorMatcher
 {
+    private const int ExactAutomationIdScore = 50;
+    private const int ExactNameScore = 35;
+    private const int ExactClassNameScore = 15;
+    private const int ExactControlTypeScore = 15;
+    private const int NameContainsScore = 20;
+    private const int DescendantTextScore = 20;
+    private const int PartialTextScore = 8;
+
     /// <summary>
     /// True when every criterion set on the locator matches the snapshot
     /// (logical AND). <see cref="ElementLocator.Index"/> is ignored here:
@@ -69,6 +77,73 @@ public static class LocatorMatcher
         return true;
     }
 
+    public static LocatorScore Score(
+        ElementLocator locator,
+        string? automationId,
+        string? name,
+        string? className,
+        string? controlType,
+        IEnumerable<string?>? descendantTexts = null)
+    {
+        var score = 0;
+        List<string> reasons = new();
+
+        AddExact(
+            reasons,
+            ref score,
+            "automationId",
+            locator.AutomationId,
+            automationId,
+            ExactAutomationIdScore,
+            StringComparison.Ordinal);
+        AddExact(
+            reasons,
+            ref score,
+            "name",
+            locator.Name,
+            name,
+            ExactNameScore,
+            StringComparison.Ordinal);
+        AddExact(
+            reasons,
+            ref score,
+            "className",
+            locator.ClassName,
+            className,
+            ExactClassNameScore,
+            StringComparison.Ordinal);
+        AddExact(
+            reasons,
+            ref score,
+            "controlType",
+            locator.ControlType,
+            controlType,
+            ExactControlTypeScore,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrEmpty(locator.NameContains) &&
+            ContainsTerm(name, locator.NameContains))
+        {
+            score += NameContainsScore;
+            reasons.Add("nameContains");
+        }
+
+        if (!string.IsNullOrEmpty(locator.DescendantText) &&
+            AnyTextContains(descendantTexts, locator.DescendantText))
+        {
+            score += DescendantTextScore;
+            reasons.Add("descendantText");
+        }
+
+        if (score == 0 && IsNearMiss(locator, automationId, name))
+        {
+            score += PartialTextScore;
+            reasons.Add("partialText");
+        }
+
+        return new LocatorScore(score, string.Join(", ", reasons));
+    }
+
     /// <summary>
     /// Loose relevance check used to build "near miss" suggestions when a
     /// strict lookup finds nothing: the snapshot's id or name contains any
@@ -111,5 +186,26 @@ public static class LocatorMatcher
         return !string.IsNullOrEmpty(haystack)
             && !string.IsNullOrEmpty(term)
             && haystack.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AddExact(
+        List<string> reasons,
+        ref int score,
+        string reason,
+        string? expected,
+        string? actual,
+        int weight,
+        StringComparison comparison)
+    {
+        if (string.IsNullOrEmpty(expected))
+        {
+            return;
+        }
+
+        if (string.Equals(actual, expected, comparison))
+        {
+            score += weight;
+            reasons.Add(reason);
+        }
     }
 }

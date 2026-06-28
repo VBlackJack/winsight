@@ -63,7 +63,8 @@ public sealed class UiTreeInspector
                 $"No top-level window found for process {processId}{scope}.");
         }
 
-        UiElementNode root = BuildNode(windows[0].Element, depth: 0, maxDepth);
+        var visited = 0;
+        UiElementNode root = BuildNode(windows[0].Element, depth: 0, maxDepth, ref visited);
 
         bool hasFilter = !string.IsNullOrEmpty(controlTypeFilter)
             || !string.IsNullOrEmpty(nameContainsFilter);
@@ -72,13 +73,34 @@ public sealed class UiTreeInspector
             : root;
     }
 
-    private static UiElementNode BuildNode(AutomationElement element, int depth, int maxDepth)
+    private static UiElementNode BuildNode(
+        AutomationElement element,
+        int depth,
+        int maxDepth,
+        ref int visited)
     {
-        IReadOnlyList<UiElementNode> children = depth >= maxDepth
-            ? Array.Empty<UiElementNode>()
-            : element.FindAllChildren()
-                .Select(child => BuildNode(child, depth + 1, maxDepth))
-                .ToArray();
+        if (++visited > UiaDefaults.MaxTraversalNodes)
+        {
+            throw new InvalidOperationException(
+                $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while inspecting the tree. " +
+                "Use maxDepth, controlType, nameContains, or windowTitle to narrow the request.");
+        }
+
+        IReadOnlyList<UiElementNode> children;
+        if (depth >= maxDepth)
+        {
+            children = Array.Empty<UiElementNode>();
+        }
+        else
+        {
+            AutomationElement[] childElements = element.FindAllChildren();
+            var childNodes = new UiElementNode[childElements.Length];
+            for (var i = 0; i < childElements.Length; i++)
+            {
+                childNodes[i] = BuildNode(childElements[i], depth + 1, maxDepth, ref visited);
+            }
+            children = childNodes;
+        }
 
         System.Drawing.Rectangle rect = element.BoundingRectangle;
         return new UiElementNode(

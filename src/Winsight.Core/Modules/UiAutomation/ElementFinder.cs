@@ -112,8 +112,16 @@ internal static class ElementFinder
             string title = window.Title;
             Queue<AutomationElement> queue = new();
             queue.Enqueue(window.Element);
+            var visited = 0;
             while (queue.Count > 0)
             {
+                if (++visited > UiaDefaults.MaxTraversalNodes)
+                {
+                    throw new InvalidOperationException(
+                        $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while locating {locator}. " +
+                        "Narrow the locator or windowTitle.");
+                }
+
                 AutomationElement current = queue.Dequeue();
                 (string automationId, string name, string className, string controlType)? snapshot =
                     TryReadSnapshot(current);
@@ -134,9 +142,24 @@ internal static class ElementFinder
                     controlType,
                     descendantTexts))
                 {
+                    LocatorScore score = LocatorMatcher.Score(
+                        locator,
+                        automationId,
+                        name,
+                        className,
+                        controlType,
+                        descendantTexts);
                     matches.Add(new ElementMatch(
                         current,
-                        new ElementCandidate(matches.Count, automationId, name, controlType, className, title),
+                        new ElementCandidate(
+                            matches.Count,
+                            automationId,
+                            name,
+                            controlType,
+                            className,
+                            title,
+                            score.Score,
+                            score.Reason),
                         window.Handle));
                 }
                 foreach (AutomationElement child in SafeChildren(current))
@@ -230,8 +253,14 @@ internal static class ElementFinder
             string title = window.Title;
             Queue<AutomationElement> queue = new();
             queue.Enqueue(window.Element);
+            var visited = 0;
             while (queue.Count > 0 && nearMisses.Count < UiaDefaults.MaxReportedCandidates)
             {
+                if (++visited > UiaDefaults.MaxTraversalNodes)
+                {
+                    break;
+                }
+
                 AutomationElement current = queue.Dequeue();
                 (string automationId, string name, string className, string controlType)? snapshot =
                     TryReadSnapshot(current);
@@ -242,8 +271,21 @@ internal static class ElementFinder
                 (string automationId, string name, string className, string controlType) = snapshot.Value;
                 if (LocatorMatcher.IsNearMiss(locator, automationId, name))
                 {
+                    LocatorScore score = LocatorMatcher.Score(
+                        locator,
+                        automationId,
+                        name,
+                        className,
+                        controlType);
                     nearMisses.Add(new ElementCandidate(
-                        nearMisses.Count, automationId, name, controlType, className, title));
+                        nearMisses.Count,
+                        automationId,
+                        name,
+                        controlType,
+                        className,
+                        title,
+                        score.Score,
+                        score.Reason));
                 }
                 foreach (AutomationElement child in SafeChildren(current))
                 {
@@ -282,6 +324,12 @@ internal static class ElementFinder
 
         while (queue.Count > 0)
         {
+            if (texts.Count >= UiaDefaults.MaxDescendantTextNodes)
+            {
+                texts.Add("<descendant text truncated>");
+                break;
+            }
+
             (AutomationElement current, int depth) = queue.Dequeue();
             AddIfNotEmpty(texts, SafeReadName(current));
             AddIfNotEmpty(texts, SafeReadValue(current));

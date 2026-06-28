@@ -88,6 +88,15 @@ public static class FindElementVisuallyTool
             {
                 return JsonSerializer.Serialize(OperationResult.OkWith(grounded), JsonOptions.Default);
             }
+            if (ToolAccessPolicy.DryRunMutation(
+                    "find_element_visually.act",
+                    new { processId = pid, query, act, windowTitle, grounded })
+                is { } dryRun)
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.OkWith(new { grounded, click = dryRun.Data }),
+                    JsonOptions.Default);
+            }
 
             if (!ClickStyleParser.TryParse(act, out ClickStyle style))
             {

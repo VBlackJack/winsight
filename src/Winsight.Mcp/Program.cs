@@ -42,6 +42,7 @@ public static class Program
         });
 
         builder.Services.AddSingleton<SessionTarget>();
+        builder.Services.AddSingleton<SessionMemory>();
         builder.Services.AddSingleton<WindowDiscovery>();
         builder.Services.AddSingleton<AppLauncher>();
         builder.Services.AddSingleton<UiTreeInspector>();

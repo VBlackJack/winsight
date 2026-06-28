@@ -31,6 +31,12 @@ public static class CdpDefaults
     /// <summary>Fallback command timeout when no override is provided.</summary>
     public const int FallbackCommandTimeoutMs = 10_000;
 
+    /// <summary>Upper bound for a single CDP command timeout.</summary>
+    public const int MaxCommandTimeoutMs = 120_000;
+
+    /// <summary>Maximum size of one CDP response frame accumulated in memory.</summary>
+    public const int MaxReceiveMessageBytes = 4 * 1024 * 1024;
+
     /// <summary>Delay between successive key events when typing, in milliseconds.</summary>
     public const int InterKeyDelayMs = 10;
 
@@ -44,11 +50,23 @@ public static class CdpDefaults
     public static int ResolveCommandTimeoutMs()
     {
         string? raw = Environment.GetEnvironmentVariable(TimeoutEnvironmentVariable);
-        if (int.TryParse(raw, out int parsed) && parsed > 0)
+        if (int.TryParse(raw, out int parsed) && parsed > 0 && parsed <= MaxCommandTimeoutMs)
         {
             return parsed;
         }
         return FallbackCommandTimeoutMs;
+    }
+
+    public static int NormalizeCommandTimeoutMs(int? commandTimeoutMs)
+    {
+        int timeout = commandTimeoutMs ?? ResolveCommandTimeoutMs();
+        if (timeout <= 0 || timeout > MaxCommandTimeoutMs)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(commandTimeoutMs),
+                $"CDP timeout must be between 1 and {MaxCommandTimeoutMs} ms.");
+        }
+        return timeout;
     }
 
     /// <summary>HTTP URL listing the debuggable targets of an endpoint.</summary>

@@ -30,6 +30,65 @@ Throughout this reference, `processId` on a process-scoped tool is therefore
 **optional** with this fallback, even where the parameter tables mark it required
 for the underlying engine call.
 
+## Agent-first workflow
+
+These tools are the preferred surface for AI agents. The lower-level tools remain
+available, but agents should start here because the responses are oriented around
+repairable action.
+
+| Tool | Purpose |
+| ---- | ------- |
+| `observe` | One-call perception: windows, actionable elements, recommended locators, likely actions, session memory, optional screenshot path |
+| `plan_steps` | Draft a conservative `run_steps` plan from a natural-language goal; dry-run it before execution |
+| `repair_locator` | Rank replacement locators from the current UI plus observed locator memory |
+| `act_and_observe` | Execute one `BatchStep` and return the action journal plus before/after structural diff |
+| `click_and_wait` | Click a locator and wait for a post-click condition in one call |
+| `type_and_assert` | Type text and immediately assert observable state |
+| `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
+| `get_winsight_guide` | Return the embedded playbook for agents |
+
+### `observe`
+
+Use `observe` before acting on an unfamiliar UI. It combines `list_windows`,
+`describe_ui`, session memory, likely next actions, and optional screenshot
+capture.
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `processId` | int? | session target | Target process |
+| `windowTitle` | string? | null | Scope to a window title substring |
+| `includeScreenshot` | bool | false | Include a screenshot path written under `WINSIGHT_OUTPUT_DIR` |
+| `maxResults` | int | 100 | Max actionable elements |
+
+The response is an `OperationResult` whose `data` has `windows`, `elements`,
+`nextActions`, optional `screenshot`, and `memory`.
+
+### Planning and Repair
+
+`plan_steps(goal, text?, expectedValue?)` ranks visible controls and returns a
+draft `{ dryRun: true, processId, steps }` payload for `run_steps`.
+`repair_locator(query)` returns ranked `currentUi` candidates with `locatorArgs`
+and memory matches. On missing targets or bad arguments, these high-level tools
+return structured failure data:
+
+```json
+{
+  "success": false,
+  "error": "No processId given ...",
+  "data": {
+    "code": "missing_target",
+    "suggestedFix": { "tool": "set_target" }
+  }
+}
+```
+
+### Macro Tools
+
+`act_and_observe` is the generic one-step macro. Pass a single `BatchStep`; it
+returns the action result, structural `change`, current `elements`, and optional
+screenshot path. `click_and_wait` and `type_and_assert` are narrower macros for
+common loops. All mutating high-level tools honor `WINSIGHT_DRY_RUN`.
+
 ## `launch_app`
 
 Start an application and wait until its window is actually present before
@@ -157,10 +216,12 @@ All provided criteria combine with AND. At least one criterion other than
   the search to one window, e.g. a modal dialog.
 - **Strict mode** — when several elements match and no `index` is given,
   the call fails and lists the candidates (`index`, `automationId`,
-  `name`, `controlType`, `windowTitle`) in both the error message and
-  `data`, so an agent can refine its locator in one round trip.
+  `name`, `controlType`, `windowTitle`, `score`, `reason`) in both the
+  error message and `data`, so an agent can refine its locator in one
+  round trip.
 - **Near misses** — when nothing matches, elements whose id or name
-  partially overlaps the requested terms are suggested in the error.
+  partially overlaps the requested terms are suggested in the error, with
+  lower scores and a `reason` such as `partialText`.
 - **Descendant text** — `descendantText` checks descendants up to depth 5.
   It targets WPF controls whose parent exposes a non-human `Name`
   (for example a view-model type name) while the useful label is carried
@@ -617,6 +678,8 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `stopOnError` | bool        | no       | Stop at the first failing step (default true)                    |
 | `captureExceptions` | bool  | no       | Attach the exceptions the target process threw during the batch (causal oracle). Requires the batch-level `processId`. |
 | `maxDurationMs` | int?      | no       | Total budget for the batch. When elapsed time reaches it before a step, the run stops and `timedOut` is true. |
+| `dryRun`      | bool        | no       | Validate and journal mutating steps without clicking, typing, selecting, or hovering. Also enabled globally by `WINSIGHT_DRY_RUN`. |
+| `traceRun`    | bool        | no       | Write a replay JSON artifact even when global tracing is off. |
 
 **Step shape** — a flat object with an `action` discriminator plus that action's
 fields. The shared locator fields (`automationId`, `name`, `className`,
@@ -666,6 +729,13 @@ absent from `steps`. With `stopOnError: false`, every step runs and
 `failedAtIndex` reports the first failure. `completed` counts successful steps;
 `total` is the number submitted. When `maxDurationMs` is set and the budget is
 hit before all steps run, the result has `timedOut: true` and `success: false`.
+When `dryRun` is true, mutating actions report `data.dryRun=true` and do not
+touch the target UI. Read-only steps such as `wait`, `assert`, `get_state`, and
+`screenshot` still run.
+
+**Replay artifacts** — set `traceRun: true`, `WINSIGHT_TRACE=1`, or
+`WINSIGHT_TRACE_DIR` to write a replay JSON file. `BatchResult.tracePath` points
+to it. Use `replay_steps` to inspect or replay it.
 
 **Causal exception oracle** — with `captureExceptions: true`, an EventPipe
 session runs around the whole batch and the result gains an `exceptions` array
@@ -689,6 +759,20 @@ managed process) and adds a short settle/drain overhead.
   ]
 }
 ```
+
+## `replay_steps`
+
+Replay a `run_steps` artifact. It is a dry run by default so an agent can
+inspect the recorded actions without repeating clicks or keystrokes.
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `tracePath` | string | — | Path returned by `run_steps.tracePath` |
+| `processId` | int? | null | Optional process id override; otherwise uses the trace default, then the session target |
+| `dryRun` | bool | true | Keep true for inspection; set false to execute recorded mutating steps |
+
+The return shape is the same `BatchResult` as `run_steps` and writes a new replay
+artifact for the replay attempt.
 
 ## `read_managed_state`
 
@@ -821,6 +905,8 @@ anti-aliased-edge detection. No ML model, GPU, or Python runtime is used.
 | `WINSIGHT_VISUAL_PIXEL_THRESHOLD` | `0.005`                                      | Maximum passing diff ratio |
 | `WINSIGHT_VISUAL_COLOR_THRESHOLD` | `0.1`                                        | pixelmatch color sensitivity (0..1) |
 | `WINSIGHT_OUTPUT_DIR`             | `%TEMP%\winsight`                            | Candidate captures and heatmaps |
+| `WINSIGHT_TRACE`                  | unset                                       | `1`/`true` enables JSONL tool traces and run replay artifacts |
+| `WINSIGHT_TRACE_DIR`              | `%TEMP%\winsight\traces` when tracing is enabled | Trace and replay artifact directory |
 
 Baselines live outside the repository by default. `baselineKey` must be a
 relative `.png` path and cannot escape the configured baseline directory.
@@ -1223,7 +1309,7 @@ output — the tool returns an `OperationResult` failure object instead:
 | `WINSIGHT_VISION_API_URL`   | `https://api.anthropic.com/v1/messages`  | Anthropic endpoint override      |
 | `WINSIGHT_VISION_TIMEOUT_MS`| `60000`                                  | Per-request timeout for the Anthropic backend (bounded; transient 429/5xx are retried) |
 | `WINSIGHT_VISION_ONNX_PATH` | —                                        | Local Qwen2.5-VL ONNX model directory |
-| `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` or `dml` (CPU-only in this build) |
+| `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` only in this build |
 | `WINSIGHT_OUTPUT_DIR`       | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |
 
 **Privacy** — screenshots are transmitted to the configured API when using

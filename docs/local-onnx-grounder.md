@@ -26,7 +26,7 @@ The model is consumed as a transformers.js-style 3-ONNX split
 | --------------------------- | ------- | ------------------------------------------------ |
 | `WINSIGHT_VISION_BACKEND`   | `anthropic` | Set to `onnx` for the local backend.         |
 | `WINSIGHT_VISION_ONNX_PATH` | —       | Directory holding the provisioned model (below).  |
-| `WINSIGHT_VISION_EP`        | `cpu`   | `cpu` or `dml`; **CPU-only in this build**.       |
+| `WINSIGHT_VISION_EP`        | `cpu`   | `cpu` only in this build.                         |
 
 ## Provisioning the model
 
@@ -45,9 +45,9 @@ The directory must contain `onnx\*_fp16.onnx` (+ `.onnx_data*` parts), plus
 ## Known limitations (follow-ups)
 
 - **Execution provider** — CPU only. The decoder's fused `MultiHeadAttention`
-  op currently fails on the DirectML EP, so GPU acceleration (DirectML or a CUDA
-  build of ONNX Runtime) is a tracked follow-up. CPU latency is on the order of
-  ~15 s per call.
+  op currently fails on the DirectML EP, so `WINSIGHT_VISION_EP=dml` is rejected
+  until GPU acceleration is implemented. CPU latency is on the order of ~15 s
+  per call.
 - **Resize fidelity** — `System.Drawing`'s bicubic resampler differs from the
   reference (PIL) more than an ideal match, which can shift the grounded point by
   a few tens of pixels. It still lands on the target element on tested UIs; a

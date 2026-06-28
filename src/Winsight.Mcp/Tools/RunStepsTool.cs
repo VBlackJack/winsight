@@ -52,7 +52,8 @@ public static class RunStepsTool
                  "error, data }] }. Use 'label' on a step to tag it in the journal. Set " +
                  "captureExceptions=true to attach, in 'exceptions', the exceptions the target process " +
                  "threw during the batch (a causal oracle; requires the batch-level processId). Does not " +
-                 "launch or close apps — use launch_app/close_app around the batch.")]
+                 "launch or close apps — use launch_app/close_app around the batch. Set dryRun=true " +
+                 "to validate and journal mutating steps without clicking/typing.")]
     public static string RunSteps(
         StepRunner runner,
         DiagnosticsObserver diagnostics,
@@ -68,7 +69,11 @@ public static class RunStepsTool
         bool captureExceptions = false,
         [Description("Optional total budget in milliseconds for the whole batch. When the elapsed time " +
                      "reaches it before a step, the run stops and the result is flagged timedOut.")]
-        int? maxDurationMs = null)
+        int? maxDurationMs = null,
+        [Description("When true, mutating steps are journaled but not executed. Also enabled globally by WINSIGHT_DRY_RUN.")]
+        bool dryRun = false,
+        [Description("When true, write a replay JSON artifact even when WINSIGHT_TRACE is disabled.")]
+        bool traceRun = false)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -81,6 +86,10 @@ public static class RunStepsTool
             // The batch process id falls back to the session default; per-step
             // processId still overrides it inside the runner.
             int? effectiveProcessId = processId ?? target.ProcessId;
+            if (!ValidateBatchPolicy(steps, effectiveProcessId, out string policyError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(policyError), JsonOptions.Default);
+            }
             if (captureExceptions && effectiveProcessId is null)
             {
                 return JsonSerializer.Serialize(
@@ -100,21 +109,110 @@ public static class RunStepsTool
                         : step)
                 .ToList();
 
+            bool effectiveDryRun = dryRun || ToolAccessPolicy.IsDryRunEnabled;
             BatchResult result;
             if (captureExceptions)
             {
                 BatchResult? batch = null;
                 IReadOnlyList<DiagnosticEvent> exceptions = diagnostics.CaptureExceptionsDuring(
                     effectiveProcessId!.Value,
-                    () => batch = runner.Run(prepared, effectiveProcessId, stopOnError, maxDurationMs));
+                    () => batch = runner.Run(
+                        prepared,
+                        effectiveProcessId,
+                        stopOnError,
+                        maxDurationMs,
+                        effectiveDryRun));
                 result = batch! with { Exceptions = exceptions };
             }
             else
             {
-                result = runner.Run(prepared, effectiveProcessId, stopOnError, maxDurationMs);
+                result = runner.Run(prepared, effectiveProcessId, stopOnError, maxDurationMs, effectiveDryRun);
+            }
+
+            result = result with { DryRun = effectiveDryRun };
+            var replay = new BatchReplay(
+                DateTime.UtcNow,
+                prepared,
+                effectiveProcessId,
+                stopOnError,
+                maxDurationMs,
+                result);
+            string? tracePath = TraceRecorder.WriteReplay(replay, traceRun);
+            if (!string.IsNullOrEmpty(tracePath))
+            {
+                result = result with { TracePath = tracePath };
             }
 
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
+    }
+
+    [McpServerTool(Name = "replay_steps")]
+    [Description("Replay a run_steps trace artifact. By default this is a dry run, so it validates and " +
+                 "journals the recorded mutating steps without clicking or typing. Pass dryRun=false " +
+                 "only when you intentionally want to execute the recorded actions again.")]
+    public static string ReplaySteps(
+        StepRunner runner,
+        DiagnosticsObserver diagnostics,
+        SessionTarget target,
+        [Description("Path to a run_steps replay JSON artifact written by traceRun=true or WINSIGHT_TRACE.")]
+        string tracePath,
+        [Description("Optional process id override. When omitted, uses the trace's original default process id, then the session target.")]
+        int? processId = null,
+        [Description("Keep true for safe inspection; set false to re-execute mutating actions.")]
+        bool dryRun = true)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            string fullPath = Path.GetFullPath(tracePath);
+            if (!File.Exists(fullPath))
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure($"Replay file not found: {fullPath}"),
+                    JsonOptions.Default);
+            }
+
+            BatchReplay? replay = JsonSerializer.Deserialize<BatchReplay>(
+                File.ReadAllText(fullPath),
+                JsonOptions.Default);
+            if (replay is null)
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure($"Replay file is empty or invalid: {fullPath}"),
+                    JsonOptions.Default);
+            }
+
+            int? effectiveProcessId = processId ?? replay.DefaultProcessId ?? target.ProcessId;
+            return RunSteps(
+                runner,
+                diagnostics,
+                target,
+                replay.Steps,
+                effectiveProcessId,
+                replay.StopOnError,
+                captureExceptions: false,
+                maxDurationMs: replay.MaxDurationMs,
+                dryRun: dryRun,
+                traceRun: true);
+        });
+    }
+
+    private static bool ValidateBatchPolicy(
+        IReadOnlyList<BatchStep> steps,
+        int? defaultProcessId,
+        out string error)
+    {
+        foreach (BatchStep step in steps)
+        {
+            int? pid = step.ProcessId ?? defaultProcessId;
+            if (pid is int processId &&
+                !ToolAccessPolicy.TryAuthorizeProcess(processId, out error))
+            {
+                return false;
+            }
+        }
+
+        error = string.Empty;
+        return true;
     }
 }

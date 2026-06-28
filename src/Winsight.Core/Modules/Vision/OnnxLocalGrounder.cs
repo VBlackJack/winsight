@@ -311,10 +311,11 @@ public sealed class OnnxLocalGrounder : IElementGrounder, IDisposable
         }
 
         string executionProvider = _options.EffectiveExecutionProvider;
-        if (executionProvider is not "cpu" and not "dml" and not "directml")
+        if (executionProvider is not "cpu")
         {
             throw new InvalidOperationException(
-                $"{ExecutionProviderVariable} must be 'cpu' or 'dml'; actual value: {executionProvider}");
+                $"{ExecutionProviderVariable} must be 'cpu' in this build; actual value: {executionProvider}. " +
+                "DirectML is not enabled because the decoder model is not compatible with the DirectML EP yet.");
         }
     }
 

@@ -61,18 +61,28 @@ public sealed class AffordanceScanner
         string? windowTitle = null,
         int maxResults = DefaultMaxResults)
     {
-        int cap = maxResults > 0 ? maxResults : DefaultMaxResults;
+        int cap = maxResults > 0
+            ? Math.Min(maxResults, UiaDefaults.MaxDescribeResults)
+            : DefaultMaxResults;
 
         using UIA3Automation automation = new();
         IReadOnlyList<WindowRoot> windows = ElementFinder.ResolveWindows(automation, processId, windowTitle);
 
         List<ElementState> states = new();
+        var visited = 0;
         foreach (WindowRoot window in windows)
         {
             Queue<AutomationElement> queue = new();
             queue.Enqueue(window.Element);
             while (queue.Count > 0 && states.Count < cap)
             {
+                if (++visited > UiaDefaults.MaxTraversalNodes)
+                {
+                    throw new InvalidOperationException(
+                        $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while describing process {processId}. " +
+                        "Pass windowTitle or a smaller maxResults.");
+                }
+
                 AutomationElement current = queue.Dequeue();
                 (string AutomationId, string Name, string ClassName, string ControlType)? snapshot =
                     TryReadSnapshot(current);

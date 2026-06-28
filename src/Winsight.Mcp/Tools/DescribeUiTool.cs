@@ -47,6 +47,14 @@ public static class DescribeUiTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (maxResults <= 0 || maxResults > UiaDefaults.MaxDescribeResults)
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure(
+                        $"maxResults must be between 1 and {UiaDefaults.MaxDescribeResults}."),
+                    JsonOptions.Default);
+            }
+
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
