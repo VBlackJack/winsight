@@ -53,8 +53,8 @@ jobs:
       - name: NuGet outdated package audit
         run: dotnet list Winsight.slnx package --outdated
 
-      - name: Upload diagnostics on failure
-        if: failure()
+      - name: Upload test results and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: winsight-test-diagnostics

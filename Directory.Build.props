@@ -14,9 +14,11 @@
     <Company>Julien Bombled</Company>
     <Copyright>Copyright 2026 Julien Bombled</Copyright>
     <Product>Winsight</Product>
+    <Version>0.1.0</Version>
 
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/julienbombled/winsight</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/VBlackJack/winsight</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/VBlackJack/winsight</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
     <NeutralLanguage>en-US</NeutralLanguage>

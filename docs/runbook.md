@@ -106,3 +106,37 @@ normal narrowing criterion:
   }
 }
 ```
+
+## Safety audit regression and vision gates
+
+Run `dotnet test Winsight.slnx -c Release` on an interactive Windows desktop.
+`AuditSafetyRegressionTests` and `AuditSafetyScenarioTests` cover process policy,
+non-forced closure, dry-run baselines, trace failures, unique artifacts, occlusion,
+and stale visual captures. The sample's `--refuse-close` flag is a test fixture
+that cancels closing; cleanup explicitly terminates only test-owned processes.
+
+When active MCP hosts lock the normal outputs, build and test with the same
+`--artifacts-path` directory. Set `WINSIGHT_SAMPLE_APP_PATH` to the freshly built
+`SampleWpfApp.exe` in that directory so E2E exercises the matching sample.
+
+Real vision integration tests carry `Category=Vision`. Without their fixtures,
+they report **Skipped**, never **Passed**. To validate the model, provision:
+
+- `WINSIGHT_VISION_ONNX_PATH`: exported local model directory.
+- `WINSIGHT_VISION_TEST_IMAGE`: reference screenshot.
+- `WINSIGHT_VISION_REF_DIR`: reference processor output, including `pixel_values.f32`.
+
+Then run `dotnet test Winsight.slnx -c Release --filter Category=Vision --logger trx`.
+Accept this model gate only when all three selected tests pass with zero skips.
+The ordinary CI run retains TRX artifacts even when green so absent fixtures
+remain visible. Stub-grounder safety tests do not establish model precision.
+
+`find_element_visually` retains the captured HWND, owning PID, and rectangle.
+A moved, resized, disabled, hidden, or destroyed window requires a new capture.
+A refused click returns `success: false` with both grounding and click details.
+Use `windowTitle` to select the intended main window or modal explicitly.
+`act_and_observe` rejects conflicting outer and step process IDs.
+
+Trace and replay writes are best effort: storage failure preserves the original
+tool outcome, and an unavailable replay has no `tracePath`. Screenshot filenames
+include a unique suffix so rapid batch captures do not overwrite each other.

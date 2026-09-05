@@ -9,8 +9,18 @@ development — going beyond what UI Automation alone can do.
 
 ## Get started in 60 seconds
 
+For the portable Windows x64 build, download `winsight-0.1.0-win-x64.zip` and
+`SHA256SUMS.txt` from [v0.1.0](https://github.com/VBlackJack/winsight/releases/tag/v0.1.0).
+Verify the archive with `Get-FileHash -Algorithm SHA256`, extract it, and register
+the absolute path to `winsight-mcp.exe` as your MCP client's stdio command.
+The archive includes the .NET runtime; no SDK installation is required.
+Vision model weights and API credentials are configured separately. See the
+[release notes](docs/release-notes-v0.1.0.md) for configuration and validation limits.
+
+To build from source:
+
 ```powershell
-git clone <this-repo> winsight
+git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
 .\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 41 tools
@@ -56,8 +66,10 @@ Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
 lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
 (golden path) and a real WPF application (`Win11Forge`). Current coverage:
-249 unit tests green, plus 21 E2E scenarios that drive a live interactive
-Windows desktop.
+Core/MCP unit tests and E2E scenarios that drive a live interactive Windows
+desktop. See the [audit and remediation evidence](docs/audit-2026-09-05.md)
+for measured results. Vision integration tests are explicitly skipped when
+their model/image/reference fixtures are absent.
 
 | Capability                      | Phase 1 | Phase 2 | Phase 3 |
 | ------------------------------- | ------- | ------- | ------- |
@@ -195,6 +207,7 @@ calls the Anthropic Claude vision API.
 | `ANTHROPIC_API_KEY`         | yes, for `anthropic` | —                           |
 | `WINSIGHT_VISION_MODEL`     | no       | `claude-sonnet-4-6`                      |
 | `WINSIGHT_VISION_API_URL`   | no       | `https://api.anthropic.com/v1/messages`  |
+| `WINSIGHT_VISION_MIN_CONFIDENCE` | no  | `0.5` (minimum confidence required before `find_element_visually` executes `act`) |
 | `WINSIGHT_VISION_ONNX_PATH` | yes, for `onnx` | —                                |
 | `WINSIGHT_VISION_EP`        | no, for `onnx` | `cpu` (DirectML is not enabled in this build) |
 
@@ -274,7 +287,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
 | `get_winsight_guide`          | Embedded agent playbook for the preferred loop and repair policy |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
-| `close_app`                   | Close a process (graceful with kill fallback, or forced) |
+| `close_app`                   | Request graceful closure, or explicitly force termination |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |
 | `inspect_ui_tree`             | Return the UIA tree for a process (filterable, value-aware) |
 | `describe_ui`                 | List a window's actionable elements with ready-to-use locators ("what can I do here?") |

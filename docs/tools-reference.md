@@ -196,8 +196,10 @@ during startup (the exit code is reported), or no matching window appears within
 ## `close_app`
 
 Close a process by id. By default this requests a graceful shutdown
-(`CloseMainWindow`) and falls back to a kill if the process does not exit within
-the grace window; `force=true` kills the process tree immediately.
+(`CloseMainWindow`) and waits up to five seconds. If the application remains
+open, the call returns a failure with `stillRunning: true` and `closeRequested`.
+Complete any save confirmation before retrying. Only `force=true` kills the
+process tree; a graceful request never escalates to a kill.
 
 **Parameters**
 
@@ -496,6 +498,12 @@ space. `coordinateSpace=screen` treats `x,y` as absolute desktop coordinates,
 but still verifies the point falls inside a visible window of the target process
 (after any `windowTitle` filter) unless `allowOutOfWindow=true` is set
 intentionally.
+
+Immediately before dispatch, Winsight also checks the window identity, geometry,
+and the process/window under the point. A covering window causes a failure.
+`allowOutOfWindow` never authorizes clicking another process. Input calls within
+one server are serialized; other desktop users or processes can still change
+the desktop between the native check and input dispatch.
 
 Unlike `click_element`, there is no UIA pattern resolution: every style is a
 physical mouse action at the computed point.
@@ -946,6 +954,10 @@ deterministic: SSIM (Gaussian 11x11, sigma 1.5, grayscale) as a global mean and
 a worst-block local minimum, plus a pixelmatch-style YIQ pixel-diff ratio with
 anti-aliased-edge detection. No ML model, GPU, or Python runtime is used.
 
+With `WINSIGHT_DRY_RUN=1`, this tool returns a preview without capturing, pruning
+artifacts, creating a baseline, or replacing an existing baseline, including
+when `updateBaseline=true`.
+
 **Parameters**
 
 | Name                 | Type     | Required | Description                                      |
@@ -1357,7 +1369,9 @@ straight to `click_point` with `coordinateSpace=screen`, or the window-relative
 
 **Acting in one call** — when `act` is set, the grounded point is clicked
 through the same path as `click_point` (window-relative) and the result wraps
-both the grounding and the click outcome:
+both the grounding and the click outcome. The click is refused when the returned
+confidence is below `WINSIGHT_VISION_MIN_CONFIDENCE` (default `0.5`); a
+locate-only call still returns the low-confidence grounding for inspection.
 
 ```json
 {
@@ -1385,6 +1399,7 @@ output — the tool returns an `OperationResult` failure object instead:
 | `WINSIGHT_VISION_MODEL`     | `claude-sonnet-4-6`                      | Anthropic model override         |
 | `WINSIGHT_VISION_API_URL`   | `https://api.anthropic.com/v1/messages`  | Anthropic endpoint override      |
 | `WINSIGHT_VISION_TIMEOUT_MS`| `60000`                                  | Per-request timeout for the Anthropic backend (bounded; transient 429/5xx are retried) |
+| `WINSIGHT_VISION_MIN_CONFIDENCE` | `0.5`                              | Minimum model confidence required before `act` clicks the grounded point |
 | `WINSIGHT_VISION_ONNX_PATH` | —                                        | Local Qwen2.5-VL ONNX model directory |
 | `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` only in this build |
 | `WINSIGHT_OUTPUT_DIR`       | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |

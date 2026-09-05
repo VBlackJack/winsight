@@ -136,7 +136,8 @@ Wraps FlaUI (UIA3):
 - `AppLauncher` — starts an executable and waits until its window is present
   (main window, or one matching a title fragment) before returning a classified
   `LaunchResult`, removing the shell-out-then-poll startup race; also closes a
-  process gracefully (`CloseMainWindow`) with a kill fallback, or forced. Reuses
+  process gracefully (`CloseMainWindow`), preserving a still-running application,
+  or terminates it only when force is explicitly requested. Reuses
   `WindowDiscovery` to detect the ready window.
 
 ### Winsight.Core/Modules/Orchestration

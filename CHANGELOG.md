@@ -7,6 +7,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-05
+
+### Fixed
+
+- Reject conflicting process IDs in `act_and_observe` before dispatch.
+- Preserve applications that refuse graceful closure; termination requires `force=true`.
+- Respect global dry-run before all visual baseline writes and captures.
+- Refuse coordinate clicks on an occluding process or an unexpected window.
+- Bind visual grounding to its captured HWND and geometry; reject stale captures
+  and propagate refused clicks as outer failures.
+- Isolate trace/replay filesystem failures from tool outcomes and allocate unique
+  screenshot/replay filenames for rapid and concurrent requests.
+- Report missing vision fixtures as skipped tests, with a separately selectable
+  `Category=Vision` gate and retained CI test reports.
+
 ### Added
 
 #### Agent-first workflow and hardening
@@ -456,9 +471,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   .NET 5+. `.NET Framework 4.8` is not supported.
 - The MCP server process must match the target process bitness. The
   default platform target throughout the solution is x64.
-- `find_element_visually` requires `ANTHROPIC_API_KEY` to be set and
-  transmits the screenshot to the configured API. The other 18 tools
-  work without any API key.
+- The default cloud backend of `find_element_visually` requires
+  `ANTHROPIC_API_KEY` and transmits the screenshot to the configured API.
+  The local ONNX backend requires provisioned model files instead. The other
+  tools work without a vision API key.
 - Windows UAC / UIPI: a winsight host running at standard-user level
   cannot enumerate, inspect, or attach to processes that require
   administrator (apps shipping `<requestedExecutionLevel
