@@ -28,6 +28,25 @@ namespace Winsight.E2E;
 public sealed class VerifiedSceneScenarioTests
 {
     [Fact]
+    public async Task Managed_boolean_postcondition_uses_wire_boolean_spelling()
+    {
+        using Process process = Process.Start(new ProcessStartInfo(SampleAppLocator.ResolveExecutablePath()) { UseShellExecute = false })!;
+        try
+        {
+            new ElementWaiter().Wait(process.Id, new ElementLocator(AutomationId: "FeatureToggle"), WaitCondition.Exists).Success.Should().BeTrue();
+            SceneStore store = new();
+            using JsonDocument observed = JsonDocument.Parse(VerifiedSceneTool.Observe(store, new SessionTarget(), process.Id));
+            string id = observed.RootElement.GetProperty("data").GetProperty("id").GetString()!;
+            SceneElement toggle = store.Get(id)!.Capture.Elements.Single(n => n.Locator.AutomationId == "FeatureToggle");
+            using JsonDocument result = JsonDocument.Parse(await VerifiedSceneTool.Act(store, new SceneAction(id, toggle.Ref, "activate",
+                new SceneExpectation("managed", "true", TypeName: "Winsight.Samples.SimpleCounter.ViewModels.CounterViewModel", FieldName: "_featureEnabled")),
+                TestContext.Current.CancellationToken));
+            result.RootElement.GetProperty("verified").GetBoolean().Should().BeTrue(result.RootElement.ToString());
+        }
+        finally { if (!process.HasExited) { process.Kill(); process.WaitForExit(); } }
+    }
+
+    [Fact]
     public async Task Profile_preview_execution_and_hash_invalidation_are_enforced()
     {
         DirectoryInfo directory = Directory.CreateTempSubdirectory("winsight-profile-");

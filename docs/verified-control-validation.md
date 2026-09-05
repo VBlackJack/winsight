@@ -9,6 +9,7 @@ and deterministic contracts; they do not represent model-comparison scores.
 | Core | 189 passed, 2 skipped (external vision fixtures) |
 | MCP | 111 passed |
 | Complete E2E | 35 passed, 1 skipped (external vision fixture) |
+| Additional managed boolean E2E | 1 passed; lowercase wire value verified against a unique managed instance |
 | Final verified-scene E2E | 5 passed, including two additional profile/capture scenarios |
 | MCP stdio | Initialize and tools/list succeed; 48 tools, including all 7 new tools |
 | Scripted evaluation | 20/20 scenarios passed after fixing owned-dialog duplication |

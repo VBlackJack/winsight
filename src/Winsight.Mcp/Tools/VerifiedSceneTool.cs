@@ -156,7 +156,9 @@ public static class VerifiedSceneTool
         if (expect.Kind == "managed")
         {
             OperationResult managed = new ManagedStateReader().Read(pid, expect.TypeName!, expect.FieldName!, requireUnique: true);
-            return (managed.Success && Convert.ToString(managed.Data, System.Globalization.CultureInfo.InvariantCulture) == expect.Expected, managed);
+            string? observed = managed.Data is bool boolean ? boolean.ToString().ToLowerInvariant()
+                : Convert.ToString(managed.Data, System.Globalization.CultureInfo.InvariantCulture);
+            return (managed.Success && observed == expect.Expected, managed);
         }
         if (expect.Kind == "absent")
         {
