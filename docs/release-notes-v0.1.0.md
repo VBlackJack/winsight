@@ -19,6 +19,19 @@ diagnostics, screenshots, and visual grounding.
 
 ## Install
 
+**Recommended for desktop users:** run `Winsight-Setup-0.1.0-win-x64.exe`.
+The English/French wizard installs for the current Windows user without
+administrator rights. Select Codex, Claude Desktop, Claude Code and/or Gemini
+CLI, then restart those clients. No command line or .NET SDK is required.
+Client configuration folders are detected; you can also select clients manually.
+The installer does not install the clients themselves or change their approvals.
+
+Existing client settings are backed up before modification. Other settings and
+MCP servers are retained; JSON/TOML formatting may be normalized. A conflicting
+Winsight entry is preserved and reported instead of overwritten. Uninstall
+removes only registrations still pointing to this installation. Run setup again
+to add a client later. The package is not Authenticode-signed.
+
 Download `winsight-0.1.0-win-x64.zip` and `SHA256SUMS.txt`, compare the archive's
 SHA-256 using `Get-FileHash`, and extract it into a dedicated directory. Keep all
 files together. The self-contained build includes the .NET runtime.
@@ -44,8 +57,14 @@ archive for environment variables and tool parameters.
 
 ## Validation
 
-The safety remediation passed 299 tests with zero failures; three real-model
+The safety remediation passed 299 tests with zero failures; installer configuration
+adds eight regression cases for preservation, conflicts, backups and rollback. Three real-model
 tests were explicitly skipped because model/reference fixtures were absent.
+Final local totals are 307 passed, zero failed, and three skipped. Installation,
+installed-server smoke, refusal to uninstall with invalid configuration, and
+successful scoped uninstall were exercised with an isolated Codex configuration.
+Claude Code also connected using an isolated generated configuration. Gemini CLI
+recognized its generated entry; folder trust remained enforced by the client.
 The fresh stdio smoke initialized and listed 41 tools. Detailed evidence is in
 `docs/audit-2026-09-05.md`.
 
@@ -60,3 +79,5 @@ applications Windows. Les neuf constats de l'audit sont corriges : protection
 du processus cible, fermeture forcee explicite, respect du mode simulation,
 clics controles et conservation des preuves. Les tests de modele reel restent
 a executer avec les fichiers de reference requis.
+Le setup Windows configure Codex, Claude Desktop, Claude Code et Gemini CLI avec
+un assistant en francais ou anglais, sans commande a saisir.

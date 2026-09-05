@@ -24,6 +24,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Windows x64 per-user setup with an English/French wizard, bundled runtime,
+  client selection for Codex, Claude Desktop, Claude Code and Gemini CLI,
+  configuration backups, conflict protection and scoped unregistration.
+- Reproducible setup/ZIP build script and CI installer artifacts.
+
 #### Agent-first workflow and hardening
 
 - Added high-level MCP tools for AI agents: `observe`, `plan_steps`,

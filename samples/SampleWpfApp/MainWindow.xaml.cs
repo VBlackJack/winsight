@@ -82,7 +82,8 @@ public partial class MainWindow : Window
         }
         catch (InvalidOperationException)
         {
-            // Intentionally swallowed.
+            // Publish a completion oracle: UIA Invoke may return before this handler runs.
+            if (DataContext is CounterViewModel viewModel) viewModel.LastNote = "Exception handler completed";
         }
     }
 

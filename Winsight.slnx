@@ -5,6 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/Winsight.Core/Winsight.Core.csproj" />
     <Project Path="src/Winsight.Mcp/Winsight.Mcp.csproj" />
+    <Project Path="src/Winsight.Setup/Winsight.Setup.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Winsight.Core.Tests/Winsight.Core.Tests.csproj" />

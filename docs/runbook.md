@@ -109,6 +109,35 @@ normal narrowing criterion:
 
 ## Safety audit regression and vision gates
 
+For end-user installation, use `Winsight-Setup-0.1.0-win-x64.exe` and the
+English/French guide in `docs/installation.html`. The setup runs per user.
+For packaging, install Inno Setup 6 and run `tools/build-setup.ps1` from Windows
+PowerShell 5.1 or later. Use a fresh `-OutputDirectory` for each build. Output
+includes the setup EXE, portable ZIP, `BUILD-COMMIT.txt` and `SHA256SUMS.txt`.
+
+Client configuration locations:
+
+| Client | User configuration |
+|---|---|
+| Codex | `%USERPROFILE%\.codex\config.toml` (or `CODEX_HOME`) |
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Claude Code | `%USERPROFILE%\.claude.json` (or `CLAUDE_CONFIG_DIR`) |
+| Gemini CLI | `%USERPROFILE%\.gemini\settings.json` (or `%GEMINI_CLI_HOME%\.gemini\settings.json`) |
+
+Setup preserves other server entries and client settings, but may normalize
+formatting. Close clients before changes. It validates all selected files before
+writing, saves sibling backups and records successful paths for uninstall.
+Registration failure is reported in the wizard and returns exit code 3 in silent
+mode; logs are under `%LOCALAPPDATA%\Winsight\logs`. A conflicting Winsight
+registration must be removed in the client before retrying. Uninstall acts after
+confirmation, refuses configuration errors and preserves entries repointed elsewhere.
+
+Configuration formats were checked against the official
+[Codex documentation](https://developers.openai.com/codex/mcp),
+[Claude Code documentation](https://code.claude.com/docs/en/mcp),
+[Claude Desktop setup](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
+and [Gemini CLI documentation](https://geminicli.com/docs/tools/mcp-server/).
+
 Run `dotnet test Winsight.slnx -c Release` on an interactive Windows desktop.
 `AuditSafetyRegressionTests` and `AuditSafetyScenarioTests` cover process policy,
 non-forced closure, dry-run baselines, trace failures, unique artifacts, occlusion,

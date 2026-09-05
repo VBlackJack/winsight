@@ -97,7 +97,11 @@ public class ExceptionOracleScenarioTests
             runner,
             diagnostics,
             new SessionTarget(),
-            new[] { new BatchStep("click", AutomationId: buttonId) },
+            new[]
+            {
+                new BatchStep("click", AutomationId: buttonId),
+                new BatchStep("wait", Name: buttonId == ThrowButtonId ? "Exception handler completed" : "Count: 1", Condition: "exists"),
+            },
             processId,
             stopOnError: true,
             captureExceptions: true);

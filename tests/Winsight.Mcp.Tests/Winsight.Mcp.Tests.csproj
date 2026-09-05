@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Winsight.Core\Winsight.Core.csproj" />
     <ProjectReference Include="..\..\src\Winsight.Mcp\Winsight.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\Winsight.Setup\Winsight.Setup.csproj" />
   </ItemGroup>
 
   <ItemGroup>

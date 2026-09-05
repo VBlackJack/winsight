@@ -44,6 +44,24 @@ jobs:
       - name: MCP smoke
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke-mcp.ps1 -ExpectedToolCount 41
 
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-setup.ps1
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: winsight-windows-setup
+          path: |
+            artifacts/setup/*.exe
+            artifacts/setup/*.zip
+            artifacts/setup/SHA256SUMS.txt
+
       - name: NuGet vulnerability audit
         run: dotnet list Winsight.slnx package --vulnerable --include-transitive
 

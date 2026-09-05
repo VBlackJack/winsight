@@ -9,6 +9,13 @@ development — going beyond what UI Automation alone can do.
 
 ## Get started in 60 seconds
 
+**Recommended:** download `Winsight-Setup-0.1.0-win-x64.exe` from
+[v0.1.0](https://github.com/VBlackJack/winsight/releases/tag/v0.1.0), close your
+clients, and follow the wizard. Select **Codex, Claude Desktop, Claude Code,
+and/or Gemini CLI**, then restart them. No terminal command or .NET installation
+is needed. The clients themselves must already be installed.
+See the [installation guide](docs/installation.html).
+
 For the portable Windows x64 build, download `winsight-0.1.0-win-x64.zip` and
 `SHA256SUMS.txt` from [v0.1.0](https://github.com/VBlackJack/winsight/releases/tag/v0.1.0).
 Verify the archive with `Get-FileHash -Algorithm SHA256`, extract it, and register

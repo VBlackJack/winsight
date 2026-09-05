@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Installer Winsight</title>
+<style>body{font:18px/1.6 system-ui;max-width:820px;margin:48px auto;padding:0 24px;color:#202434}h1,h2{line-height:1.2}code{background:#eee;padding:2px 5px}</style>
+<h1>Winsight est prêt à vous aider</h1>
+<p>Winsight permet à votre assistant d’inspecter et de piloter vos applications Windows.</p>
+<h2>Installation en trois étapes</h2>
+<ol><li>Fermez Codex, Claude Desktop, Claude Code et Gemini CLI.</li>
+<li>Lancez <strong>Winsight Setup</strong>, puis cochez les applications que vous utilisez.</li>
+<li>Rouvrez ces applications et acceptez la connexion à Winsight si elles vous le demandent.</li></ol>
+<p>Aucune commande, clé API ou installation de .NET n’est nécessaire pour les outils de base.
+Les applications clientes doivent déjà être installées. Le setup détecte leurs dossiers de
+configuration ; vous pouvez aussi cocher manuellement une application.</p>
+<h2>Votre première demande</h2>
+<p>Demandez : « Avec Winsight, liste les fenêtres ouvertes. » Vous pourrez ensuite désigner
+l’application à inspecter. Les autorisations restent contrôlées par votre assistant.</p>
+<h2>Modifier ou désinstaller</h2>
+<p>Relancez le setup pour connecter une autre application. Pour retirer Winsight, utilisez
+<strong>Paramètres Windows → Applications → Winsight → Désinstaller</strong>.
+Seules les connexions qui pointent encore vers cette installation sont retirées.</p>
+<h2>Si la configuration échoue</h2>
+<p>Fermez vos assistants puis relancez le setup. Si une ancienne connexion Winsight existe,
+retirez-la dans les réglages MCP de l’assistant avant de réessayer. Le setup ne la remplace
+pas automatiquement. Les sauvegardes <code>.winsight-….bak</code> restent à côté des
+fichiers de configuration ; les journaux sont dans <code>%LOCALAPPDATA%\Winsight\logs</code>.</p>
+<p>La reconnaissance visuelle par modèle est facultative et nécessite une configuration
+supplémentaire, décrite dans <a href="tools-reference.md">la référence des outils</a>.</p>
+<hr><h2 lang="en">English quick start</h2>
+<p lang="en">Close your clients, run Winsight Setup, select Codex, Claude Desktop, Claude Code
+and/or Gemini CLI, then restart them. No terminal command or .NET installation is required.
+Ask your assistant to list open windows with Winsight. Rerun setup to add a client. Uninstall
+through Windows Settings. Existing conflicting Winsight registrations are preserved: remove
+them in the client's MCP settings before retrying. Backups remain beside client settings.</p>
+</html>
