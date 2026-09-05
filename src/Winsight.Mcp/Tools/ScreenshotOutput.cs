@@ -60,7 +60,7 @@ internal static class ScreenshotOutput
             PruneOldCaptures(directory, filePrefix);
         }
         string timestamp = DateTime.UtcNow.ToString(TimestampFormat, CultureInfo.InvariantCulture);
-        return Path.Combine(directory, filePrefix + timestamp + Extension);
+        return Path.Combine(directory, filePrefix + timestamp + "-" + Guid.NewGuid().ToString("N") + Extension);
     }
 
     /// <summary>

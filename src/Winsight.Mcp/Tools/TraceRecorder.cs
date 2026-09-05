@@ -28,15 +28,24 @@ internal static class TraceRecorder
     private static readonly object Gate = new();
 
     public static bool IsEnabled =>
-        ResolveDirectory(create: false) is not null;
+        CurrentDirectory is not null;
 
-    public static string? CurrentDirectory => ResolveDirectory(create: false);
+    public static string? CurrentDirectory => BestEffort(() => ResolveDirectory(create: false));
 
     public static void RecordToolResult(
         string toolName,
         TimeSpan elapsed,
         string payload,
         bool isError = false)
+    {
+        BestEffort(() =>
+        {
+            RecordToolResultCore(toolName, elapsed, payload, isError);
+            return true;
+        });
+    }
+
+    private static void RecordToolResultCore(string toolName, TimeSpan elapsed, string payload, bool isError)
     {
         string? directory = ResolveDirectory(create: true);
         if (directory is null)
@@ -69,6 +78,11 @@ internal static class TraceRecorder
 
     public static string? WriteReplay(BatchReplay replay, bool force)
     {
+        return BestEffort(() => WriteReplayCore(replay, force));
+    }
+
+    private static string? WriteReplayCore(BatchReplay replay, bool force)
+    {
         string? directory = ResolveDirectory(create: true);
         if (directory is null && force)
         {
@@ -79,7 +93,7 @@ internal static class TraceRecorder
             return null;
         }
 
-        string path = Path.Combine(directory, $"run-steps-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.json");
+        string path = Path.Combine(directory, $"run-steps-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json");
         string json = JsonSerializer.Serialize(replay, JsonOptions.Default);
         File.WriteAllText(path, json);
         return path;
@@ -104,6 +118,20 @@ internal static class TraceRecorder
         }
 
         return null;
+    }
+
+    // Telemetry must never change an already executed operation's outcome.
+    private static T? BestEffort<T>(Func<T> write)
+    {
+        try
+        {
+            return write();
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or StackOverflowException or ThreadAbortException))
+        {
+            System.Diagnostics.Debug.WriteLine($"[winsight] Trace unavailable: {ex.Message}");
+            return default;
+        }
     }
 
     private static string ResolveDefaultDirectory(bool create)

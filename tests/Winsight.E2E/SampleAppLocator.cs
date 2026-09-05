@@ -21,6 +21,11 @@ internal static class SampleAppLocator
 
     public static string ResolveExecutablePath()
     {
+        string? configured = Environment.GetEnvironmentVariable("WINSIGHT_SAMPLE_APP_PATH");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return Path.GetFullPath(configured);
+        }
         var configuration = ResolveConfiguration();
         var targetFramework = ResolveTargetFramework();
         var repoRoot = ResolveRepoRoot();

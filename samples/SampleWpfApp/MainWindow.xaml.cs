@@ -22,6 +22,7 @@ namespace Winsight.Samples.SimpleCounter;
 
 public partial class MainWindow : Window
 {
+    private const string RefuseCloseArgument = "--refuse-close";
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_HOTKEY = 0x0312;
     private const int ShortcutHotKeyId = 1;
@@ -36,6 +37,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        if (Environment.GetCommandLineArgs().Contains(RefuseCloseArgument, StringComparer.Ordinal))
+        {
+            // A deterministic unsaved-work fixture for the lifecycle safety tests.
+            Closing += (_, args) => args.Cancel = true;
+        }
     }
 
     protected override void OnSourceInitialized(EventArgs e)

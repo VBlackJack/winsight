@@ -62,7 +62,7 @@ public static class LifecycleTool
 
     [McpServerTool(Name = "close_app")]
     [Description("Close a process by id. By default requests a graceful shutdown (CloseMainWindow) and " +
-                 "falls back to a kill if it does not exit within the grace window; set force=true to " +
+                 "reports stillRunning if it does not exit within the grace window; set force=true to " +
                  "kill the process tree immediately. Returns an OperationResult; a process that is " +
                  "already gone is reported as success.")]
     public static string CloseApp(

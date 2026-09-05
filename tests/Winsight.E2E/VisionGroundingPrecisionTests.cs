@@ -51,12 +51,13 @@ public class VisionGroundingPrecisionTests
     }
 
     [Fact]
+    [Trait("Category", "Vision")]
     public async Task Grounded_points_land_inside_their_target_elements()
     {
         string? modelPath = Environment.GetEnvironmentVariable("WINSIGHT_VISION_ONNX_PATH");
         if (string.IsNullOrWhiteSpace(modelPath))
         {
-            return; // no provisioned model -> skip
+            Assert.Skip("Requires WINSIGHT_VISION_ONNX_PATH.");
         }
 
         string executablePath = SampleAppLocator.ResolveExecutablePath();

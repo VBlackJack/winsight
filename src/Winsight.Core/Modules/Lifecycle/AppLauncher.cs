@@ -117,8 +117,8 @@ public sealed class AppLauncher
 
     /// <summary>
     /// Close a process. By default this requests a graceful shutdown
-    /// (CloseMainWindow) and falls back to a kill if the process does not exit
-    /// within the grace window; <paramref name="force"/> kills immediately.
+    /// (CloseMainWindow) and reports a still-running process if it does not exit
+    /// within the grace window; only <paramref name="force"/> permits killing.
     /// </summary>
     public OperationResult Close(int processId, bool force = false)
     {
@@ -138,7 +138,12 @@ public sealed class AppLauncher
             if (force)
             {
                 process.Kill(entireProcessTree: true);
-                process.WaitForExit(DefaultCloseGraceMs);
+                if (!process.WaitForExit(DefaultCloseGraceMs))
+                {
+                    return OperationResult.FailureWith(
+                        $"Process {processId} has not exited after the forced termination request.",
+                        new { processId, stillRunning = true, forced = true });
+                }
                 return OperationResult.OkWith(new { processId, forced = true });
             }
 
@@ -148,10 +153,10 @@ public sealed class AppLauncher
                 return OperationResult.OkWith(new { processId, forced = false });
             }
 
-            // No main window to message, or it ignored the request: kill it.
-            process.Kill(entireProcessTree: true);
-            process.WaitForExit(DefaultCloseGraceMs);
-            return OperationResult.OkWith(new { processId, forced = true });
+            return OperationResult.FailureWith(
+                $"Process {processId} is still running. Complete any close/save confirmation, " +
+                "or explicitly request force=true to terminate it.",
+                new { processId, stillRunning = true, closeRequested = requested, forced = false });
         }
     }
 

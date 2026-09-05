@@ -25,6 +25,70 @@ namespace Winsight.Core.Modules.UiAutomation;
 /// </summary>
 public static class WindowGeometry
 {
+    private const uint RootAncestor = 2;
+
+    /// <summary>Resolve a window identity, optionally containing a screen-space point.</summary>
+    public static bool TryResolveWindow(
+        int processId,
+        string? windowTitle,
+        out WindowIdentity window,
+        out string? error,
+        System.Drawing.Point? screenPoint = null)
+    {
+        window = default!;
+        List<(IntPtr Handle, string Title)> candidates = FilterByTitle(
+            NativeWindowEnumerator.VisibleTopLevelWindows(processId), windowTitle);
+        foreach ((IntPtr handle, _) in candidates)
+        {
+            if (TryReadBounds(handle, out WindowBounds bounds) &&
+                (screenPoint is null || ContainsScreenPoint(bounds, screenPoint.Value.X, screenPoint.Value.Y)))
+            {
+                window = new WindowIdentity(processId, handle.ToInt64(), bounds);
+                error = null;
+                return true;
+            }
+        }
+        error = $"No matching visible window in process {processId}" +
+            (screenPoint is null ? "." : $" contains screen point ({screenPoint.Value.X}, {screenPoint.Value.Y}).");
+        return false;
+    }
+
+    /// <summary>Refuse a disappeared, hidden, disabled, or moved/resized window; never choose a replacement.</summary>
+    public static bool TryValidate(WindowIdentity window, out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        IntPtr handle = new(window.Handle);
+        uint thread = GetWindowThreadProcessId(handle, out uint owner);
+        if (thread == 0 || owner != window.ProcessId || !IsWindowVisible(handle) || !IsWindowEnabled(handle) ||
+            !TryReadBounds(handle, out WindowBounds current) || current != window.Bounds)
+        {
+            error = "The captured target window is unavailable or its geometry changed. Capture again before acting.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    /// <summary>Verify that physical input at the point reaches the intended process and window.</summary>
+    internal static bool TryValidatePointRecipient(
+        WindowIdentity window, int x, int y, bool allowOtherWindow, out string? error)
+    {
+        if (!TryValidate(window, out error))
+        {
+            return false;
+        }
+        IntPtr recipient = WindowFromPoint(new NativePoint { X = x, Y = y });
+        uint thread = GetWindowThreadProcessId(recipient, out uint owner);
+        if (recipient == IntPtr.Zero || thread == 0 || owner != window.ProcessId ||
+            (!allowOtherWindow && GetAncestor(recipient, RootAncestor).ToInt64() != window.Handle))
+        {
+            error = "The click point is occluded or belongs to another window/process. Expose the target window and retry.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
     /// <summary>
     /// Resolve the bounds of the topmost visible window of the process, or the
     /// topmost window whose title contains <paramref name="windowTitle"/>.
@@ -165,6 +229,30 @@ public static class WindowGeometry
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hwnd, out Rect lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(NativePoint point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect

@@ -33,13 +33,14 @@ public class QwenImagePreprocessingParityTests
     }
 
     [Fact]
+    [Trait("Category", "Vision")]
     public void PixelValues_match_the_reference_processor()
     {
         string? refDir = Environment.GetEnvironmentVariable("WINSIGHT_VISION_REF_DIR");
         string? imagePath = Environment.GetEnvironmentVariable("WINSIGHT_VISION_TEST_IMAGE");
         if (string.IsNullOrWhiteSpace(refDir) || string.IsNullOrWhiteSpace(imagePath))
         {
-            return; // no reference -> skip
+            Assert.Skip("Requires WINSIGHT_VISION_REF_DIR and WINSIGHT_VISION_TEST_IMAGE.");
         }
 
         QwenPreprocessResult result = QwenImagePreprocessing.Build(

@@ -98,6 +98,16 @@ public static class CompareVisualBaselineTool
                 };
             }
             string baselinePath = ResolveBaselinePath(baselineKey);
+            if (ToolAccessPolicy.DryRunMutation(
+                    "compare_visual_baseline",
+                    new { processId = pid, baselinePath, updateBaseline, baselineExists = File.Exists(baselinePath) })
+                is { } dryRun)
+            {
+                return new CallToolResult
+                {
+                    Content = { new TextContentBlock { Text = JsonSerializer.Serialize(dryRun, JsonOptions.Default) } },
+                };
+            }
             string candidatePath = ScreenshotOutput.BuildTimestampedPath(CandidatePrefix);
             capture.CaptureClientArea(pid, candidatePath);
 

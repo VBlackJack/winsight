@@ -34,13 +34,14 @@ public class OnnxLocalGrounderIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "Vision")]
     public async Task FindAsync_grounds_an_element_in_a_real_screenshot()
     {
         string? modelPath = Environment.GetEnvironmentVariable("WINSIGHT_VISION_ONNX_PATH");
         string? imagePath = Environment.GetEnvironmentVariable("WINSIGHT_VISION_TEST_IMAGE");
         if (string.IsNullOrWhiteSpace(modelPath) || string.IsNullOrWhiteSpace(imagePath))
         {
-            return; // no provisioned model -> skip
+            Assert.Skip("Requires WINSIGHT_VISION_ONNX_PATH and WINSIGHT_VISION_TEST_IMAGE.");
         }
 
         using OnnxLocalGrounder grounder = new(new OnnxLocalGrounderOptions(modelPath, "cpu"));

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
@@ -26,7 +27,10 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class FindElementVisuallyTool
 {
+    public const string MinimumConfidenceVariable = "WINSIGHT_VISION_MIN_CONFIDENCE";
+
     private const string ScreenshotPrefix = "vision-";
+    private const double DefaultMinimumConfidence = 0.5;
 
     [McpServerTool(Name = "find_element_visually")]
     [Description("Locate a UI element from a natural-language description by capturing a screenshot " +
@@ -70,23 +74,48 @@ public static class FindElementVisuallyTool
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
 
-            var screenshotPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix);
-            capture.Capture(pid, screenshotPath, windowTitle);
-            GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
-
-            // Enrich with absolute screen coordinates so the agent never has to
-            // add the window origin itself. Best-effort: if the window origin
-            // cannot be resolved, the window-relative point is still returned.
-            if (WindowGeometry.TryResolveTopmostBounds(pid, windowTitle, out WindowBounds bounds, out _))
+            ClickStyle? requestedAction = null;
+            double minimumConfidence = DefaultMinimumConfidence;
+            if (!string.IsNullOrWhiteSpace(act))
             {
-                (int screenX, int screenY) =
-                    WindowPointMapper.ToScreen(bounds.Left, bounds.Top, grounded.X, grounded.Y);
-                grounded = grounded with { ScreenX = screenX, ScreenY = screenY };
+                if (!ClickStyleParser.TryParse(act, out ClickStyle style))
+                {
+                    return JsonSerializer.Serialize(
+                        OperationResult.Failure(
+                            $"Unknown act \"{act}\". Accepted values: {ClickStyleParser.AcceptedValues}."),
+                        JsonOptions.Default);
+                }
+                if (!TryResolveMinimumConfidence(out minimumConfidence, out string confidenceError))
+                {
+                    return JsonSerializer.Serialize(OperationResult.Failure(confidenceError), JsonOptions.Default);
+                }
+                requestedAction = style;
             }
 
-            if (string.IsNullOrWhiteSpace(act))
+            var screenshotPath = ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix);
+            ScreenshotResult screenshot = capture.Capture(pid, screenshotPath, windowTitle);
+            GroundedElement grounded = await grounder.FindAsync(screenshotPath, query, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            WindowIdentity? capturedWindow = screenshot.Window;
+            if (capturedWindow is null || !WindowGeometry.TryValidate(capturedWindow, out _))
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure("The captured window is unavailable or changed. Capture again before acting."),
+                    JsonOptions.Default);
+            }
+            WindowBounds bounds = capturedWindow.Bounds;
+            (int screenX, int screenY) =
+                WindowPointMapper.ToScreen(bounds.Left, bounds.Top, grounded.X, grounded.Y);
+            grounded = grounded with { ScreenX = screenX, ScreenY = screenY };
+
+            if (requestedAction is null)
             {
                 return JsonSerializer.Serialize(OperationResult.OkWith(grounded), JsonOptions.Default);
+            }
+            if (ValidateMinimumConfidence(grounded, minimumConfidence) is { } confidenceFailure)
+            {
+                return JsonSerializer.Serialize(confidenceFailure, JsonOptions.Default);
             }
             if (ToolAccessPolicy.DryRunMutation(
                     "find_element_visually.act",
@@ -98,19 +127,72 @@ public static class FindElementVisuallyTool
                     JsonOptions.Default);
             }
 
-            if (!ClickStyleParser.TryParse(act, out ClickStyle style))
-            {
-                return JsonSerializer.Serialize(
-                    OperationResult.Failure(
-                        $"Unknown act \"{act}\". Accepted values: {ClickStyleParser.AcceptedValues}."),
-                    JsonOptions.Default);
-            }
-
             OperationResult click = invoker.ClickPoint(
-                pid, grounded.X, grounded.Y, style, windowTitle, windowRelative: true);
+                pid, grounded.X, grounded.Y, requestedAction.Value, windowTitle, windowRelative: true,
+                expectedWindow: capturedWindow);
             return JsonSerializer.Serialize(
-                OperationResult.OkWith(new { grounded, click }),
+                click.Success
+                    ? OperationResult.OkWith(new { grounded, click })
+                    : OperationResult.FailureWith(click.Error!, new { grounded, click }),
                 JsonOptions.Default);
         });
+    }
+
+    internal static OperationResult? ValidateMinimumConfidence(
+        GroundedElement grounded,
+        double minimumConfidence)
+    {
+        if (!double.IsFinite(grounded.Confidence) ||
+            grounded.Confidence < 0.0 ||
+            grounded.Confidence > 1.0)
+        {
+            return OperationResult.FailureWith(
+                $"Vision grounding confidence {grounded.Confidence.ToString(CultureInfo.InvariantCulture)} is outside the valid range 0..1; refusing to click.",
+                new { grounded, minConfidence = minimumConfidence });
+        }
+
+        if (grounded.Confidence < minimumConfidence)
+        {
+            return OperationResult.FailureWith(
+                "Vision grounding confidence " +
+                $"{grounded.Confidence.ToString("0.###", CultureInfo.InvariantCulture)} is below " +
+                $"{MinimumConfidenceVariable}=" +
+                $"{minimumConfidence.ToString("0.###", CultureInfo.InvariantCulture)}; refusing to click.",
+                new { grounded, minConfidence = minimumConfidence });
+        }
+
+        return null;
+    }
+
+    internal static bool TryResolveMinimumConfidence(
+        out double minimumConfidence,
+        out string error,
+        Func<string, string?>? getEnvironmentVariable = null)
+    {
+        string? raw = (getEnvironmentVariable ?? Environment.GetEnvironmentVariable)(MinimumConfidenceVariable);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            minimumConfidence = DefaultMinimumConfidence;
+            error = string.Empty;
+            return true;
+        }
+
+        if (!double.TryParse(
+                raw,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out double parsed) ||
+            !double.IsFinite(parsed) ||
+            parsed < 0.0 ||
+            parsed > 1.0)
+        {
+            minimumConfidence = DefaultMinimumConfidence;
+            error = $"{MinimumConfidenceVariable} must be a number between 0 and 1.";
+            return false;
+        }
+
+        minimumConfidence = parsed;
+        error = string.Empty;
+        return true;
     }
 }

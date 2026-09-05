@@ -31,6 +31,7 @@ namespace Winsight.Core.Modules.UiAutomation;
 /// </summary>
 public sealed class ActionInvoker
 {
+    private static readonly object DesktopInputGate = new();
     private const int DefaultTooltipTimeoutMs = 1500;
     private const int MaxTooltipTimeoutMs = 10_000;
     private const int TooltipPollIntervalMs = 50;
@@ -51,28 +52,31 @@ public sealed class ActionInvoker
         ClickStyle style = ClickStyle.Primary,
         string? windowTitle = null)
     {
-        using UIA3Automation automation = new();
-        ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
-        if (!search.Found)
+        lock (DesktopInputGate)
         {
-            return OperationResult.FailureWith(search.Error!, search.Candidates);
-        }
+            using UIA3Automation automation = new();
+            ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
+            if (!search.Found)
+            {
+                return OperationResult.FailureWith(search.Error!, search.Candidates);
+            }
 
-        AutomationElement element = search.Element!;
-        ScrollIntoViewIfOffscreen(element);
+            AutomationElement element = search.Element!;
+            ScrollIntoViewIfOffscreen(element);
 
-        switch (style)
-        {
-            case ClickStyle.DoubleClick:
-                element.DoubleClick();
-                return OperationResult.Ok();
+            switch (style)
+            {
+                case ClickStyle.DoubleClick:
+                    element.DoubleClick();
+                    return OperationResult.Ok();
 
-            case ClickStyle.RightClick:
-                element.RightClick();
-                return OperationResult.Ok();
+                case ClickStyle.RightClick:
+                    element.RightClick();
+                    return OperationResult.Ok();
 
-            default:
-                return InvokePrimaryAction(element);
+                default:
+                    return InvokePrimaryAction(element);
+            }
         }
     }
 
@@ -92,17 +96,39 @@ public sealed class ActionInvoker
         ClickStyle style = ClickStyle.Primary,
         string? windowTitle = null,
         bool windowRelative = true,
-        bool allowOutOfWindow = false)
+        bool allowOutOfWindow = false,
+        WindowIdentity? expectedWindow = null)
     {
+        lock (DesktopInputGate)
+        {
+            return ClickPointCore(processId, x, y, style, windowTitle, windowRelative, allowOutOfWindow, expectedWindow);
+        }
+    }
+
+    private static OperationResult ClickPointCore(
+        int processId, int x, int y, ClickStyle style, string? windowTitle,
+        bool windowRelative, bool allowOutOfWindow, WindowIdentity? expectedWindow)
+    {
+        WindowIdentity window;
+        if (expectedWindow is not null)
+        {
+            if (expectedWindow.ProcessId != processId)
+            {
+                return OperationResult.Failure("The captured window belongs to a different process.");
+            }
+            window = expectedWindow;
+        }
+        else if (!WindowGeometry.TryResolveWindow(
+                     processId, windowTitle, out window, out string? resolveError,
+                     screenPoint: !windowRelative && !allowOutOfWindow ? new System.Drawing.Point(x, y) : null))
+        {
+            return OperationResult.Failure(resolveError!);
+        }
         int screenX;
         int screenY;
         if (windowRelative)
         {
-            if (!WindowGeometry.TryResolveTopmostBounds(
-                    processId, windowTitle, out WindowBounds bounds, out string? error))
-            {
-                return OperationResult.Failure(error!);
-            }
+            WindowBounds bounds = window.Bounds;
             if (!WindowPointMapper.Contains(bounds.Width, bounds.Height, x, y))
             {
                 return OperationResult.Failure(
@@ -132,6 +158,12 @@ public sealed class ActionInvoker
         }
 
         System.Drawing.Point point = new(screenX, screenY);
+        // Recheck immediately before dispatch, after all coordinate validation.
+        if (!WindowGeometry.TryValidatePointRecipient(
+                window, screenX, screenY, allowOutOfWindow && expectedWindow is null, out string? recipientError))
+        {
+            return OperationResult.Failure(recipientError!);
+        }
         switch (style)
         {
             case ClickStyle.DoubleClick:
@@ -159,39 +191,42 @@ public sealed class ActionInvoker
         string? windowTitle = null,
         bool focusWindow = false)
     {
-        ArgumentNullException.ThrowIfNull(text);
-
-        using UIA3Automation automation = new();
-        ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
-        if (!search.Found)
+        lock (DesktopInputGate)
         {
-            return OperationResult.FailureWith(search.Error!, search.Candidates);
-        }
+            ArgumentNullException.ThrowIfNull(text);
 
-        AutomationElement element = search.Element!;
-        ScrollIntoViewIfOffscreen(element);
-        if (focusWindow)
-        {
-            WindowFocusResult focus = WindowFocus.FocusWindow(
-                search.Match!.WindowHandle,
-                search.Match.Candidate.WindowTitle,
-                processId);
-            if (!focus.Success)
+            using UIA3Automation automation = new();
+            ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
+            if (!search.Found)
             {
-                return OperationResult.Failure(focus.Error!);
+                return OperationResult.FailureWith(search.Error!, search.Candidates);
             }
-        }
 
-        FlaUI.Core.Patterns.IValuePattern? valuePattern = element.Patterns.Value.PatternOrDefault;
-        if (valuePattern is not null && !valuePattern.IsReadOnly.ValueOrDefault)
-        {
-            valuePattern.SetValue(text);
+            AutomationElement element = search.Element!;
+            ScrollIntoViewIfOffscreen(element);
+            if (focusWindow)
+            {
+                WindowFocusResult focus = WindowFocus.FocusWindow(
+                    search.Match!.WindowHandle,
+                    search.Match.Candidate.WindowTitle,
+                    processId);
+                if (!focus.Success)
+                {
+                    return OperationResult.Failure(focus.Error!);
+                }
+            }
+
+            FlaUI.Core.Patterns.IValuePattern? valuePattern = element.Patterns.Value.PatternOrDefault;
+            if (valuePattern is not null && !valuePattern.IsReadOnly.ValueOrDefault)
+            {
+                valuePattern.SetValue(text);
+                return OperationResult.Ok();
+            }
+
+            element.Focus();
+            Keyboard.Type(text);
             return OperationResult.Ok();
         }
-
-        element.Focus();
-        Keyboard.Type(text);
-        return OperationResult.Ok();
     }
 
     /// <summary>
@@ -203,23 +238,26 @@ public sealed class ActionInvoker
         string chord,
         string? windowTitle = null)
     {
-        if (!KeyboardChordParser.TryParse(chord, out VirtualKeyShort[]? keys, out string? parseError))
+        lock (DesktopInputGate)
         {
-            return OperationResult.Failure(parseError!);
-        }
+            if (!KeyboardChordParser.TryParse(chord, out VirtualKeyShort[]? keys, out string? parseError))
+            {
+                return OperationResult.Failure(parseError!);
+            }
 
-        WindowFocusResult focus = WindowFocus.FocusProcessWindow(processId, windowTitle);
-        if (!focus.Success)
-        {
-            return OperationResult.Failure(focus.Error!);
-        }
+            WindowFocusResult focus = WindowFocus.FocusProcessWindow(processId, windowTitle);
+            if (!focus.Success)
+            {
+                return OperationResult.Failure(focus.Error!);
+            }
 
-        Thread.Sleep(FocusInputSettleMs);
-        DispatchKeyboardChord(keys);
-        return OperationResult.OkWith(new KeyChordResult(
-            chord,
-            focus.WindowTitle,
-            focus.WindowHandle.ToInt64()));
+            Thread.Sleep(FocusInputSettleMs);
+            DispatchKeyboardChord(keys);
+            return OperationResult.OkWith(new KeyChordResult(
+                chord,
+                focus.WindowTitle,
+                focus.WindowHandle.ToInt64()));
+        }
     }
 
     /// <summary>
@@ -233,33 +271,36 @@ public sealed class ActionInvoker
         string itemName,
         string? windowTitle = null)
     {
-        ArgumentNullException.ThrowIfNull(itemName);
-
-        using UIA3Automation automation = new();
-        ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
-        if (!search.Found)
+        lock (DesktopInputGate)
         {
-            return OperationResult.FailureWith(search.Error!, search.Candidates);
-        }
+            ArgumentNullException.ThrowIfNull(itemName);
 
-        AutomationElement container = search.Element!;
-        ScrollIntoViewIfOffscreen(container);
-        string controlType = container.Properties.ControlType.ValueOrDefault.ToString();
-
-        try
-        {
-            return controlType switch
+            using UIA3Automation automation = new();
+            ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
+            if (!search.Found)
             {
-                "ComboBox" => SelectInComboBox(container, itemName),
-                "List" => SelectInListBox(container, itemName),
-                "Tab" => SelectTabItem(container, itemName),
-                _ => SelectDescendantItem(container, itemName),
-            };
-        }
-        catch (COMException ex)
-        {
-            return OperationResult.Failure(
-                $"Selection of \"{itemName}\" failed in {controlType} ({ex.Message}).");
+                return OperationResult.FailureWith(search.Error!, search.Candidates);
+            }
+
+            AutomationElement container = search.Element!;
+            ScrollIntoViewIfOffscreen(container);
+            string controlType = container.Properties.ControlType.ValueOrDefault.ToString();
+
+            try
+            {
+                return controlType switch
+                {
+                    "ComboBox" => SelectInComboBox(container, itemName),
+                    "List" => SelectInListBox(container, itemName),
+                    "Tab" => SelectTabItem(container, itemName),
+                    _ => SelectDescendantItem(container, itemName),
+                };
+            }
+            catch (COMException ex)
+            {
+                return OperationResult.Failure(
+                    $"Selection of \"{itemName}\" failed in {controlType} ({ex.Message}).");
+            }
         }
     }
 
@@ -274,91 +315,94 @@ public sealed class ActionInvoker
         string? windowTitle = null,
         int? timeoutMs = null)
     {
-        int timeout = timeoutMs ?? DefaultTooltipTimeoutMs;
-        if (timeout <= 0 || timeout > MaxTooltipTimeoutMs)
+        lock (DesktopInputGate)
         {
-            return OperationResult.Failure(
-                $"timeoutMs must be between 1 and {MaxTooltipTimeoutMs}.");
-        }
-
-        using UIA3Automation automation = new();
-        ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
-        if (!search.Found)
-        {
-            return OperationResult.FailureWith(search.Error!, search.Candidates);
-        }
-
-        AutomationElement element = search.Element!;
-        ScrollIntoViewIfOffscreen(element);
-        System.Drawing.Rectangle rect = element.BoundingRectangle;
-        if (rect.Width <= 0 || rect.Height <= 0)
-        {
-            return OperationResult.Failure(
-                $"Located element has invalid bounds {rect.Width}x{rect.Height}.");
-        }
-
-        System.Drawing.Point center = new(
-            rect.Left + rect.Width / 2,
-            rect.Top + rect.Height / 2);
-        System.Drawing.Point outsideElement = new(
-            Math.Max(0, rect.Left - 24),
-            Math.Max(0, rect.Top - 24));
-        Mouse.MoveTo(outsideElement);
-        Thread.Sleep(PreHoverSettleMs);
-
-        HashSet<string> staleTooltips = CaptureTooltips(automation)
-            .Select(t => TooltipSignature(t.Snapshot))
-            .ToHashSet(StringComparer.Ordinal);
-
-        Mouse.MoveTo(center);
-
-        string? helpText = SafeReadHelpText(element);
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        TooltipSnapshot? lastTooltip = null;
-        while (stopwatch.ElapsedMilliseconds <= timeout)
-        {
-            TooltipSnapshot? tooltip = CaptureTooltips(automation)
-                .Where(t => !staleTooltips.Contains(TooltipSignature(t.Snapshot)))
-                .Where(t => t.DistanceTo(center) <= TooltipProximityPx)
-                .OrderBy(t => t.DistanceTo(center))
-                .Select(t => t.Snapshot)
-                .FirstOrDefault(t => TooltipTextMatches(t, expectedTooltipText));
-
-            if (tooltip is not null)
+            int timeout = timeoutMs ?? DefaultTooltipTimeoutMs;
+            if (timeout <= 0 || timeout > MaxTooltipTimeoutMs)
             {
-                return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip));
+                return OperationResult.Failure(
+                    $"timeoutMs must be between 1 and {MaxTooltipTimeoutMs}.");
             }
 
-            if (TooltipTextMatches(helpText, expectedTooltipText))
+            using UIA3Automation automation = new();
+            ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
+            if (!search.Found)
             {
-                TooltipSnapshot synthetic = new(
-                    helpText!,
-                    rect.X,
-                    rect.Y,
-                    rect.Width,
-                    rect.Height);
-                return OperationResult.OkWith(new HoverResult(center.X, center.Y, synthetic));
+                return OperationResult.FailureWith(search.Error!, search.Candidates);
             }
 
-            lastTooltip = CaptureTooltips(automation)
-                .Where(t => !staleTooltips.Contains(TooltipSignature(t.Snapshot)))
-                .Where(t => t.DistanceTo(center) <= TooltipProximityPx)
-                .OrderBy(t => t.DistanceTo(center))
-                .Select(t => t.Snapshot)
-                .FirstOrDefault();
-            Thread.Sleep(TooltipPollIntervalMs);
-        }
+            AutomationElement element = search.Element!;
+            ScrollIntoViewIfOffscreen(element);
+            System.Drawing.Rectangle rect = element.BoundingRectangle;
+            if (rect.Width <= 0 || rect.Height <= 0)
+            {
+                return OperationResult.Failure(
+                    $"Located element has invalid bounds {rect.Width}x{rect.Height}.");
+            }
 
-        HoverResult result = new(center.X, center.Y, lastTooltip);
-        if (expectedTooltipText is not null)
-        {
-            return OperationResult.FailureWith(
-                $"Tooltip containing \"{expectedTooltipText}\" did not appear within {timeout} ms " +
-                $"near hover point ({center.X}, {center.Y}).",
-                result);
-        }
+            System.Drawing.Point center = new(
+                rect.Left + rect.Width / 2,
+                rect.Top + rect.Height / 2);
+            System.Drawing.Point outsideElement = new(
+                Math.Max(0, rect.Left - 24),
+                Math.Max(0, rect.Top - 24));
+            Mouse.MoveTo(outsideElement);
+            Thread.Sleep(PreHoverSettleMs);
 
-        return OperationResult.OkWith(result);
+            HashSet<string> staleTooltips = CaptureTooltips(automation)
+                .Select(t => TooltipSignature(t.Snapshot))
+                .ToHashSet(StringComparer.Ordinal);
+
+            Mouse.MoveTo(center);
+
+            string? helpText = SafeReadHelpText(element);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            TooltipSnapshot? lastTooltip = null;
+            while (stopwatch.ElapsedMilliseconds <= timeout)
+            {
+                TooltipSnapshot? tooltip = CaptureTooltips(automation)
+                    .Where(t => !staleTooltips.Contains(TooltipSignature(t.Snapshot)))
+                    .Where(t => t.DistanceTo(center) <= TooltipProximityPx)
+                    .OrderBy(t => t.DistanceTo(center))
+                    .Select(t => t.Snapshot)
+                    .FirstOrDefault(t => TooltipTextMatches(t, expectedTooltipText));
+
+                if (tooltip is not null)
+                {
+                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip));
+                }
+
+                if (TooltipTextMatches(helpText, expectedTooltipText))
+                {
+                    TooltipSnapshot synthetic = new(
+                        helpText!,
+                        rect.X,
+                        rect.Y,
+                        rect.Width,
+                        rect.Height);
+                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, synthetic));
+                }
+
+                lastTooltip = CaptureTooltips(automation)
+                    .Where(t => !staleTooltips.Contains(TooltipSignature(t.Snapshot)))
+                    .Where(t => t.DistanceTo(center) <= TooltipProximityPx)
+                    .OrderBy(t => t.DistanceTo(center))
+                    .Select(t => t.Snapshot)
+                    .FirstOrDefault();
+                Thread.Sleep(TooltipPollIntervalMs);
+            }
+
+            HoverResult result = new(center.X, center.Y, lastTooltip);
+            if (expectedTooltipText is not null)
+            {
+                return OperationResult.FailureWith(
+                    $"Tooltip containing \"{expectedTooltipText}\" did not appear within {timeout} ms " +
+                    $"near hover point ({center.X}, {center.Y}).",
+                    result);
+            }
+
+            return OperationResult.OkWith(result);
+        }
     }
 
     private static OperationResult InvokePrimaryAction(AutomationElement element)

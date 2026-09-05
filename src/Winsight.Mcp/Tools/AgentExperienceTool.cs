@@ -256,6 +256,12 @@ public static class AgentExperienceTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (processId is int explicitPid && step.ProcessId is int stepPid && explicitPid != stepPid)
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure("processId and step.processId must identify the same target."),
+                    JsonOptions.Default);
+            }
             if (!target.TryResolve(processId ?? step.ProcessId, out int pid, out string targetError))
             {
                 memory.RecordFailure(nameof(ActAndObserve), "missing_target", targetError, "set_target");
@@ -272,7 +278,7 @@ public static class AgentExperienceTool
             bool effectiveDryRun = dryRun || ToolAccessPolicy.IsDryRunEnabled;
             UiSnapshot before = snapshotter.Capture(pid, windowTitle);
             BatchResult result = runner.Run(
-                new[] { step },
+                new[] { step with { ProcessId = pid } },
                 pid,
                 stopOnError: true,
                 maxDurationMs: null,

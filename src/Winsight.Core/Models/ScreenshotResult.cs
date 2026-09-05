@@ -18,4 +18,5 @@ public sealed record ScreenshotResult(
     string Path,
     int Width,
     int Height,
-    DateTime CapturedAtUtc);
+    DateTime CapturedAtUtc,
+    WindowIdentity? Window = null);

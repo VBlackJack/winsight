@@ -84,7 +84,8 @@ public sealed class WindowCapture
             Path: outputPath,
             Width: width,
             Height: height,
-            CapturedAtUtc: DateTime.UtcNow);
+            CapturedAtUtc: DateTime.UtcNow,
+            Window: new WindowIdentity(processId, hwnd.ToInt64(), new WindowBounds(rect.Left, rect.Top, width, height)));
     }
 
     /// <summary>
