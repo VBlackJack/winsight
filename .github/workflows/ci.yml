@@ -42,7 +42,14 @@ jobs:
         run: dotnet test tests\Winsight.E2E -c Release --no-build --logger "trx" --results-directory TestResults\E2E
 
       - name: MCP smoke
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke-mcp.ps1 -ExpectedToolCount 41
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke-mcp.ps1 -ExpectedToolCount 48
+
+      - name: Verified control regression scenarios
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force TestResults | Out-Null
+          & .\tools\Winsight.Eval\bin\Release\net10.0-windows\Winsight.Eval.exe .\samples\SampleWpfApp\bin\Release\net10.0-windows\SampleWpfApp.exe scripted .\TestResults\verified-control.jsonl
+          exit $LASTEXITCODE
 
       - name: Build Windows installer
         shell: pwsh

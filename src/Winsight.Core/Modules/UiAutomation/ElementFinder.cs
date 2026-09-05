@@ -123,6 +123,10 @@ internal static class ElementFinder
                 }
 
                 AutomationElement current = queue.Dequeue();
+                // Owned dialogs can also appear below their owner's UIA root. Search
+                // them through their own HWND only, preserving identity and uniqueness.
+                if (current.Properties.ControlType.ValueOrDefault == FlaUI.Core.Definitions.ControlType.Window &&
+                    current.Properties.NativeWindowHandle.ValueOrDefault != window.Handle) continue;
                 (string automationId, string name, string className, string controlType)? snapshot =
                     TryReadSnapshot(current);
                 if (snapshot is null)

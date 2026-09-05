@@ -32,11 +32,12 @@ public static class AgentExperienceTool
     private static readonly string[] DefaultLoop =
     {
         "set_target after launch_app or list_windows",
-        "observe to get windows, actionable elements, recommended locators, and memory",
-        "plan_steps with the user goal",
-        "run_steps with dryRun=true",
-        "run_steps or act_and_observe with dryRun=false",
-        "repair_locator if a locator fails or becomes ambiguous",
+        "observe_scene to get expiring references, windows, states and supported actions",
+        "act_verified with an explicit postcondition and dryRun=true to preview",
+        "act_verified with dryRun=false, then inspect verified and dispatched separately",
+        "observe again after every dispatch; never blindly repeat dispatched_unconfirmed",
+        "observe_dom_scene for authorized WebView2 or locate_scene_target for configured vision",
+        "save_app_profile and run_app_profile for version-pinned reusable workflows",
     };
 
     [McpServerTool(Name = "observe")]
@@ -572,9 +573,9 @@ public static class AgentExperienceTool
                     defaultLoop = DefaultLoop,
                     preferredTools = new
                     {
-                        perceive = "observe",
+                        perceive = "observe_scene",
                         state = "get_agent_state",
-                        cautiousAction = "act_and_observe",
+                        cautiousAction = "act_verified",
                         batchAction = "run_steps",
                         locatorRepair = "repair_locator",
                         replay = "replay_steps",

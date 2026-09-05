@@ -43,7 +43,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $repository $name) -Destination $payload
     }
     New-Item -ItemType Directory -Path (Join-Path $payload 'docs') | Out-Null
-    foreach ($name in @('installation.html', 'tools-reference.md', 'runbook.md', 'architecture.md', 'audit-2026-09-05.md', "release-notes-v$version.md")) {
+    foreach ($name in @('installation.html', 'tools-reference.md', 'runbook.md', 'architecture.md', 'audit-2026-09-05.md', 'verified-control.md', 'verified-control-validation.md', "release-notes-v$version.md")) {
         Copy-Item -LiteralPath (Join-Path $repository "docs\$name") -Destination (Join-Path $payload 'docs')
     }
     $commit = & git -C $repository rev-parse HEAD

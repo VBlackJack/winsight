@@ -30,7 +30,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 41 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 48 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -44,6 +44,11 @@ to confirm `winsight` shows as connected, and try a prompt like:
 
 The agent should compose `list_windows` → `click_element` → `read_managed_state`
 on its own.
+
+## Verified control
+
+Use `observe_scene` and `act_verified` for expiring targets and explicit result verification.
+Native UIA, authorized WebView2 DOM, vision fallback, application profiles and a twenty-scenario evaluation runner are documented in [verified control](docs/verified-control.md).
 
 ## Why
 
@@ -189,7 +194,7 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 41 tools.
+server is connected and lists all 48 tools.
 
 ### Smoke check from the shell
 

@@ -33,7 +33,7 @@ public sealed class AgentExperienceToolTests
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement data = document.RootElement.GetProperty("data");
         data.GetProperty("preferredTools").GetProperty("perceive").GetString()
-            .Should().Be("observe");
+            .Should().Be("observe_scene");
         data.GetProperty("preferredTools").GetProperty("state").GetString()
             .Should().Be("get_agent_state");
         data.GetProperty("defaultLoop").EnumerateArray()

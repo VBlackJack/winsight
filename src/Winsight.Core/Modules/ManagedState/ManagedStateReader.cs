@@ -19,7 +19,7 @@ namespace Winsight.Core.Modules.ManagedState;
 
 public sealed class ManagedStateReader
 {
-    public OperationResult Read(int processId, string typeName, string fieldName)
+    public OperationResult Read(int processId, string typeName, string fieldName, bool requireUnique = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(typeName);
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldName);
@@ -38,6 +38,8 @@ public sealed class ManagedStateReader
             return OperationResult.Failure("Managed heap is not in a walkable state.");
         }
 
+        object? matchedValue = null;
+        bool matched = false;
         foreach (ClrObject obj in heap.EnumerateObjects())
         {
             if (obj.Type is null)
@@ -55,10 +57,13 @@ public sealed class ManagedStateReader
                 return OperationResult.Failure($"Type '{typeName}' has no field '{fieldName}'.");
             }
 
-            return OperationResult.OkWith(ReadValue(obj, field, fieldName));
+            if (matched) return OperationResult.Failure($"Multiple instances of '{typeName}' exist; verification requires a unique instance.");
+            matchedValue = ReadValue(obj, field, fieldName);
+            matched = true;
+            if (!requireUnique) return OperationResult.OkWith(matchedValue);
         }
 
-        return OperationResult.Failure($"No instance of type '{typeName}' found in heap.");
+        return matched ? OperationResult.OkWith(matchedValue) : OperationResult.Failure($"No instance of type '{typeName}' found in heap.");
     }
 
     private static object? ReadValue(ClrObject obj, ClrInstanceField field, string fieldName)

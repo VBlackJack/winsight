@@ -7,6 +7,26 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Expiring UIA observations and single-use `act_verified` references with explicit
+  postconditions, bounded recovery and separate dispatch/verification outcomes.
+- Annotated scene captures, authorized WebView2 DOM scenes and a vision fallback
+  guarded by unchanged window identity and screenshot bytes.
+- Pattern-based scrolling, expansion, multi-selection, focus, chords and drag
+  through the verified action surface.
+- Executable-version/SHA256-pinned application profiles with runtime parameters,
+  preview and stop-on-unverified execution.
+- A model-neutral twenty-scenario evaluation runner with independent UI grading.
+
+### Fixed
+
+- Serialize native desktop input across Winsight processes in the same Windows session.
+- Avoid duplicate owned-dialog matches under parent UIA roots.
+- Require a unique managed instance for verified managed-state predicates.
+
+See [verified control](docs/verified-control.md) for contracts and validation limits.
+
 ## [0.1.0] - 2026-09-05
 
 ### Fixed

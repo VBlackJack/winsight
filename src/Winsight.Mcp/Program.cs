@@ -42,6 +42,8 @@ public static class Program
         });
 
         builder.Services.AddSingleton<SessionTarget>();
+        builder.Services.AddSingleton<SceneStore>();
+        builder.Services.AddSingleton<ApplicationProfiles>();
         builder.Services.AddSingleton<SessionMemory>();
         builder.Services.AddSingleton<WindowDiscovery>();
         builder.Services.AddSingleton<AppLauncher>();

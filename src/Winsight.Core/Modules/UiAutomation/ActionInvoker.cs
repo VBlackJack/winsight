@@ -52,6 +52,7 @@ public sealed class ActionInvoker
         ClickStyle style = ClickStyle.Primary,
         string? windowTitle = null)
     {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             using UIA3Automation automation = new();
@@ -99,6 +100,7 @@ public sealed class ActionInvoker
         bool allowOutOfWindow = false,
         WindowIdentity? expectedWindow = null)
     {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             return ClickPointCore(processId, x, y, style, windowTitle, windowRelative, allowOutOfWindow, expectedWindow);
@@ -191,6 +193,7 @@ public sealed class ActionInvoker
         string? windowTitle = null,
         bool focusWindow = false)
     {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             ArgumentNullException.ThrowIfNull(text);
@@ -238,6 +241,7 @@ public sealed class ActionInvoker
         string chord,
         string? windowTitle = null)
     {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             if (!KeyboardChordParser.TryParse(chord, out VirtualKeyShort[]? keys, out string? parseError))
@@ -271,6 +275,7 @@ public sealed class ActionInvoker
         string itemName,
         string? windowTitle = null)
     {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             ArgumentNullException.ThrowIfNull(itemName);
@@ -315,6 +320,7 @@ public sealed class ActionInvoker
         string? windowTitle = null,
         int? timeoutMs = null)
     {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             int timeout = timeoutMs ?? DefaultTooltipTimeoutMs;
@@ -425,7 +431,7 @@ public sealed class ActionInvoker
         return OperationResult.Ok();
     }
 
-    private static void DispatchKeyboardChord(FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys)
+    internal static void DispatchKeyboardChord(FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys)
     {
         FlaUI.Core.WindowsAPI.VirtualKeyShort[] modifiers = keys
             .Where(KeyboardChordParser.IsModifier)
@@ -444,6 +450,14 @@ public sealed class ActionInvoker
         Thread.Sleep(KeyChordStrokeDelayMs);
         Keyboard.Type(strokes);
     }
+
+    internal static OperationResult SelectPinnedItem(AutomationElement container, string itemName) => container.Properties.ControlType.ValueOrDefault.ToString() switch
+    {
+        "ComboBox" => SelectInComboBox(container, itemName),
+        "List" => SelectInListBox(container, itemName),
+        "Tab" => SelectTabItem(container, itemName),
+        _ => SelectDescendantItem(container, itemName),
+    };
 
     private static OperationResult SelectInComboBox(AutomationElement container, string itemName)
     {

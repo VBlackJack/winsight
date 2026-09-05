@@ -1,6 +1,10 @@
 # Tools reference
 
 This document describes the MCP tools exposed by `Winsight.Mcp` to AI agents.
+For the preferred verified workflow, see [verified control](verified-control.md).
+`act_verified` returns explicit `status`, `dispatched` and `verified` fields;
+profile execution also reports its verified/stopped state. The OperationResult
+convention below describes the original tools and observation/configuration calls.
 Every tool returns a JSON string. Errors — whether from a known failure mode
 or an unexpected exception inside the tool body — are uniformly surfaced
 inside an `OperationResult` shape (`{ "success": false, "error": "..." }`)
@@ -32,7 +36,12 @@ for the underlying engine call.
 
 ## Agent-first workflow
 
-These tools are the preferred surface for AI agents. The lower-level tools remain
+The preferred tools are `observe_scene`, `act_verified`, `capture_scene`,
+`observe_dom_scene`, `locate_scene_target`, `save_app_profile` and `run_app_profile`.
+Their [contracts and examples](verified-control.md) distinguish action dispatch
+from verified outcomes. Existing workflows listed below remain compatible.
+
+These original convenience tools remain available. The lower-level tools remain
 available, but agents should start here because the responses are oriented around
 repairable action.
 

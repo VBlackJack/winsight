@@ -12,4 +12,7 @@
     <Project Path="tests/Winsight.E2E/Winsight.E2E.csproj" />
     <Project Path="tests/Winsight.Mcp.Tests/Winsight.Mcp.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Winsight.Eval/Winsight.Eval.csproj" />
+  </Folder>
 </Solution>
