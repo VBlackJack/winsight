@@ -18,10 +18,24 @@ internal static class SampleAppLocator
 {
     private const string SampleProjectName = "SampleWpfApp";
     private const string SampleAssemblyName = "SampleWpfApp.exe";
+    private const string SamplePathVariable = "WINSIGHT_SAMPLE_APP_PATH";
+    private const string LabProjectName = "WpfLabApp";
+    private const string LabAssemblyName = "WpfLabApp.exe";
+    private const string LabPathVariable = "WINSIGHT_LAB_APP_PATH";
 
-    public static string ResolveExecutablePath()
+    public static string ResolveExecutablePath() =>
+        ResolveSample(SamplePathVariable, SampleProjectName, SampleAssemblyName);
+
+    /// <summary>
+    /// The WPF lab: low-level keyboard hook probe, draggable tabs, a tree with
+    /// time-stamped item names and a tooltip distinct from its HelpText.
+    /// </summary>
+    public static string ResolveLabExecutablePath() =>
+        ResolveSample(LabPathVariable, LabProjectName, LabAssemblyName);
+
+    private static string ResolveSample(string pathVariable, string projectName, string assemblyName)
     {
-        string? configured = Environment.GetEnvironmentVariable("WINSIGHT_SAMPLE_APP_PATH");
+        string? configured = Environment.GetEnvironmentVariable(pathVariable);
         if (!string.IsNullOrWhiteSpace(configured))
         {
             return Path.GetFullPath(configured);
@@ -32,11 +46,11 @@ internal static class SampleAppLocator
         return Path.Combine(
             repoRoot,
             "samples",
-            SampleProjectName,
+            projectName,
             "bin",
             configuration,
             targetFramework,
-            SampleAssemblyName);
+            assemblyName);
     }
 
     private static string ResolveConfiguration()

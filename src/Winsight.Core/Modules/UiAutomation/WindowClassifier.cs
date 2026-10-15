@@ -76,6 +76,33 @@ public static class WindowClassifier
         return KindOther;
     }
 
+    /// <summary>WS_EX_TOOLWINDOW: kept off the taskbar and Alt+Tab.</summary>
+    public const long ExtendedStyleToolWindow = 0x00000080L;
+
+    /// <summary>WS_EX_NOACTIVATE: never becomes the foreground window when clicked.</summary>
+    public const long ExtendedStyleNoActivate = 0x08000000L;
+
+    /// <summary>
+    /// Whether a window is a transient overlay (tooltip, menu, dropdown, flyout)
+    /// rather than a surface an agent means when it names no window. Such a
+    /// window sits at the top of the z-order while it is open, so taking "the
+    /// topmost window" would inspect, capture or focus it instead of the main
+    /// window or dialog. A WPF ToolTip, for one, is an owned captionless popup
+    /// with WS_EX_NOACTIVATE and WS_EX_TOOLWINDOW.
+    /// </summary>
+    public static bool IsTransient(string kind, long extendedStyle, bool hasOwner)
+    {
+        if (kind is KindTooltip or KindMenu)
+        {
+            return true;
+        }
+        if ((extendedStyle & ExtendedStyleNoActivate) != 0)
+        {
+            return true;
+        }
+        return kind == KindPopup && (hasOwner || (extendedStyle & ExtendedStyleToolWindow) != 0);
+    }
+
     /// <summary>
     /// Whether a window is application-modal: it has an owner and that owner is
     /// disabled, which is how the platform blocks interaction with the parent

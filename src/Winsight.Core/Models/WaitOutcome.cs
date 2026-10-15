@@ -17,11 +17,13 @@ namespace Winsight.Core.Models;
 /// <summary>
 /// Result payload of a wait operation: whether the condition was met, how
 /// long it took, how many elements matched on the last poll, and the final
-/// state of the element when one was uniquely matched.
+/// state of the element when one was uniquely matched. For child_count,
+/// <see cref="ChildCount"/> is the number of counted children on the last poll.
 /// </summary>
 public sealed record WaitOutcome(
     string Condition,
     bool ConditionMet,
     long ElapsedMs,
     int MatchCount,
-    ElementState? State);
+    ElementState? State,
+    int? ChildCount = null);

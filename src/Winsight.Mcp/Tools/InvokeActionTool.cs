@@ -27,6 +27,10 @@ public static class InvokeActionTool
     private const string ProcessIdDescription =
         "Target process id. Optional — falls back to the session default set by set_target.";
 
+    private const string AllowWebView2InputDescription =
+        "Send synthetic keyboard input even when it would land inside a WebView2 surface. Default false: " +
+        "such input has crashed ctfmon, so prefer type_into_webview for web content.";
+
     [McpServerTool(Name = "click_element")]
     [Description("Locate a UI element and click it. Locator criteria are combined with AND across all " +
                  "top-level windows of the process; if several elements match, the call fails and lists " +
@@ -161,6 +165,8 @@ public static class InvokeActionTool
     [McpServerTool(Name = "type_text")]
     [Description("Locate a UI element and set its value (via the Value pattern) or type into it " +
                  "(via keyboard fallback). Same strict locator semantics as click_element. " +
+                 "An element inside a WebView2 surface is refused (synthetic keyboard input there has " +
+                 "crashed ctfmon); use type_into_webview for web content. " +
                  "Returns an OperationResult JSON with success/error.")]
     public static string TypeText(
         ActionInvoker invoker,
@@ -185,6 +191,8 @@ public static class InvokeActionTool
         string? windowTitle = null,
         [Description("Bring the matched top-level window to the foreground before writing text; fails if focus cannot be verified.")]
         bool focusWindow = false,
+        [Description(AllowWebView2InputDescription)]
+        bool allowWebView2Input = false,
         [Description(ProcessIdDescription)]
         int? processId = null)
     {
@@ -200,7 +208,7 @@ public static class InvokeActionTool
             }
             if (ToolAccessPolicy.DryRunMutation(
                     "type_text",
-                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, focusWindow, textLength = text.Length })
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, focusWindow, allowWebView2Input, textLength = text.Length })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
@@ -208,15 +216,18 @@ public static class InvokeActionTool
 
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
-            OperationResult result = invoker.Type(pid, locator, text, windowTitle, focusWindow);
+            OperationResult result = invoker.Type(pid, locator, text, windowTitle, focusWindow, allowWebView2Input);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
 
     [McpServerTool(Name = "send_key_chord")]
     [Description("Focus a target top-level window, verify it became the foreground window, then send a " +
-                 "keyboard chord such as Ctrl+Shift+N via SendInput-backed FlaUI keyboard input. " +
-                 "Returns an explicit failure if the focus check does not pass.")]
+                 "keyboard chord such as Ctrl+Shift+N through SendInput, with hardware scan codes and the " +
+                 "extended-key flag (PageUp, arrows, Home/End) so low-level hooks, WM_KEYDOWN and WPF all see " +
+                 "the complete chord. Returns an explicit failure if the focus check does not pass, and refuses " +
+                 "to send when keyboard focus is inside a WebView2 surface. On success, data.focus describes " +
+                 "the element that received the chord.")]
     public static string SendKeyChord(
         ActionInvoker invoker,
         SessionTarget target,
@@ -224,6 +235,8 @@ public static class InvokeActionTool
         string chord,
         [Description("Restrict focus to windows whose title contains this text.")]
         string? windowTitle = null,
+        [Description(AllowWebView2InputDescription)]
+        bool allowWebView2Input = false,
         [Description(ProcessIdDescription)]
         int? processId = null)
     {
@@ -239,26 +252,34 @@ public static class InvokeActionTool
             }
             if (ToolAccessPolicy.DryRunMutation(
                     "send_key_chord",
-                    new { processId = pid, chord, windowTitle })
+                    new { processId = pid, chord, windowTitle, allowWebView2Input })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
             }
 
-            OperationResult result = invoker.SendKeyChord(pid, chord, windowTitle);
+            OperationResult result = invoker.SendKeyChord(pid, chord, windowTitle, allowWebView2Input);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
 
     [McpServerTool(Name = "select_item")]
-    [Description("Select an item by its visible text inside a located container: ComboBox, ListBox, " +
-                 "or Tab (other containers fall back to a descendant SelectionItem search). " +
-                 "On failure the available item names are listed. Returns an OperationResult JSON.")]
+    [Description("Select an item inside a located container: ComboBox, ListBox, or Tab (other " +
+                 "containers, such as a TreeView, fall back to a descendant SelectionItem search). Name the " +
+                 "item with exactly one of itemName (exact), itemNameContains (case-insensitive substring) or " +
+                 "itemNamePattern (.NET regular expression); the last two survive names that carry live data " +
+                 "such as a clock, and must match a single item. On failure the available or matching item " +
+                 "names are listed. Returns an OperationResult JSON whose data.selectedName is the full name " +
+                 "of the selected item.")]
     public static string SelectItem(
         ActionInvoker invoker,
         SessionTarget target,
-        [Description("Visible text of the item to select.")]
-        string itemName,
+        [Description("Exact visible text of the item to select.")]
+        string? itemName = null,
+        [Description("Case-insensitive substring of the item name, for names that change (e.g. 'lab-c,').")]
+        string? itemNameContains = null,
+        [Description("Regular expression the item name must match (e.g. '^lab-c, protocol SFTP').")]
+        string? itemNamePattern = null,
         [Description("Exact AutomationId of the container element.")]
         string? automationId = null,
         [Description("Exact Name property of the container element.")]
@@ -284,13 +305,14 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
-            if (string.IsNullOrEmpty(itemName))
+            if (!ItemNameMatcher.TryCreate(
+                    itemName, itemNameContains, itemNamePattern, out ItemNameMatcher? matcher, out string? matcherError))
             {
-                return JsonSerializer.Serialize(OperationResult.Failure("itemName is required."), JsonOptions.Default);
+                return JsonSerializer.Serialize(OperationResult.Failure(matcherError!), JsonOptions.Default);
             }
             if (ToolAccessPolicy.DryRunMutation(
                     "select_item",
-                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, itemName })
+                    new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, itemName, itemNameContains, itemNamePattern })
                 is { } dryRun)
             {
                 return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
@@ -298,15 +320,17 @@ public static class InvokeActionTool
 
             ElementLocator locator = LocatorFactory.From(
                 automationId, name, className, controlType, nameContains, index, descendantText);
-            OperationResult result = invoker.SelectItem(pid, locator, itemName, windowTitle);
+            OperationResult result = invoker.SelectItem(pid, locator, matcher!, windowTitle);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
 
     [McpServerTool(Name = "hover_element")]
     [Description("Locate a UI element, move the mouse to its center, and capture a newly appearing " +
-                 "nearby tooltip. Stale tooltips visible before the hover are ignored. If " +
-                 "expectedTooltipText is provided, the call fails unless a matching tooltip appears.")]
+                 "nearby tooltip. Stale tooltips visible before the hover are ignored. The tooltip popup window " +
+                 "is awaited for the whole timeout; data.tooltip.source is \"popup\" when its text comes from that " +
+                 "window, or \"helpText\" when no popup opened and the element's AutomationProperties.HelpText was " +
+                 "used instead. If expectedTooltipText is provided, the call fails unless a matching tooltip appears.")]
     public static string HoverElement(
         ActionInvoker invoker,
         SessionTarget target,

@@ -18,12 +18,46 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Executable-version/SHA256-pinned application profiles with runtime parameters,
   preview and stop-on-unverified execution.
 - A model-neutral twenty-scenario evaluation runner with independent UI grading.
+- `drag`: element-or-point drag paced for WPF OLE drag and drop (hold, drag
+  threshold exit, stepped moves, settle on target, configurable delays).
+- `get_focused_element`: the element that owns keyboard focus, its process, and
+  WebView2 detection with the evidence that decided it.
+- `manage_window`: move, resize, set bounds, maximize, minimize and restore,
+  reporting the settled state and whether the application constrained it.
+- `select_item` accepts `itemNameContains` or `itemNamePattern` for names that
+  carry live data, and returns the selected item's full name.
+- `wait_for_element` conditions `name_equals`, `name_contains`, `name_matches`
+  and `child_count` (with `expectedCount` and `childControlType`).
+- `inspect_ui_tree` and `capture_screenshot` accept `mainWindow`.
+- `samples/WpfLabApp`: WPF lab with a low-level keyboard hook probe, draggable
+  tabs, a tree with time-stamped row names and a tooltip distinct from its HelpText.
+
+### Changed
+
+- `type_text` and `send_key_chord` refuse synthetic keyboard input into a
+  WebView2 surface unless `allowWebView2Input=true`; such input has crashed ctfmon.
+- `hover_element` reports `tooltip.source` (`popup` or `helpText`) and the
+  popup window handle, and searches only the target process's overlay windows.
 
 ### Fixed
 
 - Serialize native desktop input across Winsight processes in the same Windows session.
 - Avoid duplicate owned-dialog matches under parent UIA roots.
 - Require a unique managed instance for verified managed-state predicates.
+- `send_key_chord` lost Shift on extended keys: PageUp, PageDown, Home, End,
+  Insert, Delete and the arrows were sent without scan code or extended flag,
+  read as keypad keys, and Windows injected a fake Shift release around them
+  (Ctrl+Shift+PageUp arrived as Ctrl+PageUp). Chords now carry scan codes and
+  `KEYEVENTF_EXTENDEDKEY`, with paced transitions for low-level hooks.
+- `hover_element` returned the element's HelpText on the first poll, before the
+  real tooltip popup opened; the popup now wins and HelpText is a fallback.
+- `inspect_ui_tree`, `capture_screenshot`, `send_key_chord` focus and
+  window-relative coordinates targeted an open tooltip or menu when it was the
+  topmost window; transient overlays are now skipped.
+- `click_point`, `drag` and verified point actions refused any point above a
+  WebView2 surface as occluded: the surface is a `Chrome_WidgetWin_1` child owned
+  by `msedgewebview2.exe`. A cross-process child whose root ancestor is the
+  target window is now accepted; other windows and processes on top still refuse.
 
 See [verified control](docs/verified-control.md) for contracts and validation limits.
 

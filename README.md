@@ -30,7 +30,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 48 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 51 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -194,7 +194,7 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 48 tools.
+server is connected and lists all 51 tools.
 
 ### Smoke check from the shell
 
@@ -306,12 +306,15 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 | `snapshot_ui` / `diff_ui`     | Capture a UI baseline and report what an action changed (windows, elements, field values) |
 | `click_element`               | Click a located element (single/double/right, strict locators) |
 | `click_point`                 | Click a window-relative or bounded screen coordinate (acts on a visually grounded point) |
-| `type_text`                   | Type into a located element                            |
-| `send_key_chord`              | Focus a window and send a verified keyboard chord      |
-| `hover_element`               | Hover an element and capture/assert its tooltip        |
-| `select_item`                 | Select an item by text in a ComboBox/ListBox/Tab       |
+| `type_text`                   | Type into a located element (refuses WebView2 targets) |
+| `send_key_chord`              | Focus a window and send a keyboard chord with scan codes and extended-key flags |
+| `get_focused_element`         | Report the element that owns keyboard focus, and whether it is inside WebView2 |
+| `hover_element`               | Hover an element and capture/assert its tooltip popup (or HelpText fallback) |
+| `select_item`                 | Select an item by exact name, substring or pattern in a ComboBox/ListBox/Tab/Tree |
+| `drag`                        | Drag between elements or points, paced for OLE drag and drop |
+| `manage_window`               | Move, resize, maximize, minimize or restore a window    |
 | `get_element_state`           | Read an element's state (value, toggle, selection, focus) |
-| `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value matches, or state is stable |
+| `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value or name matches, child count reached, or state is stable |
 | `assert_element`              | Assert a condition on an element (equals/contains/greater_than/checked/enabled/…) with clear pass/fail |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
 | `capture_screenshot`          | PNG capture of a topmost or title-scoped window, returned inline as an MCP image (PrintWindow PW_RENDERFULLCONTENT) |

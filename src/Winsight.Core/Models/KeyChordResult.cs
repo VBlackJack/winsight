@@ -16,8 +16,11 @@ namespace Winsight.Core.Models;
 
 /// <summary>
 /// Result payload returned after a keyboard chord has been sent.
+/// <see cref="Focus"/> is the element that held keyboard focus when the
+/// chord was dispatched, or null when UIA reported none.
 /// </summary>
 public sealed record KeyChordResult(
     string Chord,
     string WindowTitle,
-    long WindowHandle);
+    long WindowHandle,
+    FocusedElementInfo? Focus = null);

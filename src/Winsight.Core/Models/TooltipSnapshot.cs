@@ -16,10 +16,21 @@ namespace Winsight.Core.Models;
 
 /// <summary>
 /// Compact UIA snapshot of a tooltip observed after hover.
+/// <see cref="Source"/> tells where the text came from:
+/// <see cref="SourcePopup"/> when a tooltip window opened (its bounds and
+/// <see cref="WindowHandle"/> are the popup's), or <see cref="SourceHelpText"/>
+/// when no popup appeared and the element's AutomationProperties.HelpText was
+/// used instead (its bounds are then the element's, and the handle is zero).
 /// </summary>
 public sealed record TooltipSnapshot(
     string Text,
     int X,
     int Y,
     int Width,
-    int Height);
+    int Height,
+    string Source = TooltipSnapshot.SourcePopup,
+    long WindowHandle = 0)
+{
+    public const string SourcePopup = "popup";
+    public const string SourceHelpText = "helpText";
+}

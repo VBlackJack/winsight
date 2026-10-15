@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/SampleWpfApp/SampleWpfApp.csproj" />
+    <Project Path="samples/WpfLabApp/WpfLabApp.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Winsight.Core/Winsight.Core.csproj" />

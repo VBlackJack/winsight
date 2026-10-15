@@ -316,6 +316,14 @@ Walk the UI Automation tree of a process window.
 | `windowTitle`  | string? | null    | Inspect the first window whose title contains this text     |
 | `controlType`  | string? | null    | Keep only nodes of this control type (plus their ancestors) |
 | `nameContains` | string? | null    | Keep only nodes whose Name contains this text (plus ancestors) |
+| `mainWindow`   | bool    | false   | Inspect the process main window even when a dialog or overlay is on top of it; ignored with `windowTitle` |
+
+Without `windowTitle`, the inspected window is the topmost one that is not a
+transient overlay. An open tooltip, menu, dropdown or flyout (an owned
+captionless popup, a `WS_EX_NOACTIVATE` or tool window, or a native menu or
+tooltip class) sits at the top of the z-order but is skipped, so hovering an
+element no longer makes `inspect_ui_tree` return the tooltip popup. A modal
+dialog is not an overlay and is still chosen when it is on top.
 
 **Returns** — JSON `UiElementNode` (recursive). `value` carries the current
 Value-pattern content (text boxes, combo boxes) and is null when the
@@ -510,7 +518,12 @@ intentionally.
 
 Immediately before dispatch, Winsight also checks the window identity, geometry,
 and the process/window under the point. A covering window causes a failure.
-`allowOutOfWindow` never authorizes clicking another process. Input calls within
+`allowOutOfWindow` never authorizes clicking another process.
+A child window of another process parented into the target window counts as
+the target: a WebView2 surface renders in a `Chrome_WidgetWin_1` child owned by
+`msedgewebview2.exe`, and a point above it is accepted when its root ancestor
+(`GetAncestor(GA_ROOT)`) is the target window. Another top-level window, or a
+child hosted in another process's window, on top of the point is still refused. Input calls within
 one server are serialized; other desktop users or processes can still change
 the desktop between the native check and input dispatch.
 
@@ -542,29 +555,50 @@ Locate an element and write text into it. Same locator parameters as
 | ------ | ------ | -------- | ------------ |
 | `text` | string | yes      | Text to send |
 | `focusWindow` | bool | no | Bring the matched top-level window to the foreground before writing; fails if `GetForegroundWindow` does not match |
+| `allowWebView2Input` | bool | no | Write even when the element sits inside a WebView2 surface (default false) |
 
 **Resolution order**: Value pattern (when writable) → focus + keyboard.Type.
+
+An element inside a WebView2 surface is refused before anything is written:
+synthetic keyboard input into WebView2 has crashed `ctfmon`, the text input
+host. Use `type_into_webview` (CDP) for web content; see `get_focused_element`
+for the detection signals.
 
 **Returns** — `OperationResult` (same shape as `click_element`).
 
 ## `send_key_chord`
 
 Focus a target top-level window, verify it became the foreground window,
-then send a keyboard chord through FlaUI's SendInput-backed keyboard
-primitive. This tool does not use `SendKeys`.
+then send a keyboard chord through `SendInput`. This tool does not use
+`SendKeys`.
 
 | Name          | Type    | Required | Description                                      |
 | ------------- | ------- | -------- | ------------------------------------------------ |
 | `processId`   | int     | yes      | Target process id                                |
 | `chord`       | string  | yes      | Chord such as `Ctrl+Shift+N`, `Alt+F4`, `Ctrl+Enter` |
 | `windowTitle` | string? | no       | Scope focus to windows whose title contains this text |
+| `allowWebView2Input` | bool | no    | Send even when keyboard focus is inside a WebView2 surface (default false) |
 
-The focus step restores the selected window, calls `SetForegroundWindow`,
-then polls `GetForegroundWindow` for up to 1000 ms. If the foreground
-handle does not become the selected window, the tool returns
-`success: false` with the expected and actual window handles.
+The focus step restores the selected window (an open tooltip or menu is
+skipped, see `inspect_ui_tree`), calls `SetForegroundWindow`, then polls
+`GetForegroundWindow` for up to 1000 ms. If the foreground handle does not
+become the selected window, the tool returns `success: false` with the
+expected and actual window handles. If keyboard focus then sits inside a
+WebView2 surface, nothing is sent and the failure carries the focused element.
 
-**Returns**
+**Dispatch.** Every transition carries its hardware scan code, and keys of the
+extended block (PageUp, PageDown, Home, End, Insert, Delete, the arrows, right
+Ctrl and Alt, the Windows keys) carry `KEYEVENTF_EXTENDEDKEY`. Modifiers go
+down first in chord order, the other keys follow, everything is released in
+reverse order, with 15 ms between transitions so a `WH_KEYBOARD_LL` hook that
+reads `GetAsyncKeyState` sees each modifier settled. Without the extended flag
+and scan code, Windows reads PageUp as numeric-keypad 9 and, with NumLock on
+and Shift held, injects a fake Shift release around it: the application
+receives Ctrl+PageUp instead of Ctrl+Shift+PageUp. The WPF lab sample
+(`samples/WpfLabApp`) logs the hook, `WM_KEYDOWN` and WPF views of each stroke.
+
+**Returns** (`focus` is the element that received the chord, shaped like
+`get_focused_element`)
 
 ```json
 {
@@ -572,10 +606,49 @@ handle does not become the selected window, the tool returns
   "data": {
     "chord": "Ctrl+Shift+N",
     "windowTitle": "Winsight Sample - Counter",
-    "windowHandle": 1247868
+    "windowHandle": 1247868,
+    "focus": { "controlType": "Edit", "automationId": "NoteInput", "isWebView2": false, "...": "..." }
   }
 }
 ```
+
+## `get_focused_element`
+
+Report where keyboard input would land right now. Read-only; takes only the
+optional `processId`.
+
+**Returns** (`FocusedElementInfo`)
+
+```json
+{
+  "success": true,
+  "data": {
+    "controlType": "Edit",
+    "automationId": "",
+    "name": "Terminal input",
+    "className": "xterm-helper-textarea",
+    "frameworkId": "Chrome",
+    "processId": 154408,
+    "processName": "msedgewebview2",
+    "belongsToTarget": true,
+    "isWebView2": true,
+    "webView2Evidence": ["frameworkId=Chrome", "process=msedgewebview2",
+                         "win32Focus=Chrome_WidgetWin_1", "uiaClass=Chrome_RenderWidgetHostHWND"],
+    "win32FocusClassName": "Chrome_WidgetWin_1",
+    "topLevelWindowHandle": 25827204,
+    "topLevelWindowTitle": "Heimdall - Remote Access Control Center",
+    "x": 1984, "y": 497, "width": 7, "height": 17
+  }
+}
+```
+
+`isWebView2` is true when any signal places the focus in WebView2: a Chromium
+`frameworkId`, an element owned by `msedgewebview2`, a Chromium window class
+holding Win32 focus, or a Chromium or `WebView2` class among the UIA ancestors.
+`belongsToTarget` is true when the element belongs to the target process or to
+a window it hosts (WebView2 renders in its own process, parented into the host
+window). `type_text` and `send_key_chord` refuse to send into WebView2 unless
+`allowWebView2Input=true`.
 
 ## `hover_element`
 
@@ -589,6 +662,13 @@ Uses the shared locator parameters, plus:
 | --------------------- | ------- | -------- | ------------------------------------------------ |
 | `expectedTooltipText` | string? | no       | Case-insensitive substring assertion on tooltip text |
 | `timeoutMs`           | int?    | no       | Tooltip wait timeout; default 1500, max 10000    |
+
+Tooltips are read from the target process's transient windows (a WPF
+`Popup` hosting a `ToolTip`, or a `tooltips_class32` window), and the popup is
+awaited for the whole timeout. The element's `AutomationProperties.HelpText`
+is only a fallback when no popup opened. `tooltip.source` tells which one the
+text came from: `popup` (bounds and `windowHandle` are the popup's) or
+`helpText` (bounds are the element's, `windowHandle` is 0).
 
 When `expectedTooltipText` is provided, absence of a matching tooltip is
 an explicit failure. Without an expected text, the hover succeeds and
@@ -607,7 +687,9 @@ returns the captured tooltip when one appears, or `tooltip: null`.
       "x": 912,
       "y": 566,
       "width": 176,
-      "height": 32
+      "height": 32,
+      "source": "popup",
+      "windowHandle": 3409212
     }
   }
 }
@@ -615,12 +697,20 @@ returns the captured tooltip when one appears, or `tooltip: null`.
 
 ## `select_item`
 
-Select an item by its visible text inside a located container. The
-container locator uses the shared locator parameters.
+Select an item inside a located container. The container locator uses the
+shared locator parameters. Name the item with exactly one of:
 
-| Name       | Type   | Required | Description                        |
-| ---------- | ------ | -------- | ---------------------------------- |
-| `itemName` | string | yes      | Visible text of the item to select |
+| Name               | Type    | Description                                          |
+| ------------------ | ------- | ---------------------------------------------------- |
+| `itemName`         | string? | Exact accessible name                                |
+| `itemNameContains` | string? | Case-insensitive substring of the name               |
+| `itemNamePattern`  | string? | .NET regular expression the name must match (250 ms evaluation cap) |
+
+Substring and pattern selection survive names that carry live data, such as a
+tree row named `lab-c, protocol SFTP, state Reachable (1 ms) · 13:03:33` whose
+clock changes every second: `itemNameContains: "lab-c,"` keeps matching. They
+are strict: when several items match, the call fails and lists them. An exact
+`itemName` keeps the historical first-match behavior.
 
 **Container handling**
 
@@ -633,7 +723,82 @@ container locator uses the shared locator parameters.
 
 On a missing item, the error lists the available item names.
 
-**Returns** — `OperationResult`.
+**Returns**: an `OperationResult` whose `data.selectedName` is the full name of
+the selected item.
+
+## `drag`
+
+Drag with the left mouse button from a source to a target, paced for OLE drag
+and drop (`DragDrop.DoDragDrop` in WPF): press on the source, hold, leave the
+system drag rectangle (`SM_CXDRAG`), move in steps, step one pixel past the
+target and back so the drop target receives a final `DragOver`, wait, release.
+The button is always released, even when a move fails.
+
+Each end is either an element or a point:
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `sourceAutomationId`, `sourceName`, `sourceNameContains`, `sourceControlType`, `sourceIndex` | | Source element (strict locator, center) |
+| `sourceX`, `sourceY` | int? | Source point instead of an element |
+| `targetAutomationId`, `targetName`, `targetNameContains`, `targetControlType`, `targetIndex` | | Target element |
+| `targetX`, `targetY` | int? | Target point instead of an element |
+| `targetOffsetX`, `targetOffsetY` | int | Offset from the target element's center (e.g. its left half) |
+| `coordinateSpace` | string | `window` (default) or `screen`, for the points |
+| `holdMs` | int | Hold before the first move; default 150, max 5000 |
+| `steps` | int | Intermediate moves; default 12, range 1-100 |
+| `stepDelayMs` | int | Pause between moves; default 25, max 1000 |
+| `dropDelayMs` | int | Hover on the target before releasing; default 250, max 5000 |
+| `allowOutOfWindow` | bool | Let the target lie outside the target process windows (drop into another application) |
+| `windowTitle` | string? | Scope element lookup and window-relative points |
+
+The target window is brought to the foreground first (an open tooltip or menu
+is skipped), since a window left on top of it would swallow the press. Both
+points must then reach a window of the target process (checked with
+`WindowFromPoint`) unless `allowOutOfWindow` releases the target check. As
+with `click_point`, a cross-process child hosted by that window (a WebView2
+surface) belongs to it.
+Verify the outcome with `wait_for_element` or `get_element_state`: the
+application decides what a drop means.
+
+**Returns**
+
+```json
+{ "success": true, "data": { "fromX": 2162, "fromY": 410, "toX": 1926, "toY": 410, "moves": 15 } }
+```
+
+## `manage_window`
+
+Move, resize, maximize, minimize or restore a top-level window of the target
+process: the main window by default, or the first window whose title contains
+`windowTitle`.
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `action` | string | `move`, `resize`, `set_bounds`, `maximize`, `minimize`, or `restore` |
+| `x`, `y` | int? | Outer frame position in screen pixels, for `move` and `set_bounds` |
+| `width`, `height` | int? | Outer frame size in pixels, for `resize` and `set_bounds` |
+| `windowTitle` | string? | Act on this window instead of the main window |
+
+Moving or resizing a maximized or minimized window restores it first.
+`restore` always returns to normal bounds, even from a minimize that followed
+a maximize. Requests are posted asynchronously (`ShowWindowAsync`,
+`SWP_ASYNCWINDOWPOS`) so a busy UI thread cannot block the call; the result is
+read once the window reached the requested state and its bounds stopped
+changing (up to 2 s).
+
+**Returns** (`matchesRequest` is false when the application constrained the
+request, for instance with a minimum size)
+
+```json
+{
+  "success": true,
+  "data": {
+    "windowHandle": 25827204, "title": "Heimdall - Remote Access Control Center",
+    "action": "Resize", "state": "normal",
+    "x": 1573, "y": 308, "width": 900, "height": 650, "matchesRequest": true
+  }
+}
+```
 
 ## `get_element_state`
 
@@ -678,8 +843,10 @@ parameters, plus:
 
 | Name             | Type    | Default | Description                                                  |
 | ---------------- | ------- | ------- | ------------------------------------------------------------ |
-| `condition`      | string  | —       | `exists`, `not_exists`, `enabled`, `visible`, `value_equals`, `value_contains`, or `stable_for` |
-| `expectedValue`  | string? | null    | Required for `value_equals` and `value_contains`              |
+| `condition`      | string  | -       | `exists`, `not_exists`, `enabled`, `visible`, `value_equals`, `value_contains`, `stable_for`, `name_equals`, `name_contains`, `name_matches`, or `child_count` |
+| `expectedValue`  | string? | null    | Required for `value_*` and `name_*`; a regular expression for `name_matches` |
+| `expectedCount`  | int?    | null    | Required for `child_count`                                    |
+| `childControlType` | string? | null  | For `child_count`, count only direct children of this control type |
 | `timeoutMs`      | int?    | 10000   | Max wait; overridable globally via `WINSIGHT_UIA_WAIT_TIMEOUT_MS`; capped at 120000 |
 | `pollIntervalMs` | int?    | 250     | Delay between polls; min 50                                   |
 | `stableForMs`    | int?    | null    | Required unchanged-state duration for `stable_for`            |
@@ -692,6 +859,18 @@ Value-pattern content exactly; `value_contains` is a case-insensitive
 substring check. `stable_for` passes only after the full `ElementState`
 snapshot remains unchanged for `stableForMs`, which is useful for
 anti-debounce assertions after server-filtered UI updates.
+
+`name_equals` (ordinal), `name_contains` (case-insensitive) and
+`name_matches` (regular expression) test the element's Name, for labels and
+rows whose text the application updates. `child_count` passes when the element
+has exactly `expectedCount` direct children, optionally only those of
+`childControlType`; the outcome reports the last `childCount`. For example,
+wait until the Tab named Sessions holds three tabs instead of sleeping:
+
+```json
+{ "name": "Sessions", "controlType": "Tab", "condition": "child_count",
+  "expectedCount": 3, "childControlType": "TabItem", "timeoutMs": 5000 }
+```
 
 **Returns** — `OperationResult` wrapping a `WaitOutcome` (also attached to
 timeout failures):
@@ -891,9 +1070,10 @@ as native JSON numbers / booleans / strings.
 
 ## `capture_screenshot`
 
-Capture a PNG of the target process's topmost visible window using
-`PrintWindow` with `PW_RENDERFULLCONTENT`, or of the first visible window whose
-title contains `windowTitle`. This flag makes DirectX-composed WPF windows and
+Capture a PNG of the target process's topmost visible window that is not a
+transient overlay (an open tooltip or menu is skipped, see `inspect_ui_tree`),
+of its main window when `mainWindow=true`, or of the first visible window whose
+title contains `windowTitle`, using `PrintWindow` with `PW_RENDERFULLCONTENT`. This flag makes DirectX-composed WPF windows and
 other accelerated surfaces render correctly into the bitmap; without it the
 result is often a black rectangle.
 
@@ -905,6 +1085,7 @@ result is often a black rectangle.
 | `outputPath`  | string | no       | Absolute file path. Default: a timestamped `screenshot-{utc-timestamp}.png` under `WINSIGHT_OUTPUT_DIR` (default `%TEMP%\winsight`) |
 | `windowTitle` | string | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows. |
 | `includeImage` | bool  | no       | Attach the captured PNG as an inline image (default true). Set false to return only the JSON path. |
+| `mainWindow`  | bool   | no       | Capture the process main window even when a dialog or overlay is on top of it; ignored with `windowTitle` |
 
 > **Output directory** — when `outputPath` is omitted, the capture is written
 > under the directory named by the `WINSIGHT_OUTPUT_DIR` environment variable,

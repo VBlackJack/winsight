@@ -60,7 +60,9 @@ internal static class WindowFocus
                 $"Available titles: {titles}.");
         }
 
-        (IntPtr handle, string title) = candidates[0];
+        // An open tooltip or menu is topmost but cannot take the foreground
+        // (WS_EX_NOACTIVATE); focus the window behind it instead.
+        (IntPtr handle, string title) = NativeWindowEnumerator.PreferPrimary(candidates)[0];
         return FocusWindow(handle, title, processId);
     }
 
