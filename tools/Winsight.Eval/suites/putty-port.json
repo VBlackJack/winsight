@@ -1,0 +1,31 @@
+{
+  "name": "putty-disposable-port",
+  "ready": { "automationId": "1046", "controlType": "Edit" },
+  "readyWindow": "PuTTY Configuration",
+  "scenarios": [
+    {
+      "id": "putty_port_2222",
+      "goal": "In PuTTY Configuration, change Port to 2222. Leave Host Name empty, keep SSH selected, and do not open a connection or save a session.",
+      "oracleTarget": "1046",
+      "oracleWindow": "PuTTY Configuration",
+      "property": "value",
+      "expected": "2222",
+      "allowedTargets": ["1046"],
+      "allowedActions": ["set_value", "focus"],
+      "preserve": [
+        { "locator": { "automationId": "1044", "controlType": "Edit" }, "property": "value", "expected": "", "windowTitle": "PuTTY Configuration" },
+        { "locator": { "automationId": "1049", "controlType": "RadioButton" }, "property": "selected", "expected": "true", "windowTitle": "PuTTY Configuration" },
+        { "locator": { "automationId": "1056", "controlType": "Edit" }, "property": "value", "expected": "", "windowTitle": "PuTTY Configuration" }
+      ],
+      "steps": [
+        {
+          "target": "1046",
+          "windowTitle": "PuTTY Configuration",
+          "action": "set_value",
+          "text": "2222",
+          "expect": { "kind": "value", "expected": "2222", "locator": { "automationId": "1046", "controlType": "Edit" }, "windowTitle": "PuTTY Configuration" }
+        }
+      ]
+    }
+  ]
+}

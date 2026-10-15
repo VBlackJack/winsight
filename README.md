@@ -284,6 +284,10 @@ copied as the baseline and the result verdict is `baseline_created` or
 
 See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
+For measured model trials and application-specific suites, see
+[model evaluation](docs/model-evaluation.md)
+([français](docs/model-evaluation.fr.md)).
+
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
 | `set_target` / `get_target` / `clear_target` | Set/read/clear the session default process so process-scoped tools can omit `processId` |

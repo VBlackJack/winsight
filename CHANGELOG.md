@@ -9,6 +9,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Codex CLI decision-source evaluation, exact-target/action-bounded external
+  suites, a disposable PuTTY port scenario, and structured trial sidecars.
+- Independent protected-state grading with explicit unknown coverage, retained
+  transient violations, executable hashes and CLI/token provenance.
 - Expiring UIA observations and single-use `act_verified` references with explicit
   postconditions, bounded recovery and separate dispatch/verification outcomes.
 - Annotated scene captures, authorized WebView2 DOM scenes and a vision fallback

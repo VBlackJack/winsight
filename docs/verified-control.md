@@ -157,7 +157,11 @@ toggle, note, dialog and keyboard scenarios. It checks final UI state independen
 of the decision source and checks observed transitions for reset/toggle/cancel.
 It writes one JSONL row per trial, including outcome, claimed completion, false
 success, calls, elapsed time, tokens when available and stale responses.
-`wrongTarget` is null: no independent wrong-target observer is implemented.
+`wrongTarget` now reports independently sampled protected-state violations;
+it remains null when evidence is incomplete. Its coverage does not include
+clicks without state changes or unconfigured controls. See
+[model evaluation](model-evaluation.md) for Codex trials, external suites and
+the exact grading limits.
 An optional final argument repeats each scenario 1..20 times. Output must be new.
 
 Replace `scripted` with a trusted adapter executable for model trials. Each turn
