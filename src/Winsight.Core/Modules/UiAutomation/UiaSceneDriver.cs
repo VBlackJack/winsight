@@ -144,6 +144,7 @@ public sealed class UiaSceneDriver
                 element.Focus();
                 if (!element.Properties.HasKeyboardFocus.ValueOrDefault) return OperationResult.Failure("Focus was not acquired.");
                 if (!KeyboardChordParser.TryParse(action.Text, out FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys, out string? parseError)) return OperationResult.Failure(parseError!);
+                if (FocusedElementReader.WebView2EvidenceFor(automation, element) is { Count: > 0 } evidence) return OperationResult.Failure(ActionInvoker.WebView2InputRefusal("The target", evidence, canOverride: false));
                 ActionInvoker.DispatchKeyboardChord(keys); break;
             case "right_click": Mouse.Click(Center(node), MouseButton.Right); break;
             case "double_click": Mouse.DoubleClick(Center(node)); break;

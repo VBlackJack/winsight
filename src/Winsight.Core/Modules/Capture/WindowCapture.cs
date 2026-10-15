@@ -29,14 +29,24 @@ public sealed class WindowCapture
     // including DirectX-composed WPF windows. Without it the bitmap may come back black.
     private const uint PW_RENDERFULLCONTENT = 0x00000002;
 
-    public ScreenshotResult Capture(int processId, string outputPath, string? windowTitle = null)
+    /// <summary>
+    /// Capture a process window. Without <paramref name="windowTitle"/> this is
+    /// the topmost window that is not a transient overlay (an open tooltip or
+    /// menu is skipped), or the process main window when
+    /// <paramref name="mainWindow"/> is set.
+    /// </summary>
+    public ScreenshotResult Capture(
+        int processId,
+        string outputPath,
+        string? windowTitle = null,
+        bool mainWindow = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
         IntPtr hwnd = ResolveWindowHandle(
             processId,
             windowTitle,
-            DefaultWindowSelection.TopmostVisible);
+            mainWindow ? DefaultWindowSelection.MainWindow : DefaultWindowSelection.TopmostVisible);
 
         if (!NativeMethods.GetWindowRect(hwnd, out Rect rect))
         {
@@ -203,38 +213,12 @@ public sealed class WindowCapture
             throw new InvalidOperationException(BuildNoWindowError(processId, windowTitle, windows));
         }
 
-        if (string.IsNullOrWhiteSpace(windowTitle) &&
-            defaultSelection == DefaultWindowSelection.MainWindow)
-        {
-            IntPtr mainWindowHandle = TryGetMainWindowHandle(processId);
-            if (mainWindowHandle != IntPtr.Zero)
-            {
-                foreach ((IntPtr handle, _) in candidates)
-                {
-                    if (handle == mainWindowHandle)
-                    {
-                        return handle;
-                    }
-                }
-            }
-        }
-
-        // EnumWindows returns top-level windows in z-order, topmost first.
-        return candidates[0].Handle;
-    }
-
-    private static IntPtr TryGetMainWindowHandle(int processId)
-    {
-        try
-        {
-            using Process process = Process.GetProcessById(processId);
-            process.Refresh();
-            return process.MainWindowHandle;
-        }
-        catch (Exception ex) when (!IsFatal(ex))
-        {
-            return IntPtr.Zero;
-        }
+        // EnumWindows returns top-level windows in z-order, topmost first;
+        // transient overlays (tooltips, menus) move behind the others.
+        return string.IsNullOrWhiteSpace(windowTitle) &&
+            defaultSelection == DefaultWindowSelection.MainWindow
+            ? NativeWindowEnumerator.PreferMainWindow(processId, candidates)[0].Handle
+            : NativeWindowEnumerator.PreferPrimary(candidates)[0].Handle;
     }
 
     private static string BuildNoWindowError(

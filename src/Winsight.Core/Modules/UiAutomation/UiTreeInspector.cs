@@ -30,8 +30,10 @@ public sealed class UiTreeInspector
     public const int MaxAllowedDepth = 20;
 
     /// <summary>
-    /// Inspect the first window of the process — or the first window whose
-    /// title contains <paramref name="windowTitle"/> — down to
+    /// Inspect the topmost window of the process that is not a transient
+    /// overlay (an open tooltip or menu is skipped), the process main window
+    /// when <paramref name="mainWindow"/> is set, or the first window whose
+    /// title contains <paramref name="windowTitle"/>, down to
     /// <paramref name="maxDepth"/>. When <paramref name="controlTypeFilter"/>
     /// or <paramref name="nameContainsFilter"/> is set, branches without any
     /// matching node are pruned (the root is always kept).
@@ -41,7 +43,8 @@ public sealed class UiTreeInspector
         int maxDepth = DefaultMaxDepth,
         string? windowTitle = null,
         string? controlTypeFilter = null,
-        string? nameContainsFilter = null)
+        string? nameContainsFilter = null,
+        bool mainWindow = false)
     {
         if (maxDepth < 0 || maxDepth > MaxAllowedDepth)
         {
@@ -63,8 +66,13 @@ public sealed class UiTreeInspector
                 $"No top-level window found for process {processId}{scope}.");
         }
 
+        List<(IntPtr Handle, string Title)> handles = windows.Select(w => (w.Handle, w.Title)).ToList();
+        IntPtr chosen = (mainWindow && string.IsNullOrEmpty(windowTitle)
+            ? NativeWindowEnumerator.PreferMainWindow(processId, handles)
+            : NativeWindowEnumerator.PreferPrimary(handles))[0].Handle;
         var visited = 0;
-        UiElementNode root = BuildNode(windows[0].Element, depth: 0, maxDepth, ref visited);
+        UiElementNode root = BuildNode(
+            windows.First(w => w.Handle == chosen).Element, depth: 0, maxDepth, ref visited);
 
         bool hasFilter = !string.IsNullOrEmpty(controlTypeFilter)
             || !string.IsNullOrEmpty(nameContainsFilter);

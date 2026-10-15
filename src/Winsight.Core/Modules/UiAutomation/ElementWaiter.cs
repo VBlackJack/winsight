@@ -14,6 +14,7 @@
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using Winsight.Core.Models;
@@ -31,7 +32,10 @@ public sealed class ElementWaiter
     /// Wait until <paramref name="condition"/> holds for the locator.
     /// Null timeout/poll interval fall back to <see cref="UiaDefaults"/>.
     /// Returns a <see cref="WaitOutcome"/> payload either way; the result is
-    /// a failure when the timeout elapses first.
+    /// a failure when the timeout elapses first. <paramref name="expectedValue"/>
+    /// carries the text for value_* and name_* conditions (a regular expression
+    /// for name_matches); <paramref name="expectedCount"/> and
+    /// <paramref name="childControlType"/> drive child_count.
     /// </summary>
     public OperationResult Wait(
         int processId,
@@ -41,7 +45,9 @@ public sealed class ElementWaiter
         int? pollIntervalMs = null,
         string? windowTitle = null,
         string? expectedValue = null,
-        int? stableForMs = null)
+        int? stableForMs = null,
+        int? expectedCount = null,
+        string? childControlType = null)
     {
         if (locator.IsEmpty)
         {
@@ -62,12 +68,33 @@ public sealed class ElementWaiter
             return OperationResult.Failure(
                 $"pollIntervalMs must be at least {UiaDefaults.MinPollIntervalMs}.");
         }
-        if (condition is WaitCondition.ValueEquals or WaitCondition.ValueContains &&
+        if (condition is WaitCondition.ValueEquals or WaitCondition.ValueContains
+                or WaitCondition.NameEquals or WaitCondition.NameContains or WaitCondition.NameMatches &&
             expectedValue is null)
         {
             return OperationResult.Failure(
                 $"expectedValue is required for condition '{condition}'.");
         }
+        Regex? namePattern = null;
+        if (condition == WaitCondition.NameMatches)
+        {
+            try
+            {
+                namePattern = new Regex(
+                    expectedValue!, RegexOptions.CultureInvariant, WaitConditionEvaluator.NamePatternTimeout);
+            }
+            catch (ArgumentException ex)
+            {
+                return OperationResult.Failure(
+                    $"expectedValue is not a valid regular expression for name_matches: {ex.Message}");
+            }
+        }
+        if (condition == WaitCondition.ChildCount && expectedCount is not >= 0)
+        {
+            return OperationResult.Failure(
+                "expectedCount (0 or more) is required for condition 'ChildCount'.");
+        }
+        WaitExpectation expectation = new(expectedValue, namePattern, expectedCount, childControlType);
         if (condition == WaitCondition.StableFor)
         {
             if (stableForMs is null)
@@ -94,7 +121,7 @@ public sealed class ElementWaiter
                 locator,
                 condition,
                 windowTitle,
-                expectedValue);
+                expectation);
             if (poll.StrictError is not null)
             {
                 return OperationResult.FailureWith(poll.StrictError, poll.Candidates);
@@ -110,7 +137,8 @@ public sealed class ElementWaiter
             else if (poll.ConditionMet)
             {
                 return OperationResult.OkWith(new WaitOutcome(
-                    condition.ToString(), ConditionMet: true, stopwatch.ElapsedMilliseconds, poll.MatchCount, poll.State));
+                    condition.ToString(), ConditionMet: true, stopwatch.ElapsedMilliseconds, poll.MatchCount, poll.State,
+                    poll.ChildCount));
             }
             if (stopwatch.ElapsedMilliseconds >= timeout)
             {
@@ -118,7 +146,8 @@ public sealed class ElementWaiter
                     $"Condition '{condition}' not met for locator {locator} in process {processId} " +
                     $"after {stopwatch.ElapsedMilliseconds} ms ({poll.MatchCount} match(es) on last poll).",
                     new WaitOutcome(
-                        condition.ToString(), ConditionMet: false, stopwatch.ElapsedMilliseconds, poll.MatchCount, poll.State));
+                        condition.ToString(), ConditionMet: false, stopwatch.ElapsedMilliseconds, poll.MatchCount, poll.State,
+                        poll.ChildCount));
             }
             Thread.Sleep(pollInterval);
         }
@@ -129,7 +158,14 @@ public sealed class ElementWaiter
         int MatchCount,
         ElementState? State,
         string? StrictError = null,
-        IReadOnlyList<ElementCandidate>? Candidates = null);
+        IReadOnlyList<ElementCandidate>? Candidates = null,
+        int? ChildCount = null);
+
+    private sealed record WaitExpectation(
+        string? Text,
+        Regex? NamePattern,
+        int? Count,
+        string? ChildControlType);
 
     private static PollResult EvaluateOnce(
         UIA3Automation automation,
@@ -137,7 +173,7 @@ public sealed class ElementWaiter
         ElementLocator locator,
         WaitCondition condition,
         string? windowTitle,
-        string? expectedValue)
+        WaitExpectation expectation)
     {
         List<ElementMatch> matches;
         try
@@ -175,6 +211,10 @@ public sealed class ElementWaiter
             case WaitCondition.ValueEquals:
             case WaitCondition.ValueContains:
             case WaitCondition.StableFor:
+            case WaitCondition.NameEquals:
+            case WaitCondition.NameContains:
+            case WaitCondition.NameMatches:
+            case WaitCondition.ChildCount:
                 if (matches.Count > 1)
                 {
                     return new PollResult(
@@ -187,17 +227,37 @@ public sealed class ElementWaiter
                 {
                     return new PollResult(false, 0, null);
                 }
-                ElementState state = ElementStateReader.BuildState(matches[0]);
+                ElementState state;
+                int? childCount = null;
+                try
+                {
+                    state = ElementStateReader.BuildState(matches[0]);
+                    if (condition == WaitCondition.ChildCount)
+                    {
+                        childCount = WaitConditionEvaluator.CountChildren(
+                            matches[0].Element.FindAllChildren()
+                                .Select(c => c.Properties.ControlType.ValueOrDefault.ToString()),
+                            expectation.ChildControlType);
+                    }
+                }
+                catch (COMException)
+                {
+                    // The element changed while it was read; retry on the next poll.
+                    return new PollResult(false, 1, null);
+                }
                 bool met = condition switch
                 {
                     WaitCondition.Enabled => state.IsEnabled,
                     WaitCondition.Visible => state.IsVisible,
                     WaitCondition.ValueEquals or WaitCondition.ValueContains =>
-                        WaitConditionEvaluator.ValueMatches(condition, state.Value, expectedValue!),
+                        WaitConditionEvaluator.ValueMatches(condition, state.Value, expectation.Text!),
+                    WaitCondition.NameEquals or WaitCondition.NameContains or WaitCondition.NameMatches =>
+                        WaitConditionEvaluator.NameMatches(condition, state.Name, expectation.Text!, expectation.NamePattern),
+                    WaitCondition.ChildCount => childCount == expectation.Count,
                     WaitCondition.StableFor => true,
                     _ => false,
                 };
-                return new PollResult(met, 1, state);
+                return new PollResult(met, 1, state, ChildCount: childCount);
 
             default:
                 return new PollResult(false, matches.Count, null,

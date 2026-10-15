@@ -39,7 +39,8 @@ public sealed class ActionInvoker
     private const int TooltipTextDepth = 3;
     private const int PreHoverSettleMs = 150;
     private const int FocusInputSettleMs = 100;
-    private const int KeyChordStrokeDelayMs = 20;
+    private const int SystemMetricDragWidth = 68;
+    private const int SystemMetricDragHeight = 69;
 
     /// <summary>
     /// Click the located element. <see cref="ClickStyle.Primary"/> prefers the
@@ -183,15 +184,162 @@ public sealed class ActionInvoker
     }
 
     /// <summary>
+    /// Press the left button on <paramref name="source"/>, hold it, move in
+    /// paced steps to <paramref name="target"/> and release, so OLE drag and
+    /// drop (WPF <c>DragDrop.DoDragDrop</c>) starts, tracks and drops. Each
+    /// endpoint is an element (center plus offset) or a point; points are
+    /// window-relative when <paramref name="windowRelative"/> is true. Both
+    /// points must reach a window of the target process unless
+    /// <paramref name="allowOutOfWindow"/> releases the target check.
+    /// </summary>
+    public OperationResult Drag(
+        int processId,
+        DragEndpoint source,
+        DragEndpoint target,
+        DragOptions? options = null,
+        string? windowTitle = null,
+        bool windowRelative = true,
+        bool allowOutOfWindow = false)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(target);
+        DragOptions pacing = options ?? new DragOptions();
+        string? invalid = source.Validate("source") ?? target.Validate("target") ?? pacing.Validate();
+        if (invalid is not null)
+        {
+            return OperationResult.Failure(invalid);
+        }
+
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
+        lock (DesktopInputGate)
+        {
+            using UIA3Automation automation = new();
+            if (!TryResolveDragPoint(automation, processId, source, "source", windowTitle, windowRelative,
+                    out System.Drawing.Point from, out OperationResult? failure) ||
+                !TryResolveDragPoint(automation, processId, target, "target", windowTitle, windowRelative,
+                    out System.Drawing.Point to, out failure))
+            {
+                return failure!;
+            }
+            if (!TryValidateDragRecipient(processId, from, "source", out string? recipientError) ||
+                (!allowOutOfWindow && !TryValidateDragRecipient(processId, to, "target", out recipientError)))
+            {
+                return OperationResult.Failure(recipientError!);
+            }
+
+            int threshold = Math.Max(
+                GetSystemMetrics(SystemMetricDragWidth),
+                GetSystemMetrics(SystemMetricDragHeight));
+            IReadOnlyList<System.Drawing.Point> moves = DragPath.Plan(from, to, pacing.Steps, threshold);
+
+            Mouse.Position = from;
+            Thread.Sleep(pacing.StepDelayMs);
+            Mouse.Down(MouseButton.Left);
+            try
+            {
+                Thread.Sleep(pacing.HoldMs);
+                foreach (System.Drawing.Point move in moves)
+                {
+                    Mouse.Position = move;
+                    Thread.Sleep(pacing.StepDelayMs);
+                }
+                Thread.Sleep(pacing.DropDelayMs);
+            }
+            finally
+            {
+                Mouse.Up(MouseButton.Left);
+            }
+            return OperationResult.OkWith(new DragResult(from.X, from.Y, to.X, to.Y, moves.Count));
+        }
+    }
+
+    private static bool TryResolveDragPoint(
+        UIA3Automation automation,
+        int processId,
+        DragEndpoint endpoint,
+        string role,
+        string? windowTitle,
+        bool windowRelative,
+        out System.Drawing.Point point,
+        out OperationResult? failure)
+    {
+        point = default;
+        failure = null;
+        if (!endpoint.IsPoint)
+        {
+            ElementSearchResult search = ElementFinder.FindSingle(automation, processId, endpoint.Locator!, windowTitle);
+            if (!search.Found)
+            {
+                failure = OperationResult.FailureWith($"Drag {role}: {search.Error}", search.Candidates);
+                return false;
+            }
+            AutomationElement element = search.Element!;
+            ScrollIntoViewIfOffscreen(element);
+            System.Drawing.Rectangle rect = element.BoundingRectangle;
+            if (rect.Width <= 0 || rect.Height <= 0)
+            {
+                failure = OperationResult.Failure(
+                    $"Drag {role} element has invalid bounds {rect.Width}x{rect.Height}.");
+                return false;
+            }
+            point = new System.Drawing.Point(
+                rect.Left + rect.Width / 2 + endpoint.OffsetX,
+                rect.Top + rect.Height / 2 + endpoint.OffsetY);
+            return true;
+        }
+
+        if (!windowRelative)
+        {
+            point = new System.Drawing.Point(endpoint.X!.Value, endpoint.Y!.Value);
+            return true;
+        }
+        if (!WindowGeometry.TryResolveWindow(processId, windowTitle, out WindowIdentity window, out string? error))
+        {
+            failure = OperationResult.Failure($"Drag {role}: {error}");
+            return false;
+        }
+        WindowBounds bounds = window.Bounds;
+        if (!WindowPointMapper.Contains(bounds.Width, bounds.Height, endpoint.X!.Value, endpoint.Y!.Value))
+        {
+            failure = OperationResult.Failure(
+                $"Drag {role} point ({endpoint.X}, {endpoint.Y}) is outside the target window bounds " +
+                $"{bounds.Width}x{bounds.Height}.");
+            return false;
+        }
+        (int screenX, int screenY) = WindowPointMapper.ToScreen(
+            bounds.Left, bounds.Top, endpoint.X.Value, endpoint.Y.Value);
+        point = new System.Drawing.Point(screenX, screenY);
+        return true;
+    }
+
+    private static bool TryValidateDragRecipient(
+        int processId,
+        System.Drawing.Point point,
+        string role,
+        out string? error)
+    {
+        if (!WindowGeometry.TryResolveWindow(processId, null, out WindowIdentity window, out error, point) ||
+            !WindowGeometry.TryValidatePointRecipient(window, point.X, point.Y, allowOtherWindow: false, out error))
+        {
+            error = $"Drag {role} ({point.X}, {point.Y}): {error}";
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Set the located element's value via the Value pattern, falling back
-    /// to focusing the element and typing through the keyboard.
+    /// to focusing the element and typing through the keyboard. An element
+    /// inside a WebView2 surface is refused unless
+    /// <paramref name="allowWebView2Input"/> is set (see <see cref="WebView2FocusClassifier"/>).
     /// </summary>
     public OperationResult Type(
         int processId,
         ElementLocator locator,
         string text,
         string? windowTitle = null,
-        bool focusWindow = false)
+        bool focusWindow = false,
+        bool allowWebView2Input = false)
     {
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
@@ -206,6 +354,11 @@ public sealed class ActionInvoker
             }
 
             AutomationElement element = search.Element!;
+            if (!allowWebView2Input &&
+                FocusedElementReader.WebView2EvidenceFor(automation, element) is { Count: > 0 } evidence)
+            {
+                return OperationResult.Failure(WebView2InputRefusal("The located element", evidence));
+            }
             ScrollIntoViewIfOffscreen(element);
             if (focusWindow)
             {
@@ -234,12 +387,16 @@ public sealed class ActionInvoker
 
     /// <summary>
     /// Focus a process window, verify it became the foreground window, and
-    /// dispatch a keyboard chord such as "Ctrl+Shift+N".
+    /// dispatch a keyboard chord such as "Ctrl+Shift+N". The chord is refused
+    /// when keyboard focus then sits inside a WebView2 surface, unless
+    /// <paramref name="allowWebView2Input"/> is set. The result reports the
+    /// element that received the chord.
     /// </summary>
     public OperationResult SendKeyChord(
         int processId,
         string chord,
-        string? windowTitle = null)
+        string? windowTitle = null,
+        bool allowWebView2Input = false)
     {
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
@@ -256,11 +413,23 @@ public sealed class ActionInvoker
             }
 
             Thread.Sleep(FocusInputSettleMs);
+            FocusedElementInfo? focused;
+            using (UIA3Automation automation = new())
+            {
+                focused = FocusedElementReader.ReadFocus(automation, processId);
+            }
+            if (!allowWebView2Input && focused is { IsWebView2: true })
+            {
+                return OperationResult.FailureWith(
+                    WebView2InputRefusal("Keyboard focus", focused.WebView2Evidence),
+                    focused);
+            }
             DispatchKeyboardChord(keys);
             return OperationResult.OkWith(new KeyChordResult(
                 chord,
                 focus.WindowTitle,
-                focus.WindowHandle.ToInt64()));
+                focus.WindowHandle.ToInt64(),
+                focused));
         }
     }
 
@@ -275,11 +444,27 @@ public sealed class ActionInvoker
         string itemName,
         string? windowTitle = null)
     {
+        ArgumentNullException.ThrowIfNull(itemName);
+        return SelectItem(processId, locator, ItemNameMatcher.Exact(itemName), windowTitle);
+    }
+
+    /// <summary>
+    /// Select the item whose accessible name satisfies <paramref name="matcher"/>
+    /// inside a located container. An exact name keeps the historical
+    /// first-match behavior; a substring or pattern must match exactly one
+    /// item, otherwise the call fails and lists the matching names. On success
+    /// the data carries the full name of the selected item.
+    /// </summary>
+    public OperationResult SelectItem(
+        int processId,
+        ElementLocator locator,
+        ItemNameMatcher matcher,
+        string? windowTitle = null)
+    {
+        ArgumentNullException.ThrowIfNull(matcher);
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
-            ArgumentNullException.ThrowIfNull(itemName);
-
             using UIA3Automation automation = new();
             ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
             if (!search.Found)
@@ -293,25 +478,21 @@ public sealed class ActionInvoker
 
             try
             {
-                return controlType switch
-                {
-                    "ComboBox" => SelectInComboBox(container, itemName),
-                    "List" => SelectInListBox(container, itemName),
-                    "Tab" => SelectTabItem(container, itemName),
-                    _ => SelectDescendantItem(container, itemName),
-                };
+                return SelectIn(container, matcher);
             }
             catch (COMException ex)
             {
                 return OperationResult.Failure(
-                    $"Selection of \"{itemName}\" failed in {controlType} ({ex.Message}).");
+                    $"Selection of the item {matcher.Description} failed in {controlType} ({ex.Message}).");
             }
         }
     }
 
     /// <summary>
     /// Move the mouse to the center of an element and capture the newly
-    /// appearing tooltip, optionally asserting its text.
+    /// appearing tooltip, optionally asserting its text. The tooltip popup
+    /// window is awaited for the whole timeout; the element's HelpText is only
+    /// a fallback when no popup opens, and the snapshot says which one it is.
     /// </summary>
     public OperationResult Hover(
         int processId,
@@ -355,7 +536,7 @@ public sealed class ActionInvoker
             Mouse.MoveTo(outsideElement);
             Thread.Sleep(PreHoverSettleMs);
 
-            HashSet<string> staleTooltips = CaptureTooltips(automation)
+            HashSet<string> staleTooltips = CaptureTooltips(automation, processId)
                 .Select(t => TooltipSignature(t.Snapshot))
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -366,36 +547,34 @@ public sealed class ActionInvoker
             TooltipSnapshot? lastTooltip = null;
             while (stopwatch.ElapsedMilliseconds <= timeout)
             {
-                TooltipSnapshot? tooltip = CaptureTooltips(automation)
+                List<TooltipSnapshot> fresh = CaptureTooltips(automation, processId)
                     .Where(t => !staleTooltips.Contains(TooltipSignature(t.Snapshot)))
                     .Where(t => t.DistanceTo(center) <= TooltipProximityPx)
                     .OrderBy(t => t.DistanceTo(center))
                     .Select(t => t.Snapshot)
-                    .FirstOrDefault(t => TooltipTextMatches(t, expectedTooltipText));
-
+                    .ToList();
+                TooltipSnapshot? tooltip = fresh.FirstOrDefault(t => TooltipTextMatches(t, expectedTooltipText));
                 if (tooltip is not null)
                 {
                     return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip));
                 }
 
-                if (TooltipTextMatches(helpText, expectedTooltipText))
-                {
-                    TooltipSnapshot synthetic = new(
-                        helpText!,
-                        rect.X,
-                        rect.Y,
-                        rect.Width,
-                        rect.Height);
-                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, synthetic));
-                }
-
-                lastTooltip = CaptureTooltips(automation)
-                    .Where(t => !staleTooltips.Contains(TooltipSignature(t.Snapshot)))
-                    .Where(t => t.DistanceTo(center) <= TooltipProximityPx)
-                    .OrderBy(t => t.DistanceTo(center))
-                    .Select(t => t.Snapshot)
-                    .FirstOrDefault();
+                lastTooltip = fresh.FirstOrDefault() ?? lastTooltip;
                 Thread.Sleep(TooltipPollIntervalMs);
+            }
+
+            // No popup carried the text: fall back to the element's HelpText,
+            // which assistive technology reads but which is not what a user sees.
+            if (lastTooltip is null && TooltipTextMatches(helpText, expectedTooltipText))
+            {
+                TooltipSnapshot fromHelpText = new(
+                    helpText!,
+                    rect.X,
+                    rect.Y,
+                    rect.Width,
+                    rect.Height,
+                    TooltipSnapshot.SourceHelpText);
+                return OperationResult.OkWith(new HoverResult(center.X, center.Y, fromHelpText));
             }
 
             HoverResult result = new(center.X, center.Y, lastTooltip);
@@ -431,76 +610,96 @@ public sealed class ActionInvoker
         return OperationResult.Ok();
     }
 
-    internal static void DispatchKeyboardChord(FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys)
-    {
-        FlaUI.Core.WindowsAPI.VirtualKeyShort[] modifiers = keys
-            .Where(KeyboardChordParser.IsModifier)
-            .ToArray();
-        FlaUI.Core.WindowsAPI.VirtualKeyShort[] strokes = keys
-            .Where(k => !KeyboardChordParser.IsModifier(k))
-            .ToArray();
+    internal static string WebView2InputRefusal(
+        string subject,
+        IReadOnlyList<string> evidence,
+        bool canOverride = true) =>
+        $"{subject} is inside a WebView2 surface ({string.Join(", ", evidence)}). Synthetic keyboard input " +
+        "there has crashed the text input host (ctfmon), so it was not sent. Use type_into_webview (CDP) " +
+        "for web content" + (canOverride ? ", or pass allowWebView2Input=true to send it anyway." : ".");
 
-        if (modifiers.Length == 0)
+    internal static void DispatchKeyboardChord(FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys) =>
+        KeyChordDispatcher.Dispatch(keys);
+
+    internal static OperationResult SelectPinnedItem(AutomationElement container, string itemName) =>
+        SelectIn(container, ItemNameMatcher.Exact(itemName));
+
+    private static OperationResult SelectIn(AutomationElement container, ItemNameMatcher matcher) =>
+        container.Properties.ControlType.ValueOrDefault.ToString() switch
         {
-            Keyboard.Type(strokes);
-            return;
-        }
+            "ComboBox" => SelectInComboBox(container, matcher),
+            "List" => SelectInListBox(container, matcher),
+            "Tab" => SelectTabItem(container, matcher),
+            _ => SelectDescendantItem(container, matcher),
+        };
 
-        using IDisposable pressed = Keyboard.Pressing(modifiers);
-        Thread.Sleep(KeyChordStrokeDelayMs);
-        Keyboard.Type(strokes);
-    }
-
-    internal static OperationResult SelectPinnedItem(AutomationElement container, string itemName) => container.Properties.ControlType.ValueOrDefault.ToString() switch
-    {
-        "ComboBox" => SelectInComboBox(container, itemName),
-        "List" => SelectInListBox(container, itemName),
-        "Tab" => SelectTabItem(container, itemName),
-        _ => SelectDescendantItem(container, itemName),
-    };
-
-    private static OperationResult SelectInComboBox(AutomationElement container, string itemName)
+    private static OperationResult SelectInComboBox(AutomationElement container, ItemNameMatcher matcher)
     {
         ComboBox comboBox = container.AsComboBox();
-        ComboBoxItem? selected = comboBox.Select(itemName);
-        if (selected is null)
+        if (matcher.ExactName is { } exact)
         {
-            return OperationResult.Failure(
-                $"Item \"{itemName}\" not found in ComboBox. Available items: {DescribeItems(comboBox.Items.Select(i => i.Text))}");
+            ComboBoxItem? selected = comboBox.Select(exact);
+            if (selected is null)
+            {
+                return OperationResult.Failure(
+                    $"Item \"{exact}\" not found in ComboBox. Available items: {DescribeItems(comboBox.Items.Select(i => i.Text))}");
+            }
+            // Collapse the dropdown so the popup does not linger over the UI.
+            comboBox.Collapse();
+            return OperationResult.OkWith(new SelectItemResult(exact));
         }
-        // Collapse the dropdown so the popup does not linger over the UI.
-        comboBox.Collapse();
-        return OperationResult.Ok();
+
+        comboBox.Expand();
+        try
+        {
+            ComboBoxItem[] items = comboBox.Items;
+            return SelectSingle(items, i => i.Text, matcher, "ComboBox", item => item.Select());
+        }
+        finally
+        {
+            comboBox.Collapse();
+        }
     }
 
-    private static OperationResult SelectInListBox(AutomationElement container, string itemName)
+    private static OperationResult SelectInListBox(AutomationElement container, ItemNameMatcher matcher)
     {
         ListBox listBox = container.AsListBox();
-        ListBoxItem? selected = listBox.Select(itemName);
-        if (selected is null)
+        if (matcher.ExactName is { } exact)
         {
-            return OperationResult.Failure(
-                $"Item \"{itemName}\" not found in ListBox. Available items: {DescribeItems(listBox.Items.Select(i => i.Text))}");
+            ListBoxItem? selected = listBox.Select(exact);
+            if (selected is null)
+            {
+                return OperationResult.Failure(
+                    $"Item \"{exact}\" not found in ListBox. Available items: {DescribeItems(listBox.Items.Select(i => i.Text))}");
+            }
+            return OperationResult.OkWith(new SelectItemResult(exact));
         }
-        return OperationResult.Ok();
+        return SelectSingle(listBox.Items, i => i.Text, matcher, "ListBox", item => item.Select());
     }
 
-    private static OperationResult SelectTabItem(AutomationElement container, string itemName)
+    private static OperationResult SelectTabItem(AutomationElement container, ItemNameMatcher matcher)
     {
         Tab tab = container.AsTab();
-        TabItem? target = tab.TabItems.FirstOrDefault(
-            t => string.Equals(t.Properties.Name.ValueOrDefault, itemName, StringComparison.Ordinal));
-        if (target is null)
+        TabItem[] tabItems = tab.TabItems;
+        if (matcher.ExactName is { } exact)
         {
-            return OperationResult.Failure(
-                $"Tab item \"{itemName}\" not found. Available items: {DescribeItems(tab.TabItems.Select(t => t.Properties.Name.ValueOrDefault ?? string.Empty))}");
+            TabItem? target = tabItems.FirstOrDefault(
+                t => string.Equals(t.Properties.Name.ValueOrDefault, exact, StringComparison.Ordinal));
+            if (target is null)
+            {
+                return OperationResult.Failure(
+                    $"Tab item \"{exact}\" not found. Available items: {DescribeItems(tabItems.Select(t => t.Properties.Name.ValueOrDefault ?? string.Empty))}");
+            }
+            tab.SelectTabItem(exact);
+            return OperationResult.OkWith(new SelectItemResult(exact));
         }
-        tab.SelectTabItem(itemName);
-        return OperationResult.Ok();
+        return SelectSingle(
+            tabItems, t => t.Properties.Name.ValueOrDefault ?? string.Empty, matcher, "Tab", item => item.Select());
     }
 
-    private static OperationResult SelectDescendantItem(AutomationElement container, string itemName)
+    private static OperationResult SelectDescendantItem(AutomationElement container, ItemNameMatcher matcher)
     {
+        List<(AutomationElement Element, string Name)> matches = new();
         Queue<AutomationElement> queue = new();
         queue.Enqueue(container);
         var visited = 0;
@@ -513,22 +712,59 @@ public sealed class ActionInvoker
             }
 
             AutomationElement current = queue.Dequeue();
-            FlaUI.Core.Patterns.ISelectionItemPattern? selectionItem =
-                current.Patterns.SelectionItem.PatternOrDefault;
-            if (selectionItem is not null &&
-                string.Equals(current.Properties.Name.ValueOrDefault, itemName, StringComparison.Ordinal))
+            string? name = SafeReadName(current);
+            if (matcher.Matches(name) && current.Patterns.SelectionItem.PatternOrDefault is not null)
             {
-                selectionItem.Select();
-                return OperationResult.Ok();
+                if (matcher.ExactName is not null)
+                {
+                    current.Patterns.SelectionItem.Pattern.Select();
+                    return OperationResult.OkWith(new SelectItemResult(name!));
+                }
+                matches.Add((current, name!));
             }
             foreach (AutomationElement child in SafeChildren(current))
             {
                 queue.Enqueue(child);
             }
         }
-        return OperationResult.Failure(
-            $"No selectable descendant named \"{itemName}\" found in the located container.");
+        if (matches.Count == 1)
+        {
+            matches[0].Element.Patterns.SelectionItem.Pattern.Select();
+            return OperationResult.OkWith(new SelectItemResult(matches[0].Name));
+        }
+        return matches.Count == 0
+            ? OperationResult.Failure($"No selectable descendant {matcher.Description} found in the located container.")
+            : AmbiguousSelection(matcher, "the located container", matches.Select(m => m.Name));
     }
+
+    // Substring and pattern selection is strict: the item must be unique,
+    // because selecting the wrong row silently is worse than failing.
+    private static OperationResult SelectSingle<TItem>(
+        IReadOnlyList<TItem> items,
+        Func<TItem, string> nameOf,
+        ItemNameMatcher matcher,
+        string containerKind,
+        Action<TItem> select)
+    {
+        List<TItem> matches = items.Where(item => matcher.Matches(nameOf(item))).ToList();
+        if (matches.Count == 1)
+        {
+            select(matches[0]);
+            return OperationResult.OkWith(new SelectItemResult(nameOf(matches[0])));
+        }
+        return matches.Count == 0
+            ? OperationResult.Failure(
+                $"No item {matcher.Description} in {containerKind}. Available items: {DescribeItems(items.Select(nameOf))}")
+            : AmbiguousSelection(matcher, containerKind, matches.Select(nameOf));
+    }
+
+    private static OperationResult AmbiguousSelection(
+        ItemNameMatcher matcher,
+        string containerKind,
+        IEnumerable<string> names) =>
+        OperationResult.Failure(
+            $"Several items {matcher.Description} in {containerKind}: {DescribeItems(names)}. " +
+            "Narrow itemNameContains or itemNamePattern so it matches one item.");
 
     private static void ScrollIntoViewIfOffscreen(AutomationElement element)
     {
@@ -564,26 +800,38 @@ public sealed class ActionInvoker
         }
     }
 
-    private static IReadOnlyList<TooltipCandidate> CaptureTooltips(UIA3Automation automation)
+    // Tooltips of the target live in its own transient top-level windows (a
+    // WPF Popup hosting a ToolTip, or a tooltips_class32 window); searching
+    // only those keeps each poll cheap and ignores other applications.
+    private static List<TooltipCandidate> CaptureTooltips(UIA3Automation automation, int processId)
     {
-        try
+        List<TooltipCandidate> candidates = new();
+        foreach ((IntPtr handle, _) in NativeWindowEnumerator.VisibleTopLevelWindows(processId))
         {
-            AutomationElement[] elements = automation
-                .GetDesktop()
-                .FindAllDescendants(cf => cf.ByControlType(FlaUIControlType.ToolTip));
-            return elements
-                .Select(TryBuildTooltipCandidate)
-                .Where(t => t is not null)
-                .Cast<TooltipCandidate>()
-                .ToList();
+            if (!NativeWindowEnumerator.IsTransient(handle))
+            {
+                continue;
+            }
+            try
+            {
+                AutomationElement root = automation.FromHandle(handle);
+                IEnumerable<AutomationElement> tooltips = root.Properties.ControlType.ValueOrDefault == FlaUIControlType.ToolTip
+                    ? new[] { root }
+                    : root.FindAllDescendants(cf => cf.ByControlType(FlaUIControlType.ToolTip));
+                candidates.AddRange(tooltips
+                    .Select(t => TryBuildTooltipCandidate(t, handle))
+                    .Where(t => t is not null)
+                    .Cast<TooltipCandidate>());
+            }
+            catch (COMException)
+            {
+                // The popup closed between enumeration and attachment.
+            }
         }
-        catch (COMException)
-        {
-            return Array.Empty<TooltipCandidate>();
-        }
+        return candidates;
     }
 
-    private static TooltipCandidate? TryBuildTooltipCandidate(AutomationElement tooltip)
+    private static TooltipCandidate? TryBuildTooltipCandidate(AutomationElement tooltip, IntPtr windowHandle)
     {
         try
         {
@@ -599,7 +847,9 @@ public sealed class ActionInvoker
                 rect.X,
                 rect.Y,
                 rect.Width,
-                rect.Height));
+                rect.Height,
+                TooltipSnapshot.SourcePopup,
+                windowHandle.ToInt64()));
         }
         catch (COMException)
         {
@@ -721,4 +971,7 @@ public sealed class ActionInvoker
     {
         return string.Join(", ", items.Select(i => $"\"{i}\""));
     }
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 }

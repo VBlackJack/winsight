@@ -39,11 +39,28 @@ public enum WaitCondition
 
     /// <summary>Exactly one element matches and its full state remains unchanged for a duration.</summary>
     StableFor,
+
+    /// <summary>Exactly one element matches and its Name equals the expected text (ordinal).</summary>
+    NameEquals,
+
+    /// <summary>Exactly one element matches and its Name contains the expected text (case-insensitive).</summary>
+    NameContains,
+
+    /// <summary>Exactly one element matches and its Name matches the expected regular expression.</summary>
+    NameMatches,
+
+    /// <summary>
+    /// Exactly one element matches and it has the expected number of direct
+    /// children, optionally counting only children of one control type
+    /// (e.g. the Tab named "Sessions" has 3 TabItem children).
+    /// </summary>
+    ChildCount,
 }
 
 /// <summary>
 /// Parses wire-format condition names ("exists", "not_exists", "enabled",
-/// "visible", "value_equals", "value_contains", "stable_for") into
+/// "visible", "value_equals", "value_contains", "stable_for", "name_equals",
+/// "name_contains", "name_matches", "child_count") into
 /// <see cref="WaitCondition"/> values. Tolerates casing and underscores so
 /// agent-produced input round-trips reliably.
 /// </summary>
@@ -90,11 +107,32 @@ public static class WaitConditionParser
             condition = WaitCondition.StableFor;
             return true;
         }
+        if (string.Equals(normalized, "nameequals", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.NameEquals;
+            return true;
+        }
+        if (string.Equals(normalized, "namecontains", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.NameContains;
+            return true;
+        }
+        if (string.Equals(normalized, "namematches", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.NameMatches;
+            return true;
+        }
+        if (string.Equals(normalized, "childcount", StringComparison.OrdinalIgnoreCase))
+        {
+            condition = WaitCondition.ChildCount;
+            return true;
+        }
         condition = WaitCondition.Exists;
         return false;
     }
 
     /// <summary>Comma-separated list of accepted wire-format names, for error messages.</summary>
     public static string AcceptedValues =>
-        "exists, not_exists, enabled, visible, value_equals, value_contains, stable_for";
+        "exists, not_exists, enabled, visible, value_equals, value_contains, stable_for, " +
+        "name_equals, name_contains, name_matches, child_count";
 }

@@ -1,0 +1,76 @@
+<Window x:Class="Winsight.Samples.WpfLab.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Winsight WPF Lab"
+        Width="960" Height="640"
+        MinWidth="480" MinHeight="360"
+        WindowStartupLocation="CenterScreen"
+        AutomationProperties.AutomationId="LabMainWindow">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="380" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Grid.Column="0" Margin="0,0,12,0">
+            <StackPanel DockPanel.Dock="Top">
+                <TextBlock Text="Keyboard probe" FontWeight="Bold" />
+                <TextBlock Text="Last chord seen by the WH_KEYBOARD_LL hook (GetAsyncKeyState):" Margin="0,6,0,0" />
+                <TextBlock x:Name="LastHookChord" Text="none" AutomationProperties.AutomationId="LastHookChord" />
+                <TextBlock x:Name="LastHookFlags" Text="none" AutomationProperties.AutomationId="LastHookFlags" />
+                <TextBlock Text="Last chord seen by WM_KEYDOWN (GetKeyState):" Margin="0,6,0,0" />
+                <TextBlock x:Name="LastMessageChord" Text="none" AutomationProperties.AutomationId="LastMessageChord" />
+                <TextBlock x:Name="LastMessageFlags" Text="none" AutomationProperties.AutomationId="LastMessageFlags" />
+                <TextBlock Text="Last chord seen by the WPF KeyDown event:" Margin="0,6,0,0" />
+                <TextBlock x:Name="LastWpfChord" Text="none" AutomationProperties.AutomationId="LastWpfChord" />
+                <TextBox x:Name="FocusInput"
+                         Margin="0,8,0,0"
+                         AutomationProperties.AutomationId="FocusInput"
+                         AutomationProperties.Name="Focus input" />
+            </StackPanel>
+            <ListBox x:Name="KeyLog"
+                     Margin="0,8,0,0"
+                     FontFamily="Consolas"
+                     AutomationProperties.AutomationId="KeyLog" />
+        </DockPanel>
+
+        <DockPanel Grid.Column="1">
+            <StackPanel DockPanel.Dock="Top">
+                <TextBlock x:Name="SizeLabel" Text="Size: 0x0" AutomationProperties.AutomationId="SizeLabel" />
+                <TextBlock x:Name="TabOrder" Text="" AutomationProperties.AutomationId="TabOrder" />
+                <TextBlock x:Name="DropStatus" Text="No drop yet" AutomationProperties.AutomationId="DropStatus" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,6">
+                    <Button x:Name="HelpButton"
+                            Content="Help"
+                            Padding="12,4"
+                            AutomationProperties.AutomationId="HelpButton"
+                            AutomationProperties.HelpText="Help text exposed to automation"
+                            ToolTip="Tooltip popup text"
+                            ToolTipService.InitialShowDelay="0"
+                            ToolTipService.ShowDuration="60000" />
+                    <Button Content="Add tab later"
+                            Padding="12,4"
+                            Margin="8,0,0,0"
+                            AutomationProperties.AutomationId="AddTabLaterButton"
+                            AutomationProperties.HelpText="Adds a tab after a short delay"
+                            Click="OnAddTabLaterClick" />
+                </StackPanel>
+            </StackPanel>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TabControl x:Name="SessionsTabs"
+                            Grid.Row="0"
+                            AutomationProperties.AutomationId="SessionsTabs"
+                            AutomationProperties.Name="Sessions" />
+                <TreeView x:Name="ServerTree"
+                          Grid.Row="1"
+                          Margin="0,8,0,0"
+                          AutomationProperties.AutomationId="ServerTree"
+                          AutomationProperties.Name="Servers" />
+            </Grid>
+        </DockPanel>
+    </Grid>
+</Window>

@@ -29,7 +29,9 @@ public static class CaptureScreenshotTool
     private const string MediaTypePng = "image/png";
 
     [McpServerTool(Name = "capture_screenshot")]
-    [Description("Capture a PNG screenshot of the target process's topmost visible window, or the first " +
+    [Description("Capture a PNG screenshot of the target process's topmost visible window that is not a " +
+                 "transient overlay (an open tooltip or menu is skipped), its main window when mainWindow=true, " +
+                 "or the first " +
                  "visible window whose title contains windowTitle, using PrintWindow with " +
                  "PW_RENDERFULLCONTENT (so DirectX-composed WPF and accelerated surfaces render correctly). " +
                  "Use windowTitle to target modal dialogs, popups, and secondary windows. " +
@@ -50,6 +52,9 @@ public static class CaptureScreenshotTool
         [Description("Attach the captured PNG as an inline image (default true). Set false to return " +
                      "only the JSON path when the bytes are not needed.")]
         bool includeImage = true,
+        [Description("Capture the process main window even when a dialog or overlay is on top of it. " +
+                     "Ignored when windowTitle is set.")]
+        bool mainWindow = false,
         [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
         int? processId = null)
     {
@@ -73,7 +78,7 @@ public static class CaptureScreenshotTool
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
                 ? ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix)
                 : outputPath;
-            ScreenshotResult screenshot = capture.Capture(pid, resolvedPath, windowTitle);
+            ScreenshotResult screenshot = capture.Capture(pid, resolvedPath, windowTitle, mainWindow);
             string json = JsonSerializer.Serialize(OperationResult.OkWith(screenshot), JsonOptions.Default);
 
             CallToolResult result = new()

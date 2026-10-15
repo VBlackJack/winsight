@@ -29,7 +29,9 @@ public static class InspectUiTreeTool
                  "Each node carries automationId, name, controlType, className, enabled/visible flags, " +
                  "current value (Value pattern, when supported), and its bounding rectangle. " +
                  "Use this to discover automation ids and locate elements for click_element or type_text. " +
-                 "Filters prune the tree to matching nodes and their ancestors.")]
+                 "Filters prune the tree to matching nodes and their ancestors. Without windowTitle the " +
+                 "topmost window that is not a transient overlay is inspected: an open tooltip or menu is " +
+                 "skipped; set mainWindow=true to force the process main window.")]
     public static string InspectUiTree(
         UiTreeInspector inspector,
         SessionTarget target,
@@ -41,6 +43,8 @@ public static class InspectUiTreeTool
         string? controlType = null,
         [Description("Keep only nodes whose Name contains this text (case-insensitive), plus their ancestors.")]
         string? nameContains = null,
+        [Description("Inspect the process main window even when a dialog or overlay is on top of it. Ignored when windowTitle is set.")]
+        bool mainWindow = false,
         [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
         int? processId = null)
     {
@@ -50,7 +54,7 @@ public static class InspectUiTreeTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
-            UiElementNode node = inspector.Inspect(pid, maxDepth, windowTitle, controlType, nameContains);
+            UiElementNode node = inspector.Inspect(pid, maxDepth, windowTitle, controlType, nameContains, mainWindow);
             return JsonSerializer.Serialize(node, JsonOptions.Default);
         });
     }

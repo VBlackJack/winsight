@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Winsight.Samples.WpfLab</RootNamespace>
+    <AssemblyName>WpfLabApp</AssemblyName>
+    <ApplicationIcon />
+    <Description>WPF target that reproduces the input paths of a production shell: a low-level keyboard hook reading GetAsyncKeyState, OLE drag and drop between tabs and a tree, time-stamped tree item names, and a tooltip distinct from its HelpText.</Description>
+  </PropertyGroup>
+
+</Project>

@@ -19,9 +19,9 @@ namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>
 /// Resolves the screen-space bounds of a process window. The window selection
-/// mirrors <c>WindowCapture.Capture</c> (topmost visible window, optionally
-/// scoped by a title substring), so a point grounded against that capture maps
-/// back through the same window origin.
+/// mirrors <c>WindowCapture.Capture</c> (topmost visible window that is not a
+/// transient overlay, optionally scoped by a title substring), so a point
+/// grounded against that capture maps back through the same window origin.
 /// </summary>
 public static class WindowGeometry
 {
@@ -38,6 +38,12 @@ public static class WindowGeometry
         window = default!;
         List<(IntPtr Handle, string Title)> candidates = FilterByTitle(
             NativeWindowEnumerator.VisibleTopLevelWindows(processId), windowTitle);
+        // A point belongs to whichever window is on top of it, overlay or not;
+        // without a point, an open tooltip or menu must not become the frame.
+        if (screenPoint is null)
+        {
+            candidates = NativeWindowEnumerator.PreferPrimary(candidates);
+        }
         foreach ((IntPtr handle, _) in candidates)
         {
             if (TryReadBounds(handle, out WindowBounds bounds) &&
@@ -90,8 +96,9 @@ public static class WindowGeometry
     }
 
     /// <summary>
-    /// Resolve the bounds of the topmost visible window of the process, or the
-    /// topmost window whose title contains <paramref name="windowTitle"/>.
+    /// Resolve the bounds of the topmost visible window of the process that is
+    /// not a transient overlay, or the topmost window whose title contains
+    /// <paramref name="windowTitle"/>.
     /// Returns false with a descriptive <paramref name="error"/> when no
     /// matching window exists or its rectangle cannot be read.
     /// </summary>
@@ -117,8 +124,9 @@ public static class WindowGeometry
             return false;
         }
 
-        // EnumWindows returns top-level windows in z-order, topmost first.
-        IntPtr hwnd = candidates[0].Handle;
+        // EnumWindows returns top-level windows in z-order, topmost first;
+        // transient overlays (tooltips, menus) move behind the others.
+        IntPtr hwnd = NativeWindowEnumerator.PreferPrimary(candidates)[0].Handle;
         if (!TryReadBounds(hwnd, out bounds))
         {
             error = $"GetWindowRect failed for window 0x{hwnd.ToInt64():x} (process {processId}).";

@@ -69,18 +69,44 @@ public static class ElementStateTool
         });
     }
 
+    [McpServerTool(Name = "get_focused_element")]
+    [Description("Report where keyboard input would land right now: the element that owns keyboard focus " +
+                 "(controlType, automationId, name, className, frameworkId, owning process), the Win32 focus " +
+                 "window class, whether the focus belongs to the target process or a window it hosts, and " +
+                 "whether it sits inside a WebView2 surface (isWebView2 plus the evidence). Check it before " +
+                 "type_text or send_key_chord: synthetic keyboard input into WebView2 has crashed ctfmon, " +
+                 "and type_into_webview is the safe path there. Read-only.")]
+    public static string GetFocusedElement(
+        FocusedElementReader reader,
+        SessionTarget target,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            if (!target.TryResolve(processId, out int pid, out string targetError))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            return JsonSerializer.Serialize(reader.Read(pid), JsonOptions.Default);
+        });
+    }
+
     [McpServerTool(Name = "wait_for_element")]
     [Description("Poll until a condition holds for a locator: exists, not_exists, enabled, visible, " +
-                 "value_equals, value_contains, or stable_for. " +
+                 "value_equals, value_contains, stable_for, name_equals, name_contains, name_matches (regular " +
+                 "expression), or child_count (the element has expectedCount direct children, optionally only " +
+                 "those of childControlType: e.g. name=Sessions controlType=Tab condition=child_count " +
+                 "expectedCount=3 childControlType=TabItem). Use it instead of fixed sleeps. " +
                  "Use it to synchronize before clicking (wait for a button to appear or enable) and " +
                  "after acting (wait for a dialog to close with not_exists). Returns the elapsed time " +
                  "and the element's final state. Fails when the timeout elapses first.")]
     public static string WaitForElement(
         ElementWaiter waiter,
         SessionTarget target,
-        [Description("Condition to wait for: exists, not_exists, enabled, visible, value_equals, value_contains, or stable_for.")]
+        [Description("Condition to wait for: exists, not_exists, enabled, visible, value_equals, value_contains, stable_for, name_equals, name_contains, name_matches, or child_count.")]
         string condition,
-        [Description("Expected Value-pattern content for value_equals or value_contains.")]
+        [Description("Expected text: Value-pattern content for value_equals/value_contains, the Name for name_equals/name_contains, or a regular expression for name_matches.")]
         string? expectedValue = null,
         [Description("Exact AutomationId of the element.")]
         string? automationId = null,
@@ -104,6 +130,10 @@ public static class ElementStateTool
         int? pollIntervalMs = null,
         [Description("Required unchanged-state duration in milliseconds for stable_for.")]
         int? stableForMs = null,
+        [Description("Number of direct children required by child_count.")]
+        int? expectedCount = null,
+        [Description("For child_count, count only children of this UIA control type (e.g. TabItem, TreeItem, ListItem).")]
+        string? childControlType = null,
         [Description(ProcessIdDescription)]
         int? processId = null)
     {
@@ -132,7 +162,9 @@ public static class ElementStateTool
                 pollIntervalMs,
                 windowTitle,
                 expectedValue,
-                stableForMs);
+                stableForMs,
+                expectedCount,
+                childControlType);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

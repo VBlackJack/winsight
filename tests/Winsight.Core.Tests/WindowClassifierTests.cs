@@ -40,6 +40,27 @@ public sealed class WindowClassifierTests
             .Should().Be(expectedKind);
     }
 
+    // Extended styles measured on a WPF ToolTip popup (0x080800A8) and on a
+    // WPF main window (0x00040100).
+    private const long WpfTooltipExStyle = 0x080800A8L;
+    private const long WpfMainExStyle = 0x00040100L;
+
+    [Theory]
+    [InlineData("tooltip", 0L, false, true)]
+    [InlineData("menu", 0L, false, true)]
+    [InlineData("popup", WpfTooltipExStyle, true, true)]      // WPF ToolTip popup
+    [InlineData("popup", 0L, true, true)]                      // owned dropdown or flyout
+    [InlineData("popup", WindowClassifier.ExtendedStyleToolWindow, false, true)]
+    [InlineData("other", WindowClassifier.ExtendedStyleNoActivate, false, true)]
+    [InlineData("main", WpfMainExStyle, false, false)]
+    [InlineData("dialog", 0L, true, false)]                    // modal dialog stays a primary target
+    [InlineData("popup", 0L, false, false)]                    // borderless unowned main window
+    public void IsTransient_flags_overlays_but_not_main_windows_or_dialogs(
+        string kind, long extendedStyle, bool hasOwner, bool expected)
+    {
+        WindowClassifier.IsTransient(kind, extendedStyle, hasOwner).Should().Be(expected);
+    }
+
     [Fact]
     public void IsModal_TrueOnlyWhenOwnedAndOwnerDisabled()
     {
