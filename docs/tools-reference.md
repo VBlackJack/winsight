@@ -751,7 +751,9 @@ Each end is either an element or a point:
 | `allowOutOfWindow` | bool | Let the target lie outside the target process windows (drop into another application) |
 | `windowTitle` | string? | Scope element lookup and window-relative points |
 
-Both points must reach a window of the target process (checked with
+The target window is brought to the foreground first (an open tooltip or menu
+is skipped), since a window left on top of it would swallow the press. Both
+points must then reach a window of the target process (checked with
 `WindowFromPoint`) unless `allowOutOfWindow` releases the target check. As
 with `click_point`, a cross-process child hosted by that window (a WebView2
 surface) belongs to it.

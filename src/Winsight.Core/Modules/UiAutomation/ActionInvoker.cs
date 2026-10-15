@@ -188,7 +188,8 @@ public sealed class ActionInvoker
     /// paced steps to <paramref name="target"/> and release, so OLE drag and
     /// drop (WPF <c>DragDrop.DoDragDrop</c>) starts, tracks and drops. Each
     /// endpoint is an element (center plus offset) or a point; points are
-    /// window-relative when <paramref name="windowRelative"/> is true. Both
+    /// window-relative when <paramref name="windowRelative"/> is true. The
+    /// target window is brought to the foreground first. Both
     /// points must reach a window of the target process unless
     /// <paramref name="allowOutOfWindow"/> releases the target check.
     /// </summary>
@@ -213,6 +214,14 @@ public sealed class ActionInvoker
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
+            // A drag is physical input: raise the target window first, so a
+            // window left on top of it does not swallow the press.
+            WindowFocusResult focus = WindowFocus.FocusProcessWindow(processId, windowTitle);
+            if (!focus.Success)
+            {
+                return OperationResult.Failure(focus.Error!);
+            }
+
             using UIA3Automation automation = new();
             if (!TryResolveDragPoint(automation, processId, source, "source", windowTitle, windowRelative,
                     out System.Drawing.Point from, out OperationResult? failure) ||

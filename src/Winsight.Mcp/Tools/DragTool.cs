@@ -32,7 +32,8 @@ public static class DragTool
                  "(WPF DragDrop.DoDragDrop): press on the source, hold, leave the system drag rectangle, move " +
                  "in several steps, settle on the target, wait, release. Each end is an element (source*/target* " +
                  "locator fields, strict like click_element, aimed at its center plus targetOffsetX/Y) or a point " +
-                 "(sourceX/sourceY, targetX/targetY; window-relative by default, see coordinateSpace). Both points " +
+                 "(sourceX/sourceY, targetX/targetY; window-relative by default, see coordinateSpace). The target " +
+                 "window is brought to the foreground first; both points " +
                  "must reach a window of the target process unless allowOutOfWindow=true. Use it to reorder " +
                  "TabItems, drop onto a TreeView, or move list rows. Returns an OperationResult JSON whose data " +
                  "carries the screen path (fromX, fromY, toX, toY, moves); verify the outcome with " +
