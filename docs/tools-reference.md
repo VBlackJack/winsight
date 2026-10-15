@@ -518,7 +518,12 @@ intentionally.
 
 Immediately before dispatch, Winsight also checks the window identity, geometry,
 and the process/window under the point. A covering window causes a failure.
-`allowOutOfWindow` never authorizes clicking another process. Input calls within
+`allowOutOfWindow` never authorizes clicking another process.
+A child window of another process parented into the target window counts as
+the target: a WebView2 surface renders in a `Chrome_WidgetWin_1` child owned by
+`msedgewebview2.exe`, and a point above it is accepted when its root ancestor
+(`GetAncestor(GA_ROOT)`) is the target window. Another top-level window, or a
+child hosted in another process's window, on top of the point is still refused. Input calls within
 one server are serialized; other desktop users or processes can still change
 the desktop between the native check and input dispatch.
 
@@ -747,7 +752,9 @@ Each end is either an element or a point:
 | `windowTitle` | string? | Scope element lookup and window-relative points |
 
 Both points must reach a window of the target process (checked with
-`WindowFromPoint`) unless `allowOutOfWindow` releases the target check.
+`WindowFromPoint`) unless `allowOutOfWindow` releases the target check. As
+with `click_point`, a cross-process child hosted by that window (a WebView2
+surface) belongs to it.
 Verify the outcome with `wait_for_element` or `get_element_state`: the
 application decides what a drop means.
 

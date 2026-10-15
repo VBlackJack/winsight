@@ -83,16 +83,28 @@ public static class WindowGeometry
         {
             return false;
         }
-        IntPtr recipient = WindowFromPoint(new NativePoint { X = x, Y = y });
-        uint thread = GetWindowThreadProcessId(recipient, out uint owner);
-        if (recipient == IntPtr.Zero || thread == 0 || owner != window.ProcessId ||
-            (!allowOtherWindow && GetAncestor(recipient, RootAncestor).ToInt64() != window.Handle))
+        if (!PointRecipientPolicy.Accepts(ReadRecipient(x, y), window.ProcessId, window.Handle, allowOtherWindow))
         {
             error = "The click point is occluded or belongs to another window/process. Expose the target window and retry.";
             return false;
         }
         error = null;
         return true;
+    }
+
+    private static PointRecipient ReadRecipient(int x, int y)
+    {
+        IntPtr recipient = WindowFromPoint(new NativePoint { X = x, Y = y });
+        if (recipient == IntPtr.Zero)
+        {
+            return default;
+        }
+        uint recipientOwner = GetWindowThreadProcessId(recipient, out uint owner) == 0 ? 0 : owner;
+        IntPtr root = GetAncestor(recipient, RootAncestor);
+        uint rootOwner = root == IntPtr.Zero || GetWindowThreadProcessId(root, out uint rootProcess) == 0
+            ? 0
+            : rootProcess;
+        return new PointRecipient(recipient.ToInt64(), recipientOwner, root.ToInt64(), rootOwner);
     }
 
     /// <summary>

@@ -54,6 +54,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `inspect_ui_tree`, `capture_screenshot`, `send_key_chord` focus and
   window-relative coordinates targeted an open tooltip or menu when it was the
   topmost window; transient overlays are now skipped.
+- `click_point`, `drag` and verified point actions refused any point above a
+  WebView2 surface as occluded: the surface is a `Chrome_WidgetWin_1` child owned
+  by `msedgewebview2.exe`. A cross-process child whose root ancestor is the
+  target window is now accepted; other windows and processes on top still refuse.
 
 See [verified control](docs/verified-control.md) for contracts and validation limits.
 
