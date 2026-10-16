@@ -1017,13 +1017,21 @@ in the journal.
 | `click`       | `click_element`      | `clickStyle`                                                   |
 | `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`, `allowOutOfWindow`, `focusWindow`, `settleMs` |
 | `type`        | `type_text`          | `text`, `focusWindow`                                          |
+| `type_keys`   | `type_keys`          | `text`, `mode` (`keys` or `paste`), `restoreDelayMs`, `windowTitle` |
 | `key_chord`   | `send_key_chord`     | `chord`                                                        |
 | `select`      | `select_item`        | `itemName`                                                    |
 | `hover`       | `hover_element`      | `expectedTooltipText`, `timeoutMs`                             |
 | `wait`        | `wait_for_element`   | `condition`, `expectedValue`, `timeoutMs`, `pollIntervalMs`, `stableForMs` |
-| `assert`      | `assert_element`     | `operator`, `expectedValue` — immediate pass/fail; a failing assert fails the step |
+| `wait_visual_change` | `wait_for_visual_change` | `region`, `threshold`, `localThreshold`, `timeoutMs`, `pollIntervalMs` |
+| `wait_visual_stable` | `wait_for_visual_stable` | `region`, `threshold`, `localThreshold`, `stableComparisons`, `timeoutMs`, `pollIntervalMs` |
+| `assert`      | `assert_element`     | `operator`, `expectedValue`: immediate pass/fail; a failing assert fails the step. Operator `text_visible` reads `expectedValue` with OCR inside `region` |
 | `get_state`   | `get_element_state`  | (locator only)                                                |
 | `screenshot`  | `capture_screenshot` | `outputPath` (a timestamped default is used when omitted)      |
+
+A `wait_visual_change` step that follows a screen-changing step compares
+against a capture the runner takes just before that step, so a change faster
+than one round trip is not missed. `region` is `{ "x", "y", "width", "height" }`
+in window coordinates.
 
 `launch_app`/`close_app` are intentionally not step actions; call them around
 the batch (the process id is needed to scope the steps). A `screenshot` step
@@ -1210,6 +1218,90 @@ not writable, target requires administrator and the host does not, …):
   The error message includes the Win32 error code so the agent can decide
   whether to retry, restore the window, or fall back to a different
   capture strategy.
+
+## `type_keys`
+
+Type text into the focused control of the target's window when there is no
+UI Automation element to type into (iced, winit, egui). Use `type_text` when
+there is one.
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `text` | string | yes | Up to 4096 characters |
+| `mode` | string? | no | `keys` (default) or `paste` |
+| `windowTitle` | string? | no | Restrict the window by title |
+| `restoreDelayMs` | int? | no | Paste mode: time the text stays on the clipboard before the restore, 0 to 5000, default 300 |
+| `allowWebView2Input` | bool | no | Send even when focus is inside WebView2. Default false |
+| `processId` | int? | no | Target process |
+
+The window is raised and its focus verified as for `send_key_chord`. In `keys`
+mode every character is a `KEYEVENTF_UNICODE` keystroke (the application
+receives `WM_CHAR`, whatever the keyboard layout), line breaks are Enter and
+tabs are Tab. Before each keystroke the window must still own the foreground;
+otherwise typing stops with `foreground_changed`, so the rest never lands in a
+window someone else just clicked. `paste` mode needs `WINSIGHT_ALLOW_CLIPBOARD`:
+it saves every clipboard format held in a memory block, puts the text on the
+clipboard (out of history and the cloud clipboard), sends Ctrl+V, waits
+`restoreDelayMs`, and puts the saved formats back. `restored` is `full`,
+`partial` (bitmap, metafile or private-handle formats could not be saved) or
+`failed`.
+
+**Returns** - `{ mode, length, windowHandle, windowTitle, focusedElement, restored, skippedFormats }`.
+
+## `set_clipboard_text` / `read_clipboard_text`
+
+Write or read the clipboard text: prepare a paste, or check what a Copy button
+copied. Both refuse with `clipboard_disabled` unless `WINSIGHT_ALLOW_CLIPBOARD`
+is set, because the clipboard often holds passwords and tokens. Text written by
+Winsight carries the formats that keep it out of the clipboard history, the
+cloud clipboard and clipboard monitors. Traces record the size of the result,
+never the text. `read_clipboard_text` returns `{ text, length }`, with `text`
+null when the clipboard holds no text; `set_clipboard_text` takes `text` and
+returns `{ length }`.
+
+## `wait_for_visual_change` / `wait_for_visual_stable`
+
+Synchronize on what a window shows instead of sleeping, for UIs with no UI
+Automation tree to wait on.
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `region` | object? | no | `{ x, y, width, height }` in window coordinates. Default: the whole window |
+| `timeoutMs` | int | no | 0 to 60000, default 5000 |
+| `pollMs` | int | no | Time between captures, 20 to 5000, default 100 |
+| `threshold` / `localThreshold` | double? | no | SSIM and worst-block SSIM limits; default the `WINSIGHT_VISUAL_*` settings |
+| `stableComparisons` | int | no | `wait_for_visual_stable` only: unchanged comparisons in a row, 1 to 50, default 3 |
+| `baselinePath` | string? | no | `wait_for_visual_change` only: a PNG to compare against instead of a capture taken now |
+| `windowTitle`, `processId` | | no | Window selection, as for `capture_screenshot` |
+
+Two captures differ when global SSIM, worst 16x16 block SSIM or the pixel ratio
+crosses the `compare_visual_baseline` thresholds, so one changed status word
+counts. Captures stay in memory and the window is never touched. To wait for the
+effect of an action, put a `run_steps` `wait_visual_change` step right after it:
+the runner captures the reference before the action.
+
+**Returns** - `{ condition, met, elapsedMs, frames, ssim, localSsimMin, pixelDiffRatio, region }`;
+on timeout the call fails with `timed_out` and the same data.
+
+## `read_text_visually`
+
+Read the text a window draws with the OCR engine built into Windows. Offline:
+nothing leaves the machine and nothing needs installing beyond an OCR language
+(Settings, Time and language, Language and region).
+
+| Name | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `region` | object? | no | `{ x, y, width, height }` in window coordinates |
+| `language` | string? | no | BCP-47 tag such as `en-US`; default the user profile languages |
+| `scale` | int | no | Enlargement before recognition, 1 to 4, default 2 |
+| `windowTitle`, `processId` | | no | Window selection |
+
+**Returns** - `{ language, text, lines: [{ text, bounds, words: [{ text, bounds }] }], region, scale }`.
+Every `bounds` is in window coordinates, the same space as window-relative
+`click_point`. Without a matching OCR language the call fails with
+`ocr_unavailable` and lists the installed ones. Inside a batch, assert with
+`{ "action": "assert", "operator": "text_visible", "expectedValue": "...", "region": {...} }`:
+the comparison ignores case and collapses spacing.
 
 ## `compare_visual_baseline`
 

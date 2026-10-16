@@ -37,7 +37,11 @@ internal sealed record ProbePress(ProbeButton Kind, int PressX, int PressY, int 
 /// position of the last WM_MOUSEMOVE, and it resolves hover once per frame. A
 /// press acts on the frame-latched hover, not on the coordinates carried by the
 /// button message, so a click whose press lands before the next frame acts on
-/// the previous pointer position. The owner disposes it on close.
+/// the previous pointer position. Like a GPU UI it also draws its own text: a
+/// status line OCR can read, and after each left press a short animation
+/// (a block moving for <see cref="AnimationFrames"/> frames) that ends with the
+/// status "Clicked N". Characters arrive through WM_CHAR (Ctrl+V pastes the
+/// clipboard text) and are reported as the typed text. The owner disposes it on close.
 /// </summary>
 internal sealed class PointerProbeWindow : IDisposable
 {
@@ -45,6 +49,21 @@ internal sealed class PointerProbeWindow : IDisposable
     private const string ClassName = "WinsightPointerProbe";
     private const int FrameIntervalMs = 50;
     private const nuint FrameTimerId = 1;
+    public const string InitialStatus = "Status: ready";
+    public const string ClickedStatusPrefix = "Clicked ";
+    public const int AnimationFrames = 12;
+    private const int TextMargin = 20;
+    private const int StatusHeight = 50;
+    private const int FontHeight = 28;
+    private const int FontWeightBold = 700;
+    private const string FontFace = "Segoe UI";
+    private const int BlockTop = 90;
+    private const int BlockSize = 30;
+    private const int BlockStep = 24;
+    private const char PasteControl = (char)0x16;
+    private const char Backspace = '\b';
+    private const char CarriageReturn = '\r';
+    private const char FirstPrintable = ' ';
 
     private const uint WsOverlappedWindow = 0x00CF0000;
     private const uint WsVisible = 0x10000000;
@@ -52,6 +71,13 @@ internal sealed class PointerProbeWindow : IDisposable
     private const int ColorWindow = 5;
     private const int IdcArrow = 32512;
     private const uint WmDestroy = 0x0002;
+    private const uint WmPaint = 0x000F;
+    private const uint WmChar = 0x0102;
+    private const uint CfUnicodeText = 13;
+    private const int BlackBrush = 4;
+    private const int Transparent = 1;
+    private const uint DrawTextSingleLine = 0x0020;
+    private const uint DrawTextVerticalCenter = 0x0004;
     private const uint WmTimer = 0x0113;
     private const uint WmMouseMove = 0x0200;
     private const uint WmLeftButtonDown = 0x0201;
@@ -65,19 +91,27 @@ internal sealed class PointerProbeWindow : IDisposable
     private static bool s_classRegistered;
 
     private readonly Action<ProbePress> _onPress;
+    private readonly Action<string> _onText;
+    private readonly System.Text.StringBuilder _typed = new();
     private IntPtr _handle;
+    private IntPtr _font;
     private NativePoint _lastMove;
     private NativePoint _hover;
+    private string _status = InitialStatus;
+    private int _clicks;
+    private int _animationLeft;
 
-    private PointerProbeWindow(Action<ProbePress> onPress)
+    private PointerProbeWindow(Action<ProbePress> onPress, Action<string> onText)
     {
         _onPress = onPress;
+        _onText = onText;
     }
 
     public IntPtr Handle => _handle;
 
     /// <summary>Create and show the probe at the given screen rectangle, in the foreground.</summary>
-    public static PointerProbeWindow Open(int left, int top, int width, int height, Action<ProbePress> onPress)
+    public static PointerProbeWindow Open(
+        int left, int top, int width, int height, Action<ProbePress> onPress, Action<string> onText)
     {
         IntPtr module = GetModuleHandle(null);
         if (!s_classRegistered)
@@ -99,7 +133,10 @@ internal sealed class PointerProbeWindow : IDisposable
             s_classRegistered = true;
         }
 
-        PointerProbeWindow probe = new(onPress);
+        PointerProbeWindow probe = new(onPress, onText)
+        {
+            _font = CreateFont(FontHeight, 0, 0, 0, FontWeightBold, 0, 0, 0, 0, 0, 0, 0, 0, FontFace),
+        };
         IntPtr handle = CreateWindowEx(
             0, ClassName, WindowTitle, WsOverlappedWindow | WsVisible,
             left, top, width, height, IntPtr.Zero, IntPtr.Zero, module, IntPtr.Zero);
@@ -126,10 +163,11 @@ internal sealed class PointerProbeWindow : IDisposable
     {
         if (s_instances.TryGetValue(hwnd, out PointerProbeWindow? probe))
         {
-            probe.OnMessage(message, lParam);
+            probe.OnMessage(message, wParam, lParam);
             if (message == WmDestroy)
             {
                 KillTimer(hwnd, FrameTimerId);
+                DeleteObject(probe._font);
                 s_instances.Remove(hwnd);
                 probe._handle = IntPtr.Zero;
             }
@@ -137,7 +175,7 @@ internal sealed class PointerProbeWindow : IDisposable
         return DefWindowProc(hwnd, message, wParam, lParam);
     }
 
-    private void OnMessage(uint message, IntPtr lParam)
+    private void OnMessage(uint message, IntPtr wParam, IntPtr lParam)
     {
         switch (message)
         {
@@ -146,8 +184,17 @@ internal sealed class PointerProbeWindow : IDisposable
                 break;
             case WmTimer:
                 _hover = _lastMove;
+                AdvanceAnimation();
+                break;
+            case WmPaint:
+                Paint();
+                break;
+            case WmChar:
+                OnChar((char)wParam.ToInt64());
                 break;
             case WmLeftButtonDown:
+                _clicks++;
+                _animationLeft = AnimationFrames;
                 Report(ProbeButton.Left, lParam);
                 break;
             case WmLeftButtonDoubleClick:
@@ -156,6 +203,105 @@ internal sealed class PointerProbeWindow : IDisposable
             case WmRightButtonDown:
                 Report(ProbeButton.Right, lParam);
                 break;
+        }
+    }
+
+    private void AdvanceAnimation()
+    {
+        if (_animationLeft == 0)
+        {
+            return;
+        }
+        _animationLeft--;
+        if (_animationLeft == 0)
+        {
+            _status = ClickedStatusPrefix + _clicks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        InvalidateRect(_handle, IntPtr.Zero, true);
+    }
+
+    private void Paint()
+    {
+        IntPtr dc = BeginPaint(_handle, out PaintStruct paint);
+        try
+        {
+            GetClientRect(_handle, out NativeRect client);
+            NativeRect statusRect = new()
+            {
+                Left = TextMargin,
+                Top = TextMargin,
+                Right = client.Right - TextMargin,
+                Bottom = TextMargin + StatusHeight,
+            };
+            IntPtr previousFont = SelectObject(dc, _font);
+            _ = SetBkMode(dc, Transparent);
+            _ = DrawText(dc, _status, -1, ref statusRect, DrawTextSingleLine | DrawTextVerticalCenter);
+            SelectObject(dc, previousFont);
+            if (_animationLeft > 0)
+            {
+                int left = TextMargin + (AnimationFrames - _animationLeft) * BlockStep;
+                NativeRect block = new() { Left = left, Top = BlockTop, Right = left + BlockSize, Bottom = BlockTop + BlockSize };
+                _ = FillRect(dc, ref block, GetStockObject(BlackBrush));
+            }
+        }
+        finally
+        {
+            EndPaint(_handle, ref paint);
+        }
+    }
+
+    private void OnChar(char character)
+    {
+        switch (character)
+        {
+            case PasteControl:
+                _typed.Append(ReadClipboardText());
+                break;
+            case Backspace:
+                if (_typed.Length > 0)
+                {
+                    _typed.Length--;
+                }
+                break;
+            case CarriageReturn:
+                _typed.Append('\n');
+                break;
+            default:
+                if (character >= FirstPrintable || character == '\t')
+                {
+                    _typed.Append(character);
+                }
+                break;
+        }
+        _onText(_typed.ToString());
+    }
+
+    private string ReadClipboardText()
+    {
+        if (!OpenClipboard(_handle))
+        {
+            return string.Empty;
+        }
+        try
+        {
+            IntPtr data = GetClipboardData(CfUnicodeText);
+            IntPtr text = data == IntPtr.Zero ? IntPtr.Zero : GlobalLock(data);
+            if (text == IntPtr.Zero)
+            {
+                return string.Empty;
+            }
+            try
+            {
+                return Marshal.PtrToStringUni(text) ?? string.Empty;
+            }
+            finally
+            {
+                GlobalUnlock(data);
+            }
+        }
+        finally
+        {
+            CloseClipboard();
         }
     }
 
@@ -184,6 +330,27 @@ internal sealed class PointerProbeWindow : IDisposable
     {
         public int X;
         public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PaintStruct
+    {
+        public IntPtr DeviceContext;
+        public int Erase;
+        public NativeRect Paint;
+        public int Restore;
+        public int IncUpdate;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+        public byte[] Reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -236,6 +403,64 @@ internal sealed class PointerProbeWindow : IDisposable
 
     [DllImport("user32.dll", EntryPoint = "LoadCursorW")]
     private static extern IntPtr LoadCursor(IntPtr instance, int cursorName);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr BeginPaint(IntPtr hwnd, out PaintStruct paint);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EndPaint(IntPtr hwnd, ref PaintStruct paint);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetClientRect(IntPtr hwnd, out NativeRect rect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool InvalidateRect(IntPtr hwnd, IntPtr rect, [MarshalAs(UnmanagedType.Bool)] bool erase);
+
+    [DllImport("user32.dll")]
+    private static extern int FillRect(IntPtr dc, ref NativeRect rect, IntPtr brush);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "DrawTextW")]
+    private static extern int DrawText(IntPtr dc, string text, int length, ref NativeRect rect, uint format);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr GetStockObject(int index);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr SelectObject(IntPtr dc, IntPtr gdiObject);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr gdiObject);
+
+    [DllImport("gdi32.dll")]
+    private static extern int SetBkMode(IntPtr dc, int mode);
+
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateFontW")]
+    private static extern IntPtr CreateFont(
+        int height, int width, int escapement, int orientation, int weight, uint italic, uint underline,
+        uint strikeOut, uint charSet, uint outputPrecision, uint clipPrecision, uint quality,
+        uint pitchAndFamily, string face);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenClipboard(IntPtr owner);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetClipboardData(uint format);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalLock(IntPtr memory);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalUnlock(IntPtr memory);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW")]
     private static extern IntPtr GetModuleHandle(string? moduleName);

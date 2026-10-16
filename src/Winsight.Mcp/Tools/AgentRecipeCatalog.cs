@@ -122,11 +122,12 @@ internal static class AgentRecipeCatalog
             "Click and verify in GPU-drawn UIs that expose no automation tree (iced, winit, egui).",
             "Use when observe finds no actionable elements inside the window.",
             [
-                "capture_screenshot, then pick window-relative coordinates",
+                "read_text_visually or capture_screenshot, then pick window-relative coordinates",
                 "click_point focusWindow=true (settleMs raises the default pointer rest if hover lags)",
-                "compare_visual_baseline or capture_screenshot to verify",
+                "type_keys for text input (mode=paste for long text when WINSIGHT_ALLOW_CLIPBOARD is set)",
+                "run_steps: action, wait_visual_change, wait_visual_stable, assert operator=text_visible",
             ],
-            "The capture shows the expected change after the click.",
+            "The text_visible assert finds the expected text after the window settled.",
             "On cursor_moved, check get_user_activity; on an occluded refusal, retry with focusWindow=true."),
     ];
 }

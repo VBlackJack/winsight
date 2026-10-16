@@ -49,6 +49,7 @@ internal static class KeyChordDispatcher
     private const uint InputKeyboard = 1;
     private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventKeyUp = 0x0002;
+    private const uint KeyEventUnicode = 0x0004;
     private const uint MapVkToVscEx = 4;
     private const ushort ScanCodeMask = 0x00FF;
     private const ushort ExtendedPrefixE0 = 0xE000;
@@ -154,6 +155,31 @@ internal static class KeyChordDispatcher
 
     private static ushort MapScanCode(VirtualKeyShort key) =>
         (ushort)MapVirtualKeyW((uint)key, MapVkToVscEx);
+
+    /// <summary>
+    /// Press and release one UTF-16 code unit with KEYEVENTF_UNICODE: the target
+    /// receives it as WM_CHAR whatever the keyboard layout. A character outside
+    /// the BMP is sent as its two surrogate units, one call each.
+    /// </summary>
+    internal static bool TrySendUnicodeUnit(char unit)
+    {
+        NativeInput[] inputs =
+        {
+            UnicodeInput(unit, KeyEventUnicode),
+            UnicodeInput(unit, KeyEventUnicode | KeyEventKeyUp),
+        };
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) == inputs.Length;
+    }
+
+    private static NativeInput UnicodeInput(char unit, uint flags) =>
+        new()
+        {
+            Type = InputKeyboard,
+            Data = new NativeInputUnion
+            {
+                Keyboard = new NativeKeyboardInput { ScanCode = unit, Flags = flags },
+            },
+        };
 
     private static void Send(KeyTransition transition)
     {

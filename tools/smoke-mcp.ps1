@@ -13,14 +13,14 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
-    [int]$ExpectedToolCount = 53,
+    [int]$ExpectedToolCount = 59,
     [int]$ResponseTimeoutSeconds = 10
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$dll = Join-Path $repoRoot "src\Winsight.Mcp\bin\$Configuration\net10.0-windows\winsight-mcp.dll"
+$dll = Join-Path $repoRoot "src\Winsight.Mcp\bin\$Configuration\net10.0-windows10.0.19041.0\winsight-mcp.dll"
 
 if (-not (Test-Path $dll)) {
     Write-Error "Build artifact not found: $dll`nBuild first: dotnet build -c $Configuration"

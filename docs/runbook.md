@@ -36,7 +36,10 @@ The screen may be in use by a person or by another agent session.
 
 For GPU-drawn UIs without an automation tree (iced, winit, egui), click with
 `click_point focusWindow=true`. The pointer rests on the point before the press
-(`settleMs`, default 150 ms); raise it if the application renders slower.
+(`settleMs`, default 150 ms); raise it if the application renders slower. Type
+with `type_keys`, synchronize with `wait_visual_change` and `wait_visual_stable`
+steps instead of sleeping, and check text with `read_text_visually` or an
+`assert` step with operator `text_visible`.
 
 After rebuilding Winsight, restart the client session. A running session keeps
 the server process it started with, and its tool list, until it reconnects.

@@ -13,10 +13,14 @@
 // limitations under the License.
 
 using System.Diagnostics;
+using System.Drawing;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
+using Winsight.Core.Modules.Clipboard;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.UserActivity;
+using Winsight.Core.Modules.Ocr;
+using Winsight.Core.Modules.VisualRegression;
 
 namespace Winsight.Core.Modules.Orchestration;
 
@@ -37,6 +41,8 @@ public sealed class StepRunner
     private readonly ElementStateReader _stateReader;
     private readonly WindowCapture _capture;
     private readonly IForegroundReader _foreground;
+    private readonly VisualWaiter _visual;
+    private readonly VisualTextReader _text;
 
     public StepRunner(
         ActionInvoker invoker,
@@ -59,6 +65,8 @@ public sealed class StepRunner
         _stateReader = stateReader;
         _capture = capture;
         _foreground = foreground;
+        _visual = new VisualWaiter(capture, new VisualDiffer());
+        _text = new VisualTextReader(capture);
     }
 
     /// <summary>
@@ -93,7 +101,10 @@ public sealed class StepRunner
             .OfType<int>()
             .ToHashSet();
         ForegroundSample baseline = guardForeground ? _foreground.Read() : default;
+        Bitmap? reference = null;
         Stopwatch stopwatch = Stopwatch.StartNew();
+        try
+        {
 
         for (int i = 0; i < steps.Count; i++)
         {
@@ -120,7 +131,21 @@ public sealed class StepRunner
                 }
             }
 
-            OperationResult outcome = ExecuteSafely(step, defaultProcessId, dryRun);
+            // A visual-change wait must compare against the screen before the
+            // action that precedes it, or a fast change happens before its reference.
+            if (screenStep && !dryRun && i + 1 < steps.Count &&
+                Normalize(steps[i + 1].Action) == WaitVisualChangeAction)
+            {
+                reference?.Dispose();
+                reference = TryCaptureReference(steps[i + 1], defaultProcessId);
+            }
+
+            OperationResult outcome = ExecuteSafely(step, defaultProcessId, dryRun, reference);
+            if (Normalize(step.Action) == WaitVisualChangeAction)
+            {
+                reference?.Dispose();
+                reference = null;
+            }
             results.Add(new StepResult(
                 i, step.Action ?? string.Empty, step.Label, outcome.Success, outcome.Error, outcome.Data));
             if (guardForeground && screenStep)
@@ -138,6 +163,12 @@ public sealed class StepRunner
             }
         }
 
+        }
+        finally
+        {
+            reference?.Dispose();
+        }
+
         int completed = results.Count(r => r.Success);
         bool success = failedAtIndex is null && !timedOut;
         return new BatchResult(
@@ -145,11 +176,28 @@ public sealed class StepRunner
             ForegroundChanged: foregroundChanged);
     }
 
-    private OperationResult ExecuteSafely(BatchStep step, int? defaultProcessId, bool dryRun)
+    private Bitmap? TryCaptureReference(BatchStep wait, int? defaultProcessId)
+    {
+        if ((wait.ProcessId ?? defaultProcessId) is not int processId)
+        {
+            return null;
+        }
+        try
+        {
+            return _capture.CaptureFrame(processId, wait.WindowTitle, wait.Region).Detach();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            // The wait captures its own reference when it runs.
+            return null;
+        }
+    }
+
+    private OperationResult ExecuteSafely(BatchStep step, int? defaultProcessId, bool dryRun, Bitmap? reference)
     {
         try
         {
-            return Execute(step, defaultProcessId, dryRun);
+            return Execute(step, defaultProcessId, dryRun, reference);
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
@@ -157,7 +205,7 @@ public sealed class StepRunner
         }
     }
 
-    private OperationResult Execute(BatchStep step, int? defaultProcessId, bool dryRun)
+    private OperationResult Execute(BatchStep step, int? defaultProcessId, bool dryRun, Bitmap? reference)
     {
         string action = Normalize(step.Action);
         if (action.Length == 0)
@@ -187,6 +235,7 @@ public sealed class StepRunner
                 locator = Locator(step),
                 step.Text,
                 step.Chord,
+                step.Mode,
                 step.ItemName,
                 step.X,
                 step.Y,
@@ -210,16 +259,20 @@ public sealed class StepRunner
             "click" => Click(step, pid),
             "click_point" => ClickPoint(step, pid),
             "type" => Type(step, pid),
+            "type_keys" => TypeKeys(step, pid),
             "key_chord" => KeyChord(step, pid),
             "select" => Select(step, pid),
             "hover" => Hover(step, pid),
             "wait" => Wait(step, pid),
+            WaitVisualChangeAction => _visual.WaitForChange(
+                pid, step.WindowTitle, step.Region, VisualOptions(step), reference),
+            WaitVisualStableAction => _visual.WaitForStable(pid, step.WindowTitle, step.Region, VisualOptions(step)),
+            "assert" when IsTextVisible(step) => AssertTextVisible(step, pid),
             "assert" => Assert(step, pid),
             "get_state" => GetState(step, pid),
             "screenshot" => Screenshot(step, pid),
             _ => OperationResult.Failure(
-                $"Unknown action \"{step.Action}\". Accepted: click, click_point, type, key_chord, " +
-                "select, hover, wait, assert, get_state, screenshot."),
+                $"Unknown action \"{step.Action}\". Accepted: {AcceptedActions}."),
         };
     }
 
@@ -229,6 +282,7 @@ public sealed class StepRunner
         {
             "click" => ValidateClick(step),
             "click_point" => ValidateClickPoint(step),
+            "type_keys" => ValidateTypeKeys(step),
             "type" => step.Text is null
                 ? OperationResult.Failure("type step requires text.")
                 : null,
@@ -241,18 +295,23 @@ public sealed class StepRunner
                 : OperationResult.Failure(
                     $"wait step has unknown condition \"{step.Condition}\". " +
                     $"Accepted values: {WaitConditionParser.AcceptedValues}."),
+            WaitVisualChangeAction or WaitVisualStableAction => VisualOptions(step).Validate() is { } invalid
+                ? OperationResult.Failure($"{action} step: {invalid}")
+                : null,
+            "assert" when IsTextVisible(step) => string.IsNullOrWhiteSpace(step.ExpectedValue)
+                ? OperationResult.Failure("assert text_visible requires expectedValue, the text to find.")
+                : null,
             "assert" => AssertionEvaluator.TryParseOperator(step.Operator, out _)
                 ? null
                 : OperationResult.Failure(
                     $"assert step has unknown operator \"{step.Operator}\". " +
-                    $"Accepted: {AssertionEvaluator.AcceptedOperators}."),
+                    $"Accepted: {AssertionEvaluator.AcceptedOperators}, {VisualTextMatcher.TextVisibleOperator}."),
             "screenshot" => string.IsNullOrEmpty(step.OutputPath)
                 ? OperationResult.Failure(ScreenshotMissingPath)
                 : null,
             "hover" or "get_state" => null,
             _ => OperationResult.Failure(
-                $"Unknown action \"{step.Action}\". Accepted: click, click_point, type, key_chord, " +
-                "select, hover, wait, assert, get_state, screenshot."),
+                $"Unknown action \"{step.Action}\". Accepted: {AcceptedActions}."),
         };
     }
 
@@ -280,6 +339,31 @@ public sealed class StepRunner
         return TryCoordinateSpace(step.CoordinateSpace, out _, out OperationResult spaceError)
             ? null
             : spaceError;
+    }
+
+    private static OperationResult? ValidateTypeKeys(BatchStep step)
+    {
+        if (TextTyper.Validate(step.Text) is { } invalid)
+        {
+            return OperationResult.Failure($"type_keys step: {invalid}");
+        }
+        return TypeKeysMode.TryParse(step.Mode, out _, out string? modeError)
+            ? null
+            : OperationResult.Failure(modeError!);
+    }
+
+    private OperationResult TypeKeys(BatchStep step, int processId)
+    {
+        if (!TypeKeysMode.TryParse(step.Mode, out bool paste, out string? modeError))
+        {
+            return OperationResult.Failure(modeError!);
+        }
+        if (paste && ClipboardPolicy.Refusal("type_keys step mode=paste") is { } refusal)
+        {
+            return OperationResult.Failure(refusal);
+        }
+        return _invoker.TypeKeys(
+            processId, step.Text!, step.WindowTitle, paste, restoreDelayMs: step.RestoreDelayMs);
     }
 
     private static OperationResult? ValidateKeyChord(BatchStep step)
@@ -376,6 +460,33 @@ public sealed class StepRunner
             step.StableForMs);
     }
 
+    private static bool IsTextVisible(BatchStep step) =>
+        string.Equals(step.Operator?.Trim(), VisualTextMatcher.TextVisibleOperator, StringComparison.OrdinalIgnoreCase);
+
+    private static VisualWaitOptions VisualOptions(BatchStep step) =>
+        new(
+            step.TimeoutMs ?? VisualWaitOptions.DefaultTimeoutMs,
+            step.PollIntervalMs ?? VisualWaitOptions.DefaultPollMs,
+            step.StableComparisons ?? VisualWaitOptions.DefaultStableComparisons,
+            step.Threshold,
+            step.LocalThreshold);
+
+    private OperationResult AssertTextVisible(BatchStep step, int processId)
+    {
+        OperationResult read = _text.Read(processId, step.WindowTitle, step.Region);
+        if (!read.Success)
+        {
+            return read;
+        }
+        VisualTextResult text = (VisualTextResult)read.Data!;
+        VisualTextLine? line = VisualTextMatcher.Find(text, step.ExpectedValue!);
+        return line is not null
+            ? OperationResult.OkWith(new { found = step.ExpectedValue, line })
+            : OperationResult.FailureWith(
+                $"Assertion failed: \"{step.ExpectedValue}\" is not visible; OCR read: \"{text.Text}\".",
+                new { text.Text, text.Region });
+    }
+
     private OperationResult Assert(BatchStep step, int processId)
     {
         if (!AssertionEvaluator.TryParseOperator(step.Operator, out AssertionOperator op))
@@ -465,7 +576,13 @@ public sealed class StepRunner
 
     // Steps that send input to the desktop; a screenshot only writes a file.
     private static bool IsScreenAction(string action) =>
-        action is "click" or "click_point" or "type" or "key_chord" or "select" or "hover";
+        action is "click" or "click_point" or "type" or "type_keys" or "key_chord" or "select" or "hover";
+
+    private const string WaitVisualChangeAction = "wait_visual_change";
+    private const string WaitVisualStableAction = "wait_visual_stable";
+    private const string AcceptedActions =
+        "click, click_point, type, type_keys, key_chord, select, hover, wait, wait_visual_change, " +
+        "wait_visual_stable, assert, get_state, screenshot";
 
     private static string Normalize(string? action) => (action ?? string.Empty).Trim().ToLowerInvariant();
 

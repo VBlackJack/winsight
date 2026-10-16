@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$sourceDir = Join-Path $repoRoot "src\Winsight.Mcp\bin\$Configuration\net10.0-windows"
+$sourceDir = Join-Path $repoRoot "src\Winsight.Mcp\bin\$Configuration\net10.0-windows10.0.19041.0"
 $sourceDll = Join-Path $sourceDir "winsight-mcp.dll"
 
 if (-not (Test-Path $sourceDll)) {

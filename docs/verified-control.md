@@ -147,7 +147,7 @@ only to the completed run; it does not guarantee all future runs.
 Build the solution and run:
 
 ```powershell
-.\tools\Winsight.Eval\bin\Release\net10.0-windows\Winsight.Eval.exe `
+.\tools\Winsight.Eval\bin\Release\net10.0-windows10.0.19041.0\Winsight.Eval.exe `
   .\samples\SampleWpfApp\bin\Release\net10.0-windows\SampleWpfApp.exe `
   scripted .\results-new.jsonl
 ```
