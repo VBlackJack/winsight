@@ -161,6 +161,48 @@ click, type, select, or hover.
 | `windowTitle` | string? | null | Scope to a window title substring |
 | `processId` | int? | session target | Target process |
 
+## `get_user_activity`
+
+Report whether a person is using this desktop. Read-only: it sends no input.
+
+**Parameters**
+
+| Name        | Type | Required | Description |
+| ----------- | ---- | -------- | ----------- |
+| `processId` | int? | no       | Process whose foreground window title may be returned. Falls back to the session target. |
+
+**Returns** - `OperationResult` with:
+
+| Field | Meaning |
+| ----- | ------- |
+| `humanIdleMs` | Milliseconds since the last input not injected by Winsight; null when none was seen |
+| `lastInputAgeMs` / `lastInputSource` | Age of the most recent input of any kind, and whether it was `human` or `winsight` |
+| `foreground` | `handle`, `processId`, `processName`; `title` only when the window belongs to the target process (`titleWithheld` says so) |
+| `sessionLocked` | true, false, or null when Windows does not report it |
+| `yieldToUserMs` / `userActive` | The `WINSIGHT_YIELD_TO_USER_MS` threshold, and whether a human input is more recent than it |
+
+Winsight cannot see who produced an input without a low-level hook, which
+endpoint products flag, so it attributes input by time. Every Winsight process
+in the Windows session records the window of each injection in a shared
+ledger; input inside that window (plus 50 ms) is Winsight's, anything else is
+human. Consequences: a person's input made during a Winsight injection is
+masked by it, and input injected by another tool counts as human.
+
+## `wait_for_user_idle`
+
+Wait until nobody has used the mouse or keyboard for `idleMs`, Winsight's own
+input excluded. Read-only.
+
+| Name        | Type | Required | Description |
+| ----------- | ---- | -------- | ----------- |
+| `idleMs`    | int  | yes      | Required quiet period, 1 to 600000 |
+| `timeoutMs` | int  | yes      | Maximum wait, 0 to 600000; 0 checks once |
+| `processId` | int? | no       | As for `get_user_activity` |
+
+**Returns** - `{ idle, waitedMs, idleMs, activity }`, where `activity` is a
+`get_user_activity` snapshot. On timeout the call fails with `timed_out` and the
+same data.
+
 ## `launch_app`
 
 Start an application and wait until its window is actually present before
@@ -505,6 +547,8 @@ on it.
 | `windowTitle`     | string? | no       | Restrict the target window to those whose title contains this text |
 | `coordinateSpace` | string? | no       | `window` (default) or `screen`                                     |
 | `allowOutOfWindow` | bool   | no       | With `coordinateSpace=screen`, allow points outside the target window bounds. Default false. |
+| `focusWindow`     | bool    | no       | Raise the target window and verify it owns the foreground before the point is validated. Default false. |
+| `settleMs`        | int?    | no       | Milliseconds the pointer rests on the point before the press, 0 to 2000. Default 150. |
 
 `coordinateSpace=window` interprets `x,y` in the target window's coordinate
 space — the **same origin as a full-window screenshot**, so the `x,y` returned
@@ -529,6 +573,24 @@ the desktop between the native check and input dispatch.
 
 Unlike `click_element`, there is no UIA pattern resolution: every style is a
 physical mouse action at the computed point.
+
+**Pointer settle** - the click happens in three beats: the pointer moves to the
+point, rests for `settleMs`, is read back, and the button is pressed without
+moving again. Immediate-mode UIs (iced on winit, egui) resolve hover from the
+last `WM_MOUSEMOVE` once per frame and act on that hover when the button goes
+down; a move and a press sent together act on the previous position. If the
+pointer is no longer at the point after the rest (more than one pixel away),
+the press is refused with `cursor_moved`: something else moved it, often a
+person. The point recipient is checked again after the rest, because hovering
+can open a popup over it. Double and right clicks follow the same path, as do
+the physical clicks of `click_element`, `find_element_visually` and
+`act_verified`.
+
+**Covered window** - without `focusWindow`, a point covered by another window,
+including another window of the same process, is refused. With
+`focusWindow=true` the window is raised first (the same verified focus as
+`send_key_chord` and `drag`), its frame is resolved again, and the call fails
+if the window changed while it was raised.
 
 **Returns** — `OperationResult` whose `data` reports the absolute screen point
 that was clicked:
@@ -941,6 +1003,7 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `maxDurationMs` | int?      | no       | Total budget for the batch. When elapsed time reaches it before a step, the run stops and `timedOut` is true. |
 | `dryRun`      | bool        | no       | Validate and journal mutating steps without clicking, typing, selecting, hovering, or writing screenshots. Also enabled globally by `WINSIGHT_DRY_RUN`. |
 | `traceRun`    | bool        | no       | Write a replay JSON artifact even when global tracing is off. |
+| `stopOnForegroundChange` | bool | no    | Stop before a screen-changing step when the foreground moved to a window outside the batch (default true). |
 
 **Step shape** — a flat object with an `action` discriminator plus that action's
 fields. The shared locator fields (`automationId`, `name`, `className`,
@@ -952,7 +1015,7 @@ in the journal.
 | `action`      | Maps to              | Step-specific fields                                            |
 | ------------- | -------------------- | -------------------------------------------------------------- |
 | `click`       | `click_element`      | `clickStyle`                                                   |
-| `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`, `allowOutOfWindow`    |
+| `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`, `allowOutOfWindow`, `focusWindow`, `settleMs` |
 | `type`        | `type_text`          | `text`, `focusWindow`                                          |
 | `key_chord`   | `send_key_chord`     | `chord`                                                        |
 | `select`      | `select_item`        | `itemName`                                                    |
@@ -993,6 +1056,18 @@ hit before all steps run, the result has `timedOut: true` and `success: false`.
 When `dryRun` is true, mutating actions report `data.dryRun=true` and do not
 touch the target UI or write screenshots. Read-only steps such as `wait`,
 `assert`, and `get_state` still run.
+
+**Shared desktop** - before each step that sends input (`click`, `click_point`,
+`type`, `key_chord`, `select`, `hover`), the runner compares the foreground
+window with the one left by the previous such step. If it moved to a window
+whose process is not targeted by the batch, the run stops there whatever
+`stopOnError` says: the step is journaled with a `foreground_changed` error
+naming both windows (handles and process names, no titles), and the result has
+`foregroundChanged: true`. A dialog the target opens, no foreground during a
+transition, and the target closing the baseline window are tolerated. Set
+`stopOnForegroundChange: false` to disable the check. With
+`WINSIGHT_YIELD_TO_USER_MS` set, the same steps fail with `user_active` while a
+person used the desktop more recently than that.
 
 **Replay artifacts** — set `traceRun: true`, `WINSIGHT_TRACE=1`, or
 `WINSIGHT_TRACE_DIR` to write a replay JSON file. `BatchResult.tracePath` points

@@ -124,7 +124,7 @@ public sealed class UiaSceneDriver
             case "activate":
                 if (element.Patterns.Invoke.PatternOrDefault is { } invoke) invoke.Invoke();
                 else if (element.Patterns.Toggle.PatternOrDefault is { } toggle) toggle.Toggle();
-                else { if (!ValidatePoint(node, out string? error)) return OperationResult.Failure(error!); Mouse.Click(Center(node)); }
+                else { if (!ValidatePoint(node, out string? error)) return OperationResult.Failure(error!); if (PointerDispatch.Click(Center(node), ClickStyle.Primary) is { } refused) return refused; }
                 break;
             case "set_value": element.Patterns.Value.Pattern.SetValue(action.Text!); break;
             case "select": element.Patterns.SelectionItem.Pattern.Select(); break;
@@ -146,8 +146,8 @@ public sealed class UiaSceneDriver
                 if (!KeyboardChordParser.TryParse(action.Text, out FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys, out string? parseError)) return OperationResult.Failure(parseError!);
                 if (FocusedElementReader.WebView2EvidenceFor(automation, element) is { Count: > 0 } evidence) return OperationResult.Failure(ActionInvoker.WebView2InputRefusal("The target", evidence, canOverride: false));
                 ActionInvoker.DispatchKeyboardChord(keys); break;
-            case "right_click": Mouse.Click(Center(node), MouseButton.Right); break;
-            case "double_click": Mouse.DoubleClick(Center(node)); break;
+            case "right_click": if (PointerDispatch.Click(Center(node), ClickStyle.RightClick) is { } rightRefused) return rightRefused; break;
+            case "double_click": if (PointerDispatch.Click(Center(node), ClickStyle.DoubleClick) is { } doubleRefused) return doubleRefused; break;
             case "drag_to":
                 Point from = Center(node); Point to = Center(additional[0]);
                 Mouse.MoveTo(from);

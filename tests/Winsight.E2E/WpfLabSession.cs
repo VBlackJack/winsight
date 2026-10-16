@@ -36,12 +36,18 @@ internal sealed class WpfLabSession : IDisposable
 
     public int ProcessId => _process.Id;
 
-    public static WpfLabSession Start()
+    /// <summary>Launch the lab; <paramref name="arguments"/> opt into extra surfaces such as the pointer probe.</summary>
+    public static WpfLabSession Start(params string[] arguments)
     {
         string executablePath = SampleAppLocator.ResolveLabExecutablePath();
         File.Exists(executablePath).Should().BeTrue(
             $"the WPF lab must be built before running E2E tests (looked at: {executablePath})");
-        Process process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
+        ProcessStartInfo startInfo = new(executablePath) { UseShellExecute = false };
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start the WPF lab.");
         WpfLabSession session = new(process);
         OperationResult ready = new ElementWaiter().Wait(

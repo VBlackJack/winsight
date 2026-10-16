@@ -14,6 +14,7 @@
 
 using System.Diagnostics;
 using Winsight.Core.Models;
+using Winsight.Core.Modules.UserActivity;
 
 namespace Winsight.Mcp.Tools;
 
@@ -76,6 +77,15 @@ internal static class ToolAccessPolicy
             ? OperationResult.OkWith(new { dryRun = true, action, preview })
             : null;
     }
+
+    /// <summary>
+    /// Gate for an action that changes the screen: the dry-run preview when dry-run
+    /// is on, else a <c>user_active</c> refusal when the yield-to-user policy says
+    /// a human is using the desktop, else null (proceed).
+    /// </summary>
+    public static OperationResult? GuardMutation(string action, object? preview) =>
+        DryRunMutation(action, preview) ??
+        (UserActivityPolicy.CheckYield() is { } userActive ? OperationResult.Failure(userActive) : null);
 
     public static bool TryAuthorizeLaunch(string executablePath, out string error)
     {

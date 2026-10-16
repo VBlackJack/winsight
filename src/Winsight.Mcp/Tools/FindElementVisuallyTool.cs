@@ -117,13 +117,15 @@ public static class FindElementVisuallyTool
             {
                 return JsonSerializer.Serialize(confidenceFailure, JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "find_element_visually.act",
                     new { processId = pid, query, act, windowTitle, grounded })
-                is { } dryRun)
+                is { } gated)
             {
                 return JsonSerializer.Serialize(
-                    OperationResult.OkWith(new { grounded, click = dryRun.Data }),
+                    gated.Success
+                        ? OperationResult.OkWith(new { grounded, click = gated.Data })
+                        : OperationResult.FailureWith(gated.Error!, new { grounded }),
                     JsonOptions.Default);
             }
 

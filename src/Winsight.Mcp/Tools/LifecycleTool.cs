@@ -46,9 +46,9 @@ public static class LifecycleTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            if (ToolAccessPolicy.DryRunMutation("launch_app", new { path, arguments, workingDirectory }) is { } dryRun)
+            if (ToolAccessPolicy.GuardMutation("launch_app", new { path, arguments, workingDirectory }) is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
             if (!ToolAccessPolicy.TryAuthorizeLaunch(path, out string policyError))
             {
@@ -79,9 +79,9 @@ public static class LifecycleTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation("close_app", new { processId = pid, force }) is { } dryRun)
+            if (ToolAccessPolicy.GuardMutation("close_app", new { processId = pid, force }) is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
             OperationResult result = launcher.Close(pid, force);
             return JsonSerializer.Serialize(result, JsonOptions.Default);

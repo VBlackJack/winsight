@@ -29,8 +29,16 @@ namespace Winsight.Core.Tests;
 /// </summary>
 public sealed class StepRunnerTests
 {
+    // A fixed foreground keeps these tests independent of whoever uses the desktop meanwhile.
     private static StepRunner NewRunner() =>
-        new(new ActionInvoker(), new ElementWaiter(), new ElementStateReader(), new WindowCapture());
+        new(new ActionInvoker(), new ElementWaiter(), new ElementStateReader(), new WindowCapture(), new FixedForeground());
+
+    private sealed class FixedForeground : IForegroundReader
+    {
+        public ForegroundSample Read() => default;
+
+        public bool Exists(long handle) => true;
+    }
 
     [Fact]
     public void Unknown_action_fails_the_step_with_an_actionable_error()

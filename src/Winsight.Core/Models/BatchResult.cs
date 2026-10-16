@@ -46,7 +46,8 @@ public sealed record BatchResult(
     IReadOnlyList<DiagnosticEvent>? Exceptions = null,
     bool TimedOut = false,
     string? TracePath = null,
-    bool DryRun = false);
+    bool DryRun = false,
+    bool ForegroundChanged = false);
 
 public sealed record BatchReplay(
     DateTime CapturedAtUtc,

@@ -65,12 +65,12 @@ public static class EvaluateJavascriptTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure("expression is required."), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "evaluate_javascript",
                     new { hostProcessId = pid, port, targetId, expressionLength = expression.Length })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             await using CdpClient client = await CdpClient

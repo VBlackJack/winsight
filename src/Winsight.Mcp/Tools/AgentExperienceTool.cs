@@ -382,12 +382,12 @@ public static class AgentExperienceTool
                         candidates: WaitConditionParser.AcceptedValues),
                     JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "click_and_wait",
                     new { processId = pid, clickLocator, waitLocator, condition, stableForMs })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             UiSnapshot before = snapshotter.Capture(pid, windowTitle);
@@ -480,12 +480,12 @@ public static class AgentExperienceTool
                         candidates: AssertionEvaluator.AcceptedOperators),
                     JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "type_and_assert",
                     new { processId = pid, typeLocator, assertLocator, textLength = text.Length, @operator, expected })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             OperationResult type = invoker.Type(pid, typeLocator, text, windowTitle, focusWindow: false);
@@ -579,6 +579,8 @@ public static class AgentExperienceTool
                         batchAction = "run_steps",
                         locatorRepair = "repair_locator",
                         replay = "replay_steps",
+                        sharedDesktop = "get_user_activity",
+                        coordinateClick = "click_point focusWindow=true",
                     },
                     errorPolicy = new
                     {
@@ -586,6 +588,9 @@ public static class AgentExperienceTool
                         locator_ambiguous = "use candidates[0].locatorArgs or add index",
                         locator_not_found = "call repair_locator with the failed label/id",
                         policy_denied = "change WINSIGHT_ALLOWED_* or choose another process",
+                        user_active = "a person is using the desktop: wait_for_user_idle, then observe again",
+                        foreground_changed = "the batch stopped untouched: wait_for_user_idle, observe, rerun the rest",
+                        cursor_moved = "something moved the pointer during the settle: get_user_activity, then retry",
                     },
                     recipes = AgentRecipeCatalog.All,
                 }),

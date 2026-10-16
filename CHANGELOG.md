@@ -9,6 +9,19 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `get_user_activity`: time since the last human input, with the input of every
+  Winsight process in the session excluded through a shared input ledger, the
+  foreground window (its title only for the target process) and whether the
+  session is locked. `wait_for_user_idle` waits for a quiet period.
+- `WINSIGHT_YIELD_TO_USER_MS`: every screen-changing tool and `run_steps` step
+  fails with `user_active` while a person used the desktop more recently.
+- `run_steps` stops with `foreground_changed` before a screen-changing step when
+  the foreground moved to a window outside the batch's processes
+  (`stopOnForegroundChange`, default true); dialogs of the target are tolerated.
+- `click_point` and its `run_steps` step accept `focusWindow`, which raises and
+  verifies the target window before the point is validated, and `settleMs`.
+- `samples/WpfLabApp --pointer-probe`: a raw Win32 window that resolves hover
+  once per frame from the last `WM_MOUSEMOVE`, like iced on winit.
 - Codex CLI decision-source evaluation, exact-target/action-bounded external
   suites, a disposable PuTTY port scenario, and structured trial sidecars.
 - Independent protected-state grading with explicit unknown coverage, retained
@@ -45,6 +58,12 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Coordinate clicks raced the pointer move: `click_point`, physical clicks on
+  elements, `find_element_visually` and verified clicks sent the move and the
+  press together, so immediate-mode UIs (iced on winit) acted on the previous
+  pointer position: a hover instead of a click, a list closing instead of
+  selecting. The pointer now moves, rests 150 ms (`settleMs`), is checked to
+  still be there (`cursor_moved` otherwise) and presses without moving again.
 - Serialize native desktop input across Winsight processes in the same Windows session.
 - Avoid duplicate owned-dialog matches under parent UIA roots.
 - Require a unique managed instance for verified managed-state predicates.

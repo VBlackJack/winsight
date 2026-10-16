@@ -7,7 +7,7 @@
     <RootNamespace>Winsight.Samples.WpfLab</RootNamespace>
     <AssemblyName>WpfLabApp</AssemblyName>
     <ApplicationIcon />
-    <Description>WPF target that reproduces the input paths of a production shell: a low-level keyboard hook reading GetAsyncKeyState, OLE drag and drop between tabs and a tree, time-stamped tree item names, and a tooltip distinct from its HelpText.</Description>
+    <Description>WPF target that reproduces the input paths of a production shell: a low-level keyboard hook reading GetAsyncKeyState, OLE drag and drop between tabs and a tree, time-stamped tree item names, a tooltip distinct from its HelpText, and a raw Win32 pointer probe that resolves hover once per frame like an immediate-mode GPU UI.</Description>
   </PropertyGroup>
 
 </Project>
