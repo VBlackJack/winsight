@@ -99,6 +99,70 @@ public sealed class WindowCapture
     }
 
     /// <summary>
+    /// Capture a process window into memory, cropped to <paramref name="region"/>
+    /// (window coordinates) when given. Window selection is the same as
+    /// <see cref="Capture"/>. The caller disposes the returned frame.
+    /// </summary>
+    public CapturedFrame CaptureFrame(int processId, string? windowTitle = null, WindowRegion? region = null)
+    {
+        IntPtr hwnd = ResolveWindowHandle(processId, windowTitle, DefaultWindowSelection.TopmostVisible);
+        if (!NativeMethods.GetWindowRect(hwnd, out Rect rect))
+        {
+            throw new InvalidOperationException(
+                $"GetWindowRect failed for window 0x{hwnd.ToInt64():x} (process {processId}).");
+        }
+        int width = rect.Right - rect.Left;
+        int height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0)
+        {
+            throw new InvalidOperationException($"Window has invalid dimensions: {width}x{height}.");
+        }
+        if (WindowRegion.Validate(region, width, height) is { } regionError)
+        {
+            throw new ArgumentException(regionError, nameof(region));
+        }
+
+        Bitmap window = new(width, height, PixelFormat.Format32bppArgb);
+        try
+        {
+            using (Graphics graphics = Graphics.FromImage(window))
+            {
+                IntPtr hdc = graphics.GetHdc();
+                try
+                {
+                    if (!NativeMethods.PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT))
+                    {
+                        int win32Error = Marshal.GetLastWin32Error();
+                        throw new InvalidOperationException(
+                            $"PrintWindow returned false (Win32 error 0x{win32Error:x8}={win32Error}).");
+                    }
+                }
+                finally
+                {
+                    graphics.ReleaseHdc(hdc);
+                }
+            }
+            WindowRegion used = region ?? new WindowRegion(0, 0, width, height);
+            Bitmap frame = region is null
+                ? window
+                : window.Clone(new Rectangle(used.X, used.Y, used.Width, used.Height), PixelFormat.Format32bppArgb);
+            if (!ReferenceEquals(frame, window))
+            {
+                window.Dispose();
+            }
+            return new CapturedFrame(
+                frame,
+                new WindowIdentity(processId, hwnd.ToInt64(), new WindowBounds(rect.Left, rect.Top, width, height)),
+                used);
+        }
+        catch
+        {
+            window.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Captures the window's client area only (no title bar or borders), for
     /// deterministic visual-regression baselines: the OS chrome varies with theme,
     /// DPI, and focus, which would otherwise produce false diffs.

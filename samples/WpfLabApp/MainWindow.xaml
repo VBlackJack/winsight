@@ -32,6 +32,8 @@
                 <TextBlock x:Name="ProbePressPoint" Text="none" AutomationProperties.AutomationId="ProbePressPoint" />
                 <TextBlock x:Name="ProbeHoverPoint" Text="none" AutomationProperties.AutomationId="ProbeHoverPoint" />
                 <TextBlock x:Name="ProbePressCount" Text="0" AutomationProperties.AutomationId="ProbePressCount" />
+                <TextBlock Text="Text typed into the pointer probe (WM_CHAR, newline as \n):" Margin="0,6,0,0" />
+                <TextBlock x:Name="ProbeTypedText" Text="" AutomationProperties.AutomationId="ProbeTypedText" />
             </StackPanel>
             <ListBox x:Name="KeyLog"
                      Margin="0,8,0,0"

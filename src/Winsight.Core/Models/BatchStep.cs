@@ -44,6 +44,9 @@ public sealed record BatchStep(
     // type and click_point.
     string? Text = null,
     bool? FocusWindow = null,
+    // type_keys (text, windowTitle, plus mode keys|paste and the paste restore delay).
+    string? Mode = null,
+    int? RestoreDelayMs = null,
     // key_chord.
     string? Chord = null,
     // select.
@@ -56,7 +59,12 @@ public sealed record BatchStep(
     int? TimeoutMs = null,
     int? PollIntervalMs = null,
     int? StableForMs = null,
-    // assert (reuses ExpectedValue as the expected operand).
+    // assert (reuses ExpectedValue as the expected operand; text_visible reads it with OCR).
     string? Operator = null,
+    // wait_visual_change / wait_visual_stable / assert text_visible: area in window coordinates.
+    WindowRegion? Region = null,
+    double? Threshold = null,
+    double? LocalThreshold = null,
+    int? StableComparisons = null,
     // screenshot.
     string? OutputPath = null);

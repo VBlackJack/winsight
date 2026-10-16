@@ -21,7 +21,23 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `click_point` and its `run_steps` step accept `focusWindow`, which raises and
   verifies the target window before the point is validated, and `settleMs`.
 - `samples/WpfLabApp --pointer-probe`: a raw Win32 window that resolves hover
-  once per frame from the last `WM_MOUSEMOVE`, like iced on winit.
+  once per frame from the last `WM_MOUSEMOVE`, like iced on winit. It also takes
+  text through `WM_CHAR` (Ctrl+V pastes), draws its own status line and animates
+  after each click.
+- `type_keys`: text into the target's foreground window without a UIA element,
+  as Unicode keystrokes (Enter and Tab as keys), stopping if the window loses the
+  foreground; `mode=paste` saves the clipboard, pastes, and restores every
+  memory-block format it saved (`restored`: full, partial or failed).
+- `set_clipboard_text` and `read_clipboard_text`, off unless
+  `WINSIGHT_ALLOW_CLIPBOARD` is set. Text Winsight writes is kept out of the
+  clipboard history, the cloud clipboard and clipboard monitors; traces record
+  the size of results, never their content.
+- `wait_for_visual_change` and `wait_for_visual_stable`, and the matching
+  `run_steps` steps, judged by the SSIM criteria of `compare_visual_baseline` on
+  in-memory captures. A `wait_visual_change` step compares against a capture
+  taken before the action that precedes it.
+- `read_text_visually` and the `run_steps` assert operator `text_visible`,
+  through the offline Windows OCR engine, with rectangles in window coordinates.
 - Codex CLI decision-source evaluation, exact-target/action-bounded external
   suites, a disposable PuTTY port scenario, and structured trial sidecars.
 - Independent protected-state grading with explicit unknown coverage, retained
@@ -51,6 +67,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Winsight.Core, Winsight.Mcp, the evaluation runner and the tests target
+  `net10.0-windows10.0.19041.0` for `Windows.Media.Ocr`. Build outputs moved to
+  `bin\<configuration>\net10.0-windows10.0.19041.0`; `run-mcp.ps1`, the smoke
+  test and CI follow. No package reference was added.
 - `type_text` and `send_key_chord` refuse synthetic keyboard input into a
   WebView2 surface unless `allowWebView2Input=true`; such input has crashed ctfmon.
 - `hover_element` reports `tooltip.source` (`popup` or `helpText`) and the

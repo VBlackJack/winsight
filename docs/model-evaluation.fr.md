@@ -11,7 +11,7 @@ de référence avant les appels au modèle :
 
 ```powershell
 dotnet build Winsight.slnx -c Release
-$runner = '.\tools\Winsight.Eval\bin\Release\net10.0-windows\Winsight.Eval.exe'
+$runner = '.\tools\Winsight.Eval\bin\Release\net10.0-windows10.0.19041.0\Winsight.Eval.exe'
 & $runner 'C:\Program Files\PuTTY\putty.exe' scripted '.\TestResults\putty-reference.jsonl' 1 '.\tools\Winsight.Eval\suites\putty-port.json'
 ```
 

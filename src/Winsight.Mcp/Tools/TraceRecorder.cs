@@ -53,8 +53,19 @@ internal static class TraceRecorder
             return;
         }
 
+        AppendJsonLine(
+            Path.Combine(directory, $"winsight-{DateTime.UtcNow:yyyyMMdd}.jsonl"),
+            BuildToolEntry(toolName, elapsed, payload, isError));
+    }
+
+    /// <summary>
+    /// The trace line for one tool call: outcome and payload size, never the
+    /// payload itself, so clipboard text and captured values stay out of traces.
+    /// </summary>
+    internal static object BuildToolEntry(string toolName, TimeSpan elapsed, string payload, bool isError)
+    {
         (bool? success, string? error) = TryReadOperationResult(payload);
-        var entry = new
+        return new
         {
             timestampUtc = DateTime.UtcNow,
             toolName,
@@ -64,7 +75,6 @@ internal static class TraceRecorder
             error,
             payloadBytes = Encoding.UTF8.GetByteCount(payload),
         };
-        AppendJsonLine(Path.Combine(directory, $"winsight-{DateTime.UtcNow:yyyyMMdd}.jsonl"), entry);
     }
 
     public static void RecordContentResult(string toolName, TimeSpan elapsed, CallToolResult result)

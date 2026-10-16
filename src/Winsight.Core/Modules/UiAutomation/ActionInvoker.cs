@@ -20,6 +20,7 @@ using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using Winsight.Core.Models;
+using Winsight.Core.Modules.Clipboard;
 using FlaUIControlType = FlaUI.Core.Definitions.ControlType;
 
 namespace Winsight.Core.Modules.UiAutomation;
@@ -41,6 +42,13 @@ public sealed class ActionInvoker
     private const int FocusInputSettleMs = 100;
     private const int SystemMetricDragWidth = 68;
     private const int SystemMetricDragHeight = 69;
+    public const string TypeKeysModeKeys = "keys";
+    public const string TypeKeysModePaste = "paste";
+    public const int DefaultRestoreDelayMs = 300;
+    public const int MaxRestoreDelayMs = 5000;
+    private const string RestoredFull = "full";
+    private const string RestoredPartial = "partial";
+    private const string RestoredFailed = "failed";
     private const string FocusedWindowChanged =
         "The target window changed while it was brought to the foreground. Observe again before retrying.";
 
@@ -487,6 +495,125 @@ public sealed class ActionInvoker
                 focus.WindowHandle.ToInt64(),
                 focused));
         }
+    }
+
+    /// <summary>
+    /// Type text into the focused control of the target's foreground window,
+    /// without a UI Automation element: the surface of a GPU-drawn UI (iced,
+    /// winit, egui) has none. The window is raised and verified first, and input
+    /// inside WebView2 is refused unless <paramref name="allowWebView2Input"/>,
+    /// as for <see cref="SendKeyChord"/>. <c>keys</c> mode sends each character
+    /// as a Unicode keystroke and stops if the window loses the foreground.
+    /// <c>paste</c> mode saves the clipboard, puts the text on it (kept out of
+    /// history and the cloud), sends Ctrl+V, waits
+    /// <paramref name="restoreDelayMs"/> for the application to read it, and
+    /// puts the saved clipboard back. Callers check <c>ClipboardPolicy</c> before
+    /// paste mode.
+    /// </summary>
+    public OperationResult TypeKeys(
+        int processId,
+        string text,
+        string? windowTitle = null,
+        bool paste = false,
+        bool allowWebView2Input = false,
+        int? restoreDelayMs = null)
+    {
+        if (TextTyper.Validate(text) is { } invalid)
+        {
+            return OperationResult.Failure(invalid);
+        }
+        if (restoreDelayMs is < 0 or > MaxRestoreDelayMs)
+        {
+            return OperationResult.Failure(string.Create(
+                CultureInfo.InvariantCulture,
+                $"restoreDelayMs must be between 0 and {MaxRestoreDelayMs} (got {restoreDelayMs})."));
+        }
+
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
+        lock (DesktopInputGate)
+        {
+            WindowFocusResult focus = WindowFocus.FocusProcessWindow(processId, windowTitle);
+            if (!focus.Success)
+            {
+                return OperationResult.Failure(focus.Error!);
+            }
+            Thread.Sleep(FocusInputSettleMs);
+            FocusedElementInfo? focused;
+            using (UIA3Automation automation = new())
+            {
+                focused = FocusedElementReader.ReadFocus(automation, processId);
+            }
+            if (!allowWebView2Input && focused is { IsWebView2: true })
+            {
+                return OperationResult.FailureWith(
+                    WebView2InputRefusal("Keyboard focus", focused.WebView2Evidence),
+                    focused);
+            }
+
+            bool StillTargeted() => GetForegroundWindow() == focus.WindowHandle;
+            TypeKeysResult sent = new(
+                paste ? TypeKeysModePaste : TypeKeysModeKeys,
+                text.Length,
+                focus.WindowHandle.ToInt64(),
+                focus.WindowTitle,
+                focused);
+            if (!paste)
+            {
+                string? stopped = TextTyper.Send(TextTyper.Plan(text), StillTargeted, TextTyper.SendStroke);
+                return stopped is null ? OperationResult.OkWith(sent) : OperationResult.FailureWith(stopped, sent);
+            }
+            return PasteText(text, restoreDelayMs ?? DefaultRestoreDelayMs, StillTargeted, sent);
+        }
+    }
+
+    private static OperationResult PasteText(string text, int restoreDelayMs, Func<bool> stillTargeted, TypeKeysResult sent)
+    {
+        ClipboardService clipboard = new();
+        ClipboardSnapshot saved;
+        try
+        {
+            saved = clipboard.Capture();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            return OperationResult.FailureWith(ex.Message, sent);
+        }
+
+        OperationResult outcome;
+        OperationResult written = clipboard.WriteText(text);
+        if (!written.Success)
+        {
+            outcome = OperationResult.FailureWith(written.Error!, sent);
+        }
+        else if (!stillTargeted())
+        {
+            outcome = OperationResult.FailureWith(
+                $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the paste; " +
+                "nothing was pasted.",
+                sent);
+        }
+        else
+        {
+            DispatchKeyboardChord([VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_V]);
+            // The application reads the clipboard when it handles the chord, not when it is sent.
+            Thread.Sleep(restoreDelayMs);
+            outcome = OperationResult.OkWith(sent);
+        }
+
+        string restored;
+        try
+        {
+            clipboard.Restore(saved);
+            restored = saved.Skipped.Count == 0 ? RestoredFull : RestoredPartial;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            restored = RestoredFailed;
+        }
+        TypeKeysResult reported = sent with { Restored = restored, SkippedFormats = saved.Skipped.Count };
+        return outcome.Success
+            ? OperationResult.OkWith(reported)
+            : OperationResult.FailureWith(outcome.Error!, reported);
     }
 
     /// <summary>
@@ -1029,4 +1156,7 @@ public sealed class ActionInvoker
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 }

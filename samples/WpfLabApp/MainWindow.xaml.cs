@@ -99,8 +99,14 @@ public partial class MainWindow : Window
         }
         int left = frame.Left + (frame.Right - frame.Left - PointerProbeWidth) / 2;
         int top = frame.Top + (frame.Bottom - frame.Top - PointerProbeHeight) / 2;
-        _pointerProbe = PointerProbeWindow.Open(left, top, PointerProbeWidth, PointerProbeHeight, OnProbePress);
+        _pointerProbe = PointerProbeWindow.Open(
+            left, top, PointerProbeWidth, PointerProbeHeight, OnProbePress, OnProbeText);
     }
+
+    // Control characters are spelled out so the readout stays on one line.
+    private void OnProbeText(string typed) =>
+        ProbeTypedText.Text = typed.Replace("\n", "\\n", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal);
 
     private void OnProbePress(ProbePress press)
     {

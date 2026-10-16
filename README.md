@@ -30,7 +30,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 53 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 59 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -137,7 +137,9 @@ winsight/
 
 ## Build
 
-Requires the .NET 10 SDK.
+Requires the .NET 10 SDK. The engine, server and tests target
+`net10.0-windows10.0.19041.0` (Windows 10 version 2004 or later) for the
+Windows OCR API; restore downloads the matching Windows SDK reference pack.
 
 ```powershell
 dotnet restore
@@ -194,7 +196,7 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 53 tools.
+server is connected and lists all 59 tools.
 After rebuilding Winsight, restart the client session: a session keeps the
 server process, and the tool list, it started with.
 
@@ -317,6 +319,10 @@ For measured model trials and application-specific suites, see
 | `get_focused_element`         | Report the element that owns keyboard focus, and whether it is inside WebView2 |
 | `get_user_activity`           | Report whether a person is using the desktop: time since the last human input (Winsight's own input excluded), foreground window, locked session |
 | `wait_for_user_idle`          | Wait until nobody has used the mouse or keyboard for a given time |
+| `type_keys`                   | Type text into a window without a UIA element to type into (Unicode keystrokes, or a paste that restores the clipboard) |
+| `set_clipboard_text` / `read_clipboard_text` | Write or read the clipboard text; off unless `WINSIGHT_ALLOW_CLIPBOARD` is set |
+| `wait_for_visual_change` / `wait_for_visual_stable` | Wait until a window or region looks different, or stops changing, instead of sleeping |
+| `read_text_visually`          | Read the text a window draws with the offline Windows OCR engine, with rectangles in window coordinates |
 | `hover_element`               | Hover an element and capture/assert its tooltip popup (or HelpText fallback) |
 | `select_item`                 | Select an item by exact name, substring or pattern in a ComboBox/ListBox/Tab/Tree |
 | `drag`                        | Drag between elements or points, paced for OLE drag and drop |
@@ -370,6 +376,7 @@ Optional guardrails:
 | `WINSIGHT_ALLOWED_PROCESS_NAMES` | Comma/semicolon allowlist of process names every process-scoped tool must pass |
 | `WINSIGHT_ALLOWED_EXECUTABLES` | Comma/semicolon allowlist for `launch_app` executable paths |
 | `WINSIGHT_DRY_RUN` | `1`/`true`/`yes` blocks mutating tools and `run_steps` screenshot writes, returning what would have run |
+| `WINSIGHT_ALLOW_CLIPBOARD` | `1`/`true`/`yes` enables the clipboard tools and `type_keys mode=paste`; off by default because the clipboard may hold secrets |
 | `WINSIGHT_YIELD_TO_USER_MS` | Milliseconds: every screen-changing action fails with `user_active` while a human input is more recent than this. Unset or `0` disables it |
 | `WINSIGHT_TRACE` / `WINSIGHT_TRACE_DIR` | Write tool JSONL traces and `run_steps` replay artifacts |
 

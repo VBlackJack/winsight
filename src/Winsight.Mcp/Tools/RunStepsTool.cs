@@ -36,14 +36,20 @@ public static class RunStepsTool
                  "'click' (clickStyle), " +
                  "'click_point' (x, y, clickStyle, coordinateSpace, allowOutOfWindow, focusWindow, settleMs), " +
                  "'type' (text, focusWindow), " +
+                 "'type_keys' (text, mode keys|paste, restoreDelayMs, windowTitle) for windows without a UIA " +
+                 "element to type into, " +
                  "'key_chord' (chord), " +
                  "'select' (itemName), " +
                  "'hover' (expectedTooltipText, timeoutMs), " +
                  "'wait' (condition, expectedValue, timeoutMs, pollIntervalMs, stableForMs) — the sync " +
                  "primitive, " +
+                 "'wait_visual_change' (region, threshold, localThreshold, timeoutMs, pollIntervalMs) and " +
+                 "'wait_visual_stable' (also stableComparisons) for windows without UIA; a wait_visual_change " +
+                 "right after an action compares against a capture taken before that action, " +
                  "'assert' (operator, expectedValue) — an immediate pass/fail check that fails the step " +
                  "with expected-vs-actual detail (operators like equals/contains/greater_than/checked/" +
-                 "enabled; see assert_element), " +
+                 "enabled; see assert_element; operator text_visible reads expectedValue with OCR, in " +
+                 "region when given), " +
                  "'get_state' (reads an element's state as an oracle), " +
                  "'screenshot' (outputPath optional; a timestamped default is used when omitted). " +
                  "Set processId per step, or rely on the batch-level processId default. With " +

@@ -16,10 +16,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Winsight.Core.Modules.Capture;
+using Winsight.Core.Modules.Clipboard;
 using Winsight.Core.Modules.Cdp;
 using Winsight.Core.Modules.Diagnostics;
 using Winsight.Core.Modules.Lifecycle;
 using Winsight.Core.Modules.ManagedState;
+using Winsight.Core.Modules.Ocr;
 using Winsight.Core.Modules.Orchestration;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.UserActivity;
@@ -64,6 +66,9 @@ public static class Program
         builder.Services.AddSingleton<DiagnosticsObserver>();
         builder.Services.AddSingleton<VisualDiffer>();
         builder.Services.AddSingleton<UserActivityMonitor>();
+        builder.Services.AddSingleton<ClipboardService>();
+        builder.Services.AddSingleton<VisualWaiter>();
+        builder.Services.AddSingleton<VisualTextReader>();
 
         builder.Services.AddHttpClient();
         builder.Services.AddSingleton<CdpTargetDiscovery>(sp =>

@@ -55,7 +55,29 @@ public sealed class VisualDiffer
 
         using Bitmap baseline = LoadArgbBitmap(baselinePath);
         using Bitmap candidate = LoadArgbBitmap(candidatePath);
+        return CompareCore(baseline, candidate, options, baselinePath, candidatePath);
+    }
 
+    /// <summary>
+    /// Compare two in-memory images with the same SSIM, local SSIM and pixel
+    /// criteria as the file overload; used to watch a window change or settle.
+    /// </summary>
+    public VisualDiffResult Compare(Bitmap baseline, Bitmap candidate, VisualDiffOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(baseline);
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        return CompareCore(baseline, candidate, options, baselinePath: null, candidatePath: null);
+    }
+
+    private static VisualDiffResult CompareCore(
+        Bitmap baseline,
+        Bitmap candidate,
+        VisualDiffOptions options,
+        string? baselinePath,
+        string? candidatePath)
+    {
         if (baseline.Width != candidate.Width || baseline.Height != candidate.Height)
         {
             WriteDimensionMismatchMapIfRequested(baseline, candidate, options.DiffMapPath);

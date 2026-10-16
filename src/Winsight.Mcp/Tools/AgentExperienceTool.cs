@@ -581,6 +581,9 @@ public static class AgentExperienceTool
                         replay = "replay_steps",
                         sharedDesktop = "get_user_activity",
                         coordinateClick = "click_point focusWindow=true",
+                        textWithoutElement = "type_keys",
+                        visualSync = "wait_for_visual_change / wait_for_visual_stable",
+                        readDrawnText = "read_text_visually",
                     },
                     errorPolicy = new
                     {
@@ -591,6 +594,9 @@ public static class AgentExperienceTool
                         user_active = "a person is using the desktop: wait_for_user_idle, then observe again",
                         foreground_changed = "the batch stopped untouched: wait_for_user_idle, observe, rerun the rest",
                         cursor_moved = "something moved the pointer during the settle: get_user_activity, then retry",
+                        clipboard_disabled = "set WINSIGHT_ALLOW_CLIPBOARD=1 in the server environment, or use type_keys mode=keys",
+                        ocr_unavailable = "pass language with one of the installed OCR languages listed in the error",
+                        timed_out = "the condition never held: observe or capture, then adjust the wait or the action",
                     },
                     recipes = AgentRecipeCatalog.All,
                 }),
