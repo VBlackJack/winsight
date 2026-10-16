@@ -43,6 +43,10 @@ steps instead of sleeping, and check text with `read_text_visually` or an
 
 After rebuilding Winsight, restart the client session. A running session keeps
 the server process it started with, and its tool list, until it reconnects.
+`get_winsight_guide` shows it: `server.registeredTools` is what this session can
+call, and `server.newerBuildAvailable` is true when `tools\run-mcp.ps1` started
+it from an output that has been rebuilt since. A tool named in the docs but
+absent from `registeredTools` means the same thing.
 
 ## Drive UIA Through MCP
 

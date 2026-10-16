@@ -244,6 +244,9 @@ public sealed class StepRunner
                 step.AllowOutOfWindow,
                 step.SettleMs,
                 step.FocusWindow,
+                step.Delta,
+                step.Horizontal,
+                step.HoldMs,
                 step.WindowTitle,
                 step.OutputPath,
             });
@@ -258,6 +261,8 @@ public sealed class StepRunner
         {
             "click" => Click(step, pid),
             "click_point" => ClickPoint(step, pid),
+            "scroll_point" => ScrollPoint(step, pid),
+            "hover_point" => HoverPoint(step, pid),
             "type" => Type(step, pid),
             "type_keys" => TypeKeys(step, pid),
             "key_chord" => KeyChord(step, pid),
@@ -282,6 +287,9 @@ public sealed class StepRunner
         {
             "click" => ValidateClick(step),
             "click_point" => ValidateClickPoint(step),
+            "scroll_point" => ValidatePoint(step, "scroll_point") ?? ValidateDelta(step),
+            "hover_point" => ValidatePoint(step, "hover_point") ??
+                (PointerDispatch.ValidateHold(step.HoldMs) is { } holdError ? OperationResult.Failure(holdError) : null),
             "type_keys" => ValidateTypeKeys(step),
             "type" => step.Text is null
                 ? OperationResult.Failure("type step requires text.")
@@ -339,6 +347,44 @@ public sealed class StepRunner
         return TryCoordinateSpace(step.CoordinateSpace, out _, out OperationResult spaceError)
             ? null
             : spaceError;
+    }
+
+    private static OperationResult? ValidatePoint(BatchStep step, string action)
+    {
+        if (step.X is not int || step.Y is not int)
+        {
+            return OperationResult.Failure($"{action} step requires x and y.");
+        }
+        if (PointerDispatch.ValidateSettle(step.SettleMs) is { } settleError)
+        {
+            return OperationResult.Failure(settleError);
+        }
+        return TryCoordinateSpace(step.CoordinateSpace, out _, out OperationResult spaceError) ? null : spaceError;
+    }
+
+    private static OperationResult? ValidateDelta(BatchStep step)
+    {
+        if (step.Delta is not int delta)
+        {
+            return OperationResult.Failure("scroll_point step requires delta.");
+        }
+        return PointerDispatch.ValidateScroll(delta) is { } deltaError ? OperationResult.Failure(deltaError) : null;
+    }
+
+    private OperationResult ScrollPoint(BatchStep step, int processId)
+    {
+        TryCoordinateSpace(step.CoordinateSpace, out bool windowRelative, out _);
+        return _invoker.ScrollPoint(
+            processId, step.X!.Value, step.Y!.Value, step.Delta!.Value, step.Horizontal ?? false, step.WindowTitle,
+            windowRelative, step.AllowOutOfWindow ?? false, step.FocusWindow ?? false, step.SettleMs);
+    }
+
+    private OperationResult HoverPoint(BatchStep step, int processId)
+    {
+        TryCoordinateSpace(step.CoordinateSpace, out bool windowRelative, out _);
+        return _invoker.HoverPoint(
+            processId, step.X!.Value, step.Y!.Value, step.HoldMs, step.WindowTitle,
+            windowRelative, step.AllowOutOfWindow ?? false, step.FocusWindow ?? false, step.SettleMs);
     }
 
     private static OperationResult? ValidateTypeKeys(BatchStep step)
@@ -576,12 +622,14 @@ public sealed class StepRunner
 
     // Steps that send input to the desktop; a screenshot only writes a file.
     private static bool IsScreenAction(string action) =>
-        action is "click" or "click_point" or "type" or "type_keys" or "key_chord" or "select" or "hover";
+        action is "click" or "click_point" or "scroll_point" or "hover_point" or "type" or "type_keys" or
+            "key_chord" or "select" or "hover";
 
     private const string WaitVisualChangeAction = "wait_visual_change";
     private const string WaitVisualStableAction = "wait_visual_stable";
     private const string AcceptedActions =
-        "click, click_point, type, type_keys, key_chord, select, hover, wait, wait_visual_change, " +
+        "click, click_point, scroll_point, hover_point, type, type_keys, key_chord, select, hover, wait, " +
+        "wait_visual_change, " +
         "wait_visual_stable, assert, get_state, screenshot";
 
     private static string Normalize(string? action) => (action ?? string.Empty).Trim().ToLowerInvariant();

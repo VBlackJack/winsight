@@ -41,7 +41,9 @@ internal sealed record ProbePress(ProbeButton Kind, int PressX, int PressY, int 
 /// status line OCR can read, and after each left press a short animation
 /// (a block moving for <see cref="AnimationFrames"/> frames) that ends with the
 /// status "Clicked N". Characters arrive through WM_CHAR (Ctrl+V pastes the
-/// clipboard text) and are reported as the typed text. The owner disposes it on close.
+/// clipboard text) and are reported as the typed text. Wheel turns are summed
+/// per axis, and the frame-latched hover is reported whenever it moves. The
+/// owner disposes it on close.
 /// </summary>
 internal sealed class PointerProbeWindow : IDisposable
 {
@@ -73,6 +75,8 @@ internal sealed class PointerProbeWindow : IDisposable
     private const uint WmDestroy = 0x0002;
     private const uint WmPaint = 0x000F;
     private const uint WmChar = 0x0102;
+    private const uint WmMouseWheel = 0x020A;
+    private const uint WmMouseHorizontalWheel = 0x020E;
     private const uint CfUnicodeText = 13;
     private const int BlackBrush = 4;
     private const int Transparent = 1;
@@ -92,6 +96,10 @@ internal sealed class PointerProbeWindow : IDisposable
 
     private readonly Action<ProbePress> _onPress;
     private readonly Action<string> _onText;
+    private readonly Action<int, int> _onWheel;
+    private readonly Action<int, int> _onHover;
+    private int _verticalWheel;
+    private int _horizontalWheel;
     private readonly System.Text.StringBuilder _typed = new();
     private IntPtr _handle;
     private IntPtr _font;
@@ -101,17 +109,21 @@ internal sealed class PointerProbeWindow : IDisposable
     private int _clicks;
     private int _animationLeft;
 
-    private PointerProbeWindow(Action<ProbePress> onPress, Action<string> onText)
+    private PointerProbeWindow(
+        Action<ProbePress> onPress, Action<string> onText, Action<int, int> onWheel, Action<int, int> onHover)
     {
         _onPress = onPress;
         _onText = onText;
+        _onWheel = onWheel;
+        _onHover = onHover;
     }
 
     public IntPtr Handle => _handle;
 
     /// <summary>Create and show the probe at the given screen rectangle, in the foreground.</summary>
     public static PointerProbeWindow Open(
-        int left, int top, int width, int height, Action<ProbePress> onPress, Action<string> onText)
+        int left, int top, int width, int height, Action<ProbePress> onPress, Action<string> onText,
+        Action<int, int> onWheel, Action<int, int> onHover)
     {
         IntPtr module = GetModuleHandle(null);
         if (!s_classRegistered)
@@ -133,7 +145,7 @@ internal sealed class PointerProbeWindow : IDisposable
             s_classRegistered = true;
         }
 
-        PointerProbeWindow probe = new(onPress, onText)
+        PointerProbeWindow probe = new(onPress, onText, onWheel, onHover)
         {
             _font = CreateFont(FontHeight, 0, 0, 0, FontWeightBold, 0, 0, 0, 0, 0, 0, 0, 0, FontFace),
         };
@@ -183,8 +195,20 @@ internal sealed class PointerProbeWindow : IDisposable
                 _lastMove = ToScreen(lParam);
                 break;
             case WmTimer:
-                _hover = _lastMove;
+                if (_hover.X != _lastMove.X || _hover.Y != _lastMove.Y)
+                {
+                    _hover = _lastMove;
+                    _onHover(_hover.X, _hover.Y);
+                }
                 AdvanceAnimation();
+                break;
+            case WmMouseWheel:
+                _verticalWheel += WheelDelta(wParam);
+                _onWheel(_verticalWheel, _horizontalWheel);
+                break;
+            case WmMouseHorizontalWheel:
+                _horizontalWheel += WheelDelta(wParam);
+                _onWheel(_verticalWheel, _horizontalWheel);
                 break;
             case WmPaint:
                 Paint();
@@ -205,6 +229,9 @@ internal sealed class PointerProbeWindow : IDisposable
                 break;
         }
     }
+
+    // The wheel distance is the signed high word of wParam.
+    private static int WheelDelta(IntPtr wParam) => (short)((wParam.ToInt64() >> HighWordShift) & LowWordMask);
 
     private void AdvanceAnimation()
     {

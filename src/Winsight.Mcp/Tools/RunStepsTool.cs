@@ -35,6 +35,8 @@ public static class RunStepsTool
                  "windowTitle) work like click_element. Actions: " +
                  "'click' (clickStyle), " +
                  "'click_point' (x, y, clickStyle, coordinateSpace, allowOutOfWindow, focusWindow, settleMs), " +
+                 "'scroll_point' (x, y, delta in wheel notches, horizontal, plus the click_point fields), " +
+                 "'hover_point' (x, y, holdMs, plus the click_point fields), " +
                  "'type' (text, focusWindow), " +
                  "'type_keys' (text, mode keys|paste, restoreDelayMs, windowTitle) for windows without a UIA " +
                  "element to type into, " +

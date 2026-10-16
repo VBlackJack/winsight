@@ -201,6 +201,20 @@ public sealed class VisualObservationTests
         badMode.Steps[0].Error.Should().Contain("Unknown mode");
     }
 
+    [Theory]
+    [InlineData("scroll_point", null, 3, "x and y")]
+    [InlineData("scroll_point", 10, null, "requires delta")]
+    [InlineData("scroll_point", 10, 0, "non-zero")]
+    [InlineData("hover_point", null, null, "x and y")]
+    public void Coordinate_wheel_and_hover_steps_validate_before_any_input(
+        string action, int? x, int? delta, string expected)
+    {
+        BatchResult result = NewRunner().Run(
+            [new BatchStep(action, ProcessId: 1, X: x, Y: x, Delta: delta)], defaultProcessId: null, stopOnError: true);
+
+        result.Steps[0].Error.Should().Contain(expected);
+    }
+
     private static StepRunner NewRunner() =>
         new(new ActionInvoker(), new ElementWaiter(), new ElementStateReader(), new WindowCapture(), new NoForeground());
 

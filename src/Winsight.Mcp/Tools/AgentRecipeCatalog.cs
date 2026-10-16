@@ -124,6 +124,7 @@ internal static class AgentRecipeCatalog
             [
                 "read_text_visually or capture_screenshot, then pick window-relative coordinates",
                 "click_point focusWindow=true (settleMs raises the default pointer rest if hover lags)",
+                "scroll_point for lists and canvases, hover_point for hover effects and tooltips",
                 "type_keys for text input (mode=paste for long text when WINSIGHT_ALLOW_CLIPBOARD is set)",
                 "run_steps: action, wait_visual_change, wait_visual_stable, assert operator=text_visible",
             ],
