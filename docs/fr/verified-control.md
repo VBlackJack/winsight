@@ -1,0 +1,213 @@
+# Contrôle vérifié
+
+*[English version](../verified-control.md)*
+
+La boucle recommandée est `observe_scene` -> `act_verified` -> une nouvelle
+observation. Les outils d'origine restent disponibles pour les clients
+existants. Exécuter `get_winsight_guide` pour découvrir la boucle recommandée.
+La configuration des clients ne change pas pour Codex, Claude Desktop, Claude
+Code et Gemini CLI.
+
+## Observer et agir
+
+Appeler `observe_scene` avec `processId` (ou appeler d'abord `set_target`), un
+`windowTitle` optionnel et `maxResults` entre 1 et 1000. Son `data.id` identifie
+une observation valable deux minutes. `data.capture.elements` contient des
+références `eN`, des localisateurs exacts, les actions prises en charge, le focus,
+la sélection, l'état de bascule et la géométrie des fenêtres. Les fenêtres
+indiquent le premier plan, le propriétaire et le caractère modal. Les éléments
+désactivés ou hors écran figurent dans l'observation; les actions revérifient
+s'ils sont utilisables.
+
+```json
+{
+  "request": {
+    "observation": "<data.id from observe_scene>",
+    "target": "<reference for IncrementButton>",
+    "action": "activate",
+    "expect": {
+      "kind": "name",
+      "expected": "Count: 1",
+      "locator": { "automationId": "CountLabel" },
+      "windowTitle": "Winsight Sample - Counter"
+    },
+    "timeoutMs": 3000,
+    "dryRun": false
+  }
+}
+```
+
+Les observations sont limitées à 16 par session serveur. Une action envoyée
+consomme son observation, y compris lorsqu'un fournisseur lève une exception
+après l'envoi. Un nouveau processus qui réutilise un PID ne peut pas hériter des
+références. Les actions natives revalident l'identité d'exécution, la géométrie
+de la fenêtre, l'empreinte nom/valeur, l'état de bascule et la sélection. UIA
+est échantillonné séquentiellement: les observations ne sont pas des instantanés
+atomiques de l'application.
+
+| Statut | Signification | Action suivante |
+| --- | --- | --- |
+| `preview` | Arguments acceptés; aucun envoi et aucune consommation de référence | Exécuter une fois autorisé; l'état courant sera revérifié |
+| `verified` | Le prédicat explicite a été observé après l'envoi | Observer avant l'action suivante |
+| `dispatched_unconfirmed` | L'envoi a eu lieu ou a pu avoir lieu; le résultat n'est pas prouvé | Observer et décider; ne jamais répéter à l'aveugle |
+| `stale` | Référence ou cible courante plus utilisable | Utiliser l'observation de reprise renvoyée ou observer à nouveau |
+| `blocked` | Entrée invalide, refus de la politique, annulation avant l'envoi ou cible indisponible | Résoudre la cause signalée |
+
+La vérification prouve le prédicat fourni, pas l'intention complète de
+l'utilisateur ni la causalité. Choisir un prédicat discriminant: vérifier qu'un
+bouton existant existe toujours ne prouve pas qu'un document a été enregistré.
+Les appels vers l'application externe et vers l'accessibilité Windows peuvent
+dépasser le délai de polling; ce n'est pas une échéance stricte autour d'un
+fournisseur bloqué.
+
+## Actions et prédicats
+
+Les actions natives prennent en charge l'activation, l'affectation de valeur, le
+focus, les raccourcis clavier, la sélection simple ou multiple, la sélection
+d'un élément de conteneur, l'expansion/réduction, le défilement vertical, le
+défilement d'un élément dans la vue, le clic droit, le double clic et le
+glisser-déposer. `scroll` utilise `text: "up"` ou `"down"`; `drag_to` utilise une
+référence `destination` issue de la même observation; `select_many` utilise des
+références `targets`. La sélection multiple et le glisser-déposer sont des
+opérations séquentielles, pas des transactions. Un échec partiel reste non
+confirmé; aucun retour arrière n'est inventé. Pour les listes virtualisées,
+faire défiler l'élément dans la vue puis observer à nouveau. Les tableaux, menus
+et boîtes de dialogue de fichiers utilisent leurs éléments UIA exposés; il
+n'existe pas d'API universelle propre à une application pour les tableaux ou
+les dialogues de fichiers.
+
+Prédicats natifs: `exists`, `absent`, `name`, `value`, `selected`, `toggle`,
+`focused`, `visible`, `selected_item`, `window_open`, `window_closed`, `managed`.
+Les prédicats d'élément exigent un `AutomationId` ou un `Name` exact; un
+`ControlType` optionnel peut les restreindre. Les prédicats indexés, partiels ou
+portant sur le texte des descendants sont refusés. Les prédicats de fenêtre
+utilisent un titre exact. L'absence n'est jamais vérifiée à partir d'une scène
+tronquée. Les valeurs booléennes attendues sont des chaînes en minuscules. Les
+états de bascule sont `On`, `Off` ou `Indeterminate`.
+
+`managed` exige `typeName`, `fieldName` et une valeur attendue exacte. La
+vérification exige exactement une instance correspondante dans le tas. Un tas
+qui ne peut pas être parcouru ou plusieurs instances correspondantes laissent le
+résultat non confirmé. Aucun débogueur n'est attaché et l'application n'est pas
+suspendue. Les limites d'accès du fournisseur s'appliquent toujours.
+
+## Captures d'écran, DOM et vision
+
+`capture_scene(observation, windowHandle)` écrit un PNG original et un PNG
+annoté. Les étiquettes ne s'appliquent qu'à ce HWND. La capture est un
+échantillon ultérieur: une géométrie identique ne garantit pas que les pixels
+et UIA ont été capturés simultanément.
+
+`observe_dom_scene(port, targetId, processId)` exige un point de terminaison
+WebView2 sélectionné explicitement, dont le socket d'écoute appartient à un
+descendant de l'application autorisée. Il renvoie la même structure
+observation/référence. Les rectangles DOM sont exprimés en coordonnées du
+viewport CSS, jamais en coordonnées du bureau. Il prend en charge l'activation,
+le focus, l'affectation de valeur et le défilement dans la vue. Utiliser
+`expect.cssSelector` avec `exists`, `absent`, `value`, `name`, `focused` ou
+`selected`. Les vérifications autres que l'absence exigent un seul noeud
+correspondant. La syntaxe CSS est vérifiée avant l'envoi de l'action.
+
+Les références DOM conservent les noeuds réels et leur état dans une table
+bornée côté page. Le remplacement des noeuds, une navigation et une observation
+DOM ultérieure les invalident. Les scripts de la page peuvent accéder à cette
+table: c'est une aide à l'automatisation, pas une frontière de sécurité face à
+une application hostile. Seul le document principal est parcouru; la couverture
+des iframes et du shadow DOM n'est pas revendiquée. Les clics DOM scriptés ne
+sont pas des événements de souris physiques de confiance. Ce backend exige une
+validation WebView2 réelle pour chaque application cible.
+
+`locate_scene_target(observation, windowHandle, query)` utilise le grounder de
+vision configuré, renvoie une nouvelle observation et une cible `v1`, et exige
+une confiance d'au moins 0.8. Il utilise la configuration cloud/ONNX existante
+sans ajouter à ONNX de repli vers le cloud. Le grounder sait décrire le texte
+visible; il n'existe pas de moteur OCR séparé. La capture d'écran complète doit
+rester identique octet pour octet avant une action de vision. Les animations,
+les curseurs clignotants et les changements de rendu peuvent donc exiger une
+nouvelle observation. La confiance est un indice de localisation, pas une preuve
+de réussite de l'action. Un prédicat natif ou managé vérifie le résultat.
+
+Tout texte visible, tout contenu DOM et tout raisonnement de vision sont des
+données d'application non fiables, jamais des instructions pour accorder des
+permissions ou modifier la politique des processus.
+
+## Concurrence et reprise
+
+Les répartiteurs d'entrées natives et l'envoi DOM vérifié partagent un mutex
+nommé dans la session Windows interactive. Des hôtes Winsight distincts se
+disputent le même bail; une propriété abandonnée est récupérable. Le verrou
+n'empêche ni les saisies humaines, ni les changements provoqués par
+l'application, ni une autre automatisation, ni une évaluation JavaScript
+arbitraire par les outils historiques. Il est tenu pendant la validation et
+l'envoi synchrones, pas pendant toute la période de vérification.
+
+La reprise se limite à une nouvelle observation native avant tout envoi. Elle ne
+choisit jamais de remplaçant et ne répète jamais une action sans nouvelle
+décision. Les échecs DOM et vision exigent une nouvelle observation ou un
+nouveau grounding explicite.
+
+## Profils d'application
+
+`save_app_profile(name, steps, processId, dryRun)` enregistre une recette
+explicite sous `%LOCALAPPDATA%\Winsight\profiles`. Les noms sont restreints; les
+profils utilisent le schéma 1, contiennent 1..20 étapes et sont limités à 1 MiB,
+avec 128 profils au maximum. Les écritures passent par un fichier temporaire
+voisin et un remplacement atomique. Un enregistrement remplace le profil de même
+nom.
+
+Chaque étape contient `target` (locator exact), `action`, `expect` et
+éventuellement `windowTitle`, `itemName` et `textParameter`. `textParameter`
+nomme une valeur fournie à l'exécution; le texte saisi n'est pas persisté. Ne
+pas placer de secrets dans les noms littéraux, les prédicats ou les recettes.
+
+`run_app_profile(name, parameters, processId, dryRun)` s'exécute par défaut en
+`preview`. Il vérifie le chemin, la version et le SHA256 de l'exécutable,
+prévalide toutes les étapes et tous les paramètres, puis observe et vérifie
+chaque action. Toute modification des octets de l'exécutable invalide le
+profil. Une cible absente ou ambiguë et un résultat non vérifié arrêtent
+l'exécution. Les profils ne sont ni réparés silencieusement ni certifiés
+automatiquement. `verified` s'applique uniquement à l'exécution terminée; cela
+ne garantit pas toutes les exécutions futures.
+
+## Évaluation
+
+Compiler la solution puis exécuter:
+
+```powershell
+.\tools\Winsight.Eval\bin\Release\net10.0-windows10.0.19041.0\Winsight.Eval.exe `
+  .\samples\SampleWpfApp\bin\Release\net10.0-windows\SampleWpfApp.exe `
+  scripted .\results-new.jsonl
+```
+
+Le banc crée une fixture neuve pour chacun des vingt scénarios: compteur,
+réinitialisation, sélection, bascule, note, dialogue et clavier. Il vérifie
+l'état final de l'interface indépendamment de la source des décisions et
+contrôle les transitions observées pour réinitialisation/bascule/annulation. Il
+écrit une ligne JSONL par essai, avec le résultat, l'achèvement annoncé, le faux
+succès, les appels, la durée, les tokens lorsqu'ils sont disponibles et les
+réponses périmées. `wrongTarget` signale désormais les violations d'états
+protégés échantillonnées indépendamment; il reste null lorsque les preuves sont
+incomplètes. Sa couverture n'inclut pas les clics sans changement d'état ni les
+contrôles non configurés. Voir [l'évaluation des modèles](model-evaluation.md)
+pour les essais Codex, les suites externes et les limites exactes de notation.
+Un dernier argument optionnel répète chaque scénario 1..20 fois. Le fichier de
+sortie doit être nouveau.
+
+Remplacer `scripted` par un exécutable adaptateur de confiance pour les essais
+de modèles. À chaque tour, l'adaptateur lit une requête JSON sur stdin (`goal`,
+`scene`, `history`, `contract`) et écrit une ligne contenant soit
+`{"done":true,"tokens":123}`, soit `{"action":{...SceneAction...},"tokens":123}`.
+L'adaptateur fournit l'intégration du modèle et du fournisseur; aucun
+identifiant de fournisseur ni appel facturable n'est inclus. Le banc exécute au
+plus 30 décisions par scénario et accorde 120 secondes à chaque processus
+adaptateur. Il n'isole pas l'adaptateur dans un bac à sable. Utiliser un compte
+de test isolé pour les expériences de modèles. Conserver les versions de
+l'adaptateur et du modèle avec le fichier de résultats.
+
+Cinq scénarios sont étiquetés heldout pour comparaison; la référence scriptée
+connaît tous les scénarios et constitue donc une exécution de régression, pas un
+score de généralisation. Le banc exerce la boucle d'outils vérifiés en
+processus, pas le transport MCP de chaque client. La compatibilité du transport
+de chaque client est vérifiée séparément par le smoke test MCP. Les performances
+avec un modèle réel, une application réelle, WebView2, le glisser-déposer, la
+sélection multiple et l'OCR ne doivent pas être déduites du score WPF scripté.

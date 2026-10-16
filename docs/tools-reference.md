@@ -1,5 +1,7 @@
 # Tools reference
 
+*[Version française](fr/tools-reference.md)*
+
 This document describes the MCP tools exposed by `Winsight.Mcp` to AI agents.
 For the preferred verified workflow, see [verified control](verified-control.md).
 `act_verified` returns explicit `status`, `dispatched` and `verified` fields;

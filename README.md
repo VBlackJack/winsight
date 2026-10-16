@@ -1,5 +1,7 @@
 # Winsight
 
+*[Version française](README.fr.md)*
+
 > A Windows-native testing framework for AI agents.
 
 Winsight is a [Model Context Protocol](https://modelcontextprotocol.io) server
@@ -76,8 +78,11 @@ capabilities under a single tool surface that an LLM can compose:
 
 Phase 1 + Phase 2 + tool boundary hardening + UIA test ergonomics + visual
 regression v0 + coordinate clicks + multi-window discoverability + app
-lifecycle — fully bootable, end-to-end validated against `SampleWpfApp`
-(golden path) and a real WPF application (`Win11Forge`). Current coverage:
+lifecycle + verified control + surfaces without UI Automation (iced, winit,
+egui) + shared-desktop awareness: fully bootable, end-to-end validated against
+`SampleWpfApp` (golden path), `WpfLabApp` (WPF shell input paths and a raw
+Win32 probe that behaves like iced on winit) and a real WPF application
+(`Win11Forge`). Current coverage:
 Core/MCP unit tests and E2E scenarios that drive a live interactive Windows
 desktop. See the [audit and remediation evidence](docs/audit-2026-09-05.md)
 for measured results. Vision integration tests are explicitly skipped when
@@ -111,6 +116,11 @@ their model/image/reference fixtures are absent.
 | Vision grounding (local Qwen2.5-VL ONNX) |  | yes     |         |
 | Visual regression (SSIM + pixel diff) |   | yes     |         |
 | Visually grounded click (find + act) |    | yes     |         |
+| Verified control (`observe_scene` + `act_verified`, scenes, profiles) |  | yes |  |
+| Pointer settle for immediate-mode UIs, coordinate wheel and hover |  | yes |  |
+| Text input without a UIA element (`type_keys`, clipboard) |  | yes |  |
+| Visual waits (change, stable) and OCR text reading |  | yes |  |
+| Shared-desktop awareness (user activity, yield, foreground guard) |  | yes |  |
 | Exploratory agent (Sonnet 4.6)  |         |         | yes     |
 
 ## Repository layout
@@ -118,21 +128,26 @@ their model/image/reference fixtures are absent.
 ```
 winsight/
 ├── src/
-│   ├── Winsight.Core/      Engine: UIA, CLRMD, capture, diagnostics, vision, models
-│   └── Winsight.Mcp/       MCP server executable (stdio) + tool boundary guard
+│   ├── Winsight.Core/      Engine: UIA, CLRMD, capture, diagnostics, vision, OCR, user activity, models
+│   ├── Winsight.Mcp/       MCP server executable (stdio) + tool boundary guard
+│   └── Winsight.Setup/     Per-user installer helper (client registration)
 ├── samples/
-│   └── SampleWpfApp/       Counter app used as the integration target
+│   ├── SampleWpfApp/       Counter app used as the integration target
+│   └── WpfLabApp/          WPF shell lab; --pointer-probe opens a raw Win32 window that behaves like iced
 ├── tests/
 │   ├── Winsight.Core.Tests xUnit unit tests for the engine layer
 │   ├── Winsight.Mcp.Tests  xUnit unit tests for the MCP tool boundary (ToolSafety, wrappers)
-│   └── Winsight.E2E        End-to-end agent-driven scenarios on SampleWpfApp
+│   └── Winsight.E2E        End-to-end scenarios on SampleWpfApp and WpfLabApp
 ├── tools/
+│   ├── Winsight.Eval/      Model-neutral evaluation runner
+│   ├── run-mcp.ps1         Runs a copy of the built server, so the build stays unlocked
 │   └── smoke-mcp.ps1       JSON-RPC smoke test for the stdio server
-└── docs/
+└── docs/                   English documentation; docs/fr/ holds the French versions
     ├── architecture.md
     ├── local-onnx-grounder.md
     ├── runbook.md
-    └── tools-reference.md
+    ├── tools-reference.md
+    └── verified-control.md
 ```
 
 ## Build
@@ -293,7 +308,7 @@ See [docs/tools-reference.md](docs/tools-reference.md) for the full schema.
 
 For measured model trials and application-specific suites, see
 [model evaluation](docs/model-evaluation.md)
-([français](docs/model-evaluation.fr.md)).
+([français](docs/fr/model-evaluation.md)).
 
 | Tool                          | Purpose                                                |
 | ----------------------------- | ------------------------------------------------------ |
@@ -309,6 +324,12 @@ For measured model trials and application-specific suites, see
 | `get_agent_state`             | Compact target, guardrail, memory, last-failure, and embedded recipe context |
 | `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
 | `get_winsight_guide`          | Embedded agent playbook for the preferred loop and repair policy, plus the running build and its registered tools |
+| `observe_scene`               | Expiring observation with `eN` target references, windows, focus, states and supported actions |
+| `act_verified`                | Act once on an `observe_scene` reference and verify an explicit postcondition |
+| `capture_scene`               | Capture a window of an observation, annotated with its `eN` references |
+| `observe_dom_scene`           | Observe an authorized WebView2 page with the same observation contract |
+| `locate_scene_target`         | Vision fallback that adds a located target to a new observation |
+| `save_app_profile` / `run_app_profile` | Save and run a recipe pinned to the executable version and SHA256 |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
 | `close_app`                   | Request graceful closure, or explicitly force termination |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |

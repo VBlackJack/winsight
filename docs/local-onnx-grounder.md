@@ -1,5 +1,7 @@
 # Local ONNX vision grounder
 
+*[Version française](fr/local-onnx-grounder.md)*
+
 `WINSIGHT_VISION_BACKEND=onnx` selects a fully local `IElementGrounder` that runs
 **Qwen2.5-VL-3B** entirely on-host — nothing leaves the machine, which is what
 makes it usable on regulated or sensitive content. It never falls back to the

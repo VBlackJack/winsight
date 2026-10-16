@@ -1,5 +1,7 @@
 # Model evaluation
 
+*[Version française](fr/model-evaluation.md)*
+
 Use this workflow to measure decisions and observable outcomes separately. The
 runner supports the built-in twenty-scenario WPF regression suite, external JSON
 suites, trusted executable adapters, and a built-in Codex CLI decision source.
@@ -130,4 +132,4 @@ when a trial fails. Three successful trials of one task establish only that
 observed result; they do not establish broad application compatibility or a
 general model ranking.
 
-[First measured campaign](evaluation-campaign-2026-10-01.md) · [Version française](model-evaluation.fr.md)
+[First measured campaign](evaluation-campaign-2026-10-01.md)
