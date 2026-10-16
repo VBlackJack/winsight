@@ -25,12 +25,12 @@ namespace Winsight.Mcp.Tools;
 public static class ElementStateTool
 {
     private const string ProcessIdDescription =
-        "Target process id. Optional — falls back to the session default set by set_target.";
+        "Target process id. Optional; falls back to the session default set by set_target.";
 
     [McpServerTool(Name = "get_element_state")]
     [Description("Read the observable state of a located UI element: name, value (Value pattern), " +
                  "toggle state, selection, enabled/visible/focus flags, and bounding rectangle. " +
-                 "This is the lightweight UI-level oracle for assertions — use it instead of " +
+                 "This is the lightweight UI-level oracle for assertions: use it instead of " +
                  "read_managed_state when the on-screen state is enough. Same strict locator " +
                  "semantics as click_element.")]
     public static string GetElementState(

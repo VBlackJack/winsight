@@ -47,7 +47,7 @@ public static class CaptureEventsTool
         [Description("Optional exact-match event name filter (case-sensitive). " +
                      "Use it to narrow to a specific event such as 'ExceptionThrown_V1'.")]
         string? eventNameFilter = null,
-        [Description("Target managed process id. Optional — falls back to the session default set by set_target.")]
+        [Description("Target managed process id. Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>

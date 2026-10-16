@@ -17,8 +17,8 @@ using Winsight.Core.Models;
 namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>
-/// Captures a <see cref="UiSnapshot"/> of a process — its windows plus its
-/// actionable elements — by composing <see cref="WindowDiscovery"/> and
+/// Captures a <see cref="UiSnapshot"/> of a process (its windows plus its
+/// actionable elements) by composing <see cref="WindowDiscovery"/> and
 /// <see cref="AffordanceScanner"/>. Pairing two snapshots through
 /// <see cref="UiDiffer"/> yields what an action changed.
 /// </summary>

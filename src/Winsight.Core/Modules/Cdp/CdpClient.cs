@@ -24,7 +24,7 @@ namespace Winsight.Core.Modules.Cdp;
 /// One instance maps to one attached page target; commands are sent
 /// sequentially with incrementing ids and event notification frames are
 /// skipped while waiting for the matching response. Deliberately dependency
-/// free — no Playwright/Puppeteer, so agents can drive embedded WebView2
+/// free: no Playwright/Puppeteer, so agents can drive embedded WebView2
 /// content (including xterm.js terminals) through Winsight alone.
 /// </summary>
 public sealed class CdpClient : IAsyncDisposable
@@ -214,7 +214,7 @@ public sealed class CdpClient : IAsyncDisposable
             long? frameId = CdpResponseParser.TryReadId(document.RootElement);
             if (frameId != commandId)
             {
-                // Event notification or stale response — not ours, keep waiting.
+                // Event notification or stale response, not ours, keep waiting.
                 document.Dispose();
                 continue;
             }

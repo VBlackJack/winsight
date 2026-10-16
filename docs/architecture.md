@@ -51,32 +51,32 @@ and testable. The MCP server is a thin adapter; the value lives in the engine.
 
 Pure data records. No behavior, no IO.
 
-- `WindowDescriptor` — top-level window snapshot.
-- `UiElementNode` — a single node in a recursive UIA tree.
-- `ElementLocator` — input criteria for finding an element (exact id/name/
+- `WindowDescriptor`: top-level window snapshot.
+- `UiElementNode`: a single node in a recursive UIA tree.
+- `ElementLocator`: input criteria for finding an element (exact id/name/
   className, case-insensitive controlType and nameContains, index pick).
-- `ElementCandidate` — compact element descriptor reported on ambiguous
+- `ElementCandidate`: compact element descriptor reported on ambiguous
   or failed lookups.
-- `ElementState` — UI-level state snapshot returned by `get_element_state`
+- `ElementState`: UI-level state snapshot returned by `get_element_state`
   (value, toggle, selection, focus, geometry).
-- `WaitCondition` + `WaitOutcome` — condition enum and result payload of
-  `wait_for_element`; `ClickStyle` — click variants for `click_element`.
-  Both enums ship wire-format parsers (`exists`/`not_exists`/…,
+- `WaitCondition` + `WaitOutcome`: condition enum and result payload of
+  `wait_for_element`; `ClickStyle`: click variants for `click_element`.
+  Both enums ship wire-format parsers (`exists`/`not_exists`/...,
   `single`/`double`/`right`).
-- `OperationResult` — uniform `{success, error, data}` envelope used by
+- `OperationResult`: uniform `{success, error, data}` envelope used by
   every tool's failure path (and by several tools' success path too).
-- `ScreenshotResult` — path / dimensions / capture timestamp returned by
+- `ScreenshotResult`: path / dimensions / capture timestamp returned by
   `capture_screenshot` (whose tool also attaches the PNG inline as an MCP image).
-- `WebView2Endpoint` — descendant WebView2 process descriptor with the
+- `WebView2Endpoint`: descendant WebView2 process descriptor with the
   CDP port it was launched with (if any) and whether the port is
   actually listening.
-- `CounterSnapshot` — output of `observe_counters`: provider, duration,
+- `CounterSnapshot`: output of `observe_counters`: provider, duration,
   sample count, and a `counters` map of counter-name to last observed
   value.
-- `DiagnosticEvent` + `EventCaptureResult` — output of `capture_events`:
+- `DiagnosticEvent` + `EventCaptureResult`: output of `capture_events`:
   per-event metadata (timestamp, provider, name, level, normalized
   payload) bounded by a configurable cap with a `truncated` flag.
-- `GroundedElement` — bounding box, confidence, and reasoning returned
+- `GroundedElement`: bounding box, confidence, and reasoning returned
   by `find_element_visually`.
 - `UserActivitySnapshot` and `ForegroundWindowInfo`: output of
   `get_user_activity` (human idle time, last input source, foreground window
@@ -92,47 +92,47 @@ Pure data records. No behavior, no IO.
 
 Wraps FlaUI (UIA3):
 
-- `WindowDiscovery` — enumerates top-level windows through Win32 `EnumWindows`
+- `WindowDiscovery`: enumerates top-level windows through Win32 `EnumWindows`
   (so owned dialogs, popups, menus, and tooltips are discoverable, not just
   reachable), classifies each via `WindowClassifier`, and resolves process
   metadata. Optional per-process scoping returns the full window stack of one
   app, including untitled surfaces. Uses `GetForegroundWindow` for the
   foreground flag.
-- `WindowClassifier` — pure classification of a window into a kind
+- `WindowClassifier`: pure classification of a window into a kind
   (main/dialog/popup/menu/tooltip/other) plus modality, from its Win32 class
   name, caption/popup styles, and ownership; unit-testable without live windows.
-- `WindowGeometry` — resolves a process window's screen-space bounds (topmost,
+- `WindowGeometry`: resolves a process window's screen-space bounds (topmost,
   or title-scoped), mirroring `WindowCapture`'s window selection.
-- `WindowPointMapper` — pure window-relative ↔ screen coordinate translation and
+- `WindowPointMapper`: pure window-relative ↔ screen coordinate translation and
   bounds checks; backs `click_point` and the screen coordinates enriched onto
   `find_element_visually` results.
-- `UiTreeInspector` — bounded BFS traversal of the UIA tree for a given process
+- `UiTreeInspector`: bounded BFS traversal of the UIA tree for a given process
   window (default depth 5, capped at 20), with optional window-title scoping
   and controlType/nameContains pruning; nodes carry Value-pattern content.
-- `AffordanceScanner` — the perception layer behind `describe_ui`: walks the
+- `AffordanceScanner`: the perception layer behind `describe_ui`: walks the
   process windows breadth-first, keeps interactable control types, reuses
   `ElementStateReader.BuildState` for each, and pairs them with
   `AffordanceRecommender` (a pure function that picks the smallest unique
   locator) to return a compact, position-ordered affordance list.
-- `UiSnapshotter` / `UiDiffer` — the feedback sense behind `snapshot_ui` /
+- `UiSnapshotter` / `UiDiffer`: the feedback sense behind `snapshot_ui` /
   `diff_ui`: `UiSnapshotter` captures a `UiSnapshot` (windows + affordances) by
   composing `WindowDiscovery` and `AffordanceScanner`; `UiDiffer` is a pure
   function that diffs two snapshots into a `UiChange` (windows matched by handle,
   elements by a stable key). The MCP layer keeps the per-process baseline in a
   session-scoped `UiSnapshotStore`.
-- `NativeWindowEnumerator` (internal) — Win32 `EnumWindows` listing of the
+- `NativeWindowEnumerator` (internal): Win32 `EnumWindows` listing of the
   visible top-level windows of a process. Required because UIA reparents
   owned windows (modal dialogs) under their owner and omits them from both
   desktop and owner child enumerations; rooting searches at Win32 handles
   makes every window addressable.
-- `LocatorMatcher` — pure matching semantics between an `ElementLocator`
+- `LocatorMatcher`: pure matching semantics between an `ElementLocator`
   and an element snapshot (exact, substring, near-miss), unit-testable
   without live UIA.
-- `ElementFinder` (internal) — strict single-element resolution across all
+- `ElementFinder` (internal): strict single-element resolution across all
   windows of the process: fails with candidate listings on ambiguity (no
   silent first-match), suggests near misses when nothing matches, and
   tolerates `COMException` from elements tearing down mid-walk.
-- `ActionInvoker` — clicks (Invoke / Toggle / mouse fallback; double and
+- `ActionInvoker`: clicks (Invoke / Toggle / mouse fallback; double and
   right click variants), coordinate clicks (`ClickPoint`, window- or
   screen-space, the action partner of visual grounding), types (writable Value
   pattern / keyboard fallback), selects items in ComboBox/ListBox/Tab
@@ -156,19 +156,19 @@ Wraps FlaUI (UIA3):
   across Winsight processes. The outermost lease also enforces the
   yield-to-user policy and records its injection window in the input ledger
   (see UserActivity).
-- `ElementStateReader` — builds `ElementState` snapshots from located
+- `ElementStateReader`: builds `ElementState` snapshots from located
   elements (the UI-level oracle behind `get_element_state`).
-- `AssertionEvaluator` — pure operator evaluation (equals/contains/greater_than/
-  checked/enabled/…) over an `ElementState`, behind the `assert_element` tool and
+- `AssertionEvaluator`: pure operator evaluation (equals/contains/greater_than/
+  checked/enabled/...) over an `ElementState`, behind the `assert_element` tool and
   the `assert` run_steps step; text operators compare Value, falling back to Name.
-- `ElementWaiter` — polls a locator until a `WaitCondition` holds or a
+- `ElementWaiter`: polls a locator until a `WaitCondition` holds or a
   timeout elapses (`UiaDefaults` carries the defaults and caps).
-- `UiaDefaults` — centralized timeouts, poll intervals, and candidate
+- `UiaDefaults`: centralized timeouts, poll intervals, and candidate
   caps; wait timeout overridable via `WINSIGHT_UIA_WAIT_TIMEOUT_MS`.
 
 ### Winsight.Core/Modules/Lifecycle
 
-- `AppLauncher` — starts an executable and waits until its window is present
+- `AppLauncher`: starts an executable and waits until its window is present
   (main window, or one matching a title fragment) before returning a classified
   `LaunchResult`, removing the shell-out-then-poll startup race; also closes a
   process gracefully (`CloseMainWindow`), preserving a still-running application,
@@ -177,7 +177,7 @@ Wraps FlaUI (UIA3):
 
 ### Winsight.Core/Modules/Orchestration
 
-- `StepRunner` — executes a `BatchStep[]` sequence in one pass, dispatching each
+- `StepRunner`: executes a `BatchStep[]` sequence in one pass, dispatching each
   step to the existing action/sync/oracle/capture primitives (no duplicated
   logic). Steps are exception-isolated (one failure becomes that step's result,
   not a batch abort), stop-on-error halts at the first failure, and the run
@@ -197,7 +197,7 @@ Wraps FlaUI (UIA3):
 
 Wraps Microsoft.Diagnostics.Runtime (CLRMD).
 
-- `ManagedStateReader` — attaches non-suspending to a managed process, walks
+- `ManagedStateReader`: attaches non-suspending to a managed process, walks
   the heap, finds the first instance of the requested type, and reads a named
   field. Supports primitive element types and reference summaries.
 
@@ -209,7 +209,7 @@ this repo). Cross-bitness inspection is not supported.
 Window screenshot capture via the Win32 `PrintWindow` API with the
 `PW_RENDERFULLCONTENT` flag (Windows 8.1+).
 
-- `WindowCapture` — locates visible top-level Win32 windows by process id,
+- `WindowCapture`: locates visible top-level Win32 windows by process id,
   optionally filters by title substring, allocates a matching `Bitmap`, calls
   `PrintWindow`, and saves a PNG to the requested path. Full-window captures
   default to the topmost visible window in z-order so modal dialogs and popups
@@ -227,12 +227,12 @@ rectangles.
 Discovers embedded WebView2 instances and their Chrome DevTools Protocol
 endpoints, so AI agents can attach Playwright/Puppeteer over CDP.
 
-- `WebView2Detector` — single-query WMI walk of `Win32_Process`, traverses
+- `WebView2Detector`: single-query WMI walk of `Win32_Process`, traverses
   the descendant tree from a host pid, and reports each `msedgewebview2.exe`
   child along with any `--remote-debugging-port=N` it was launched with.
   Cross-references with `IPGlobalProperties.GetActiveTcpListeners()` to
   confirm whether the port is actually listening.
-- `WebView2CommandLineParser` — pure-function helper that extracts the
+- `WebView2CommandLineParser`: pure-function helper that extracts the
   debugging port from a process command line. Easy to unit-test.
 
 This module does not start or modify the WebView2 environment. Enabling CDP
@@ -245,28 +245,28 @@ usable is found.
 ### Winsight.Core/Modules/Diagnostics
 
 Non-intrusive observability of managed (.NET 6+) processes via the
-official EventPipe IPC — the same channel `dotnet-counters` and
+official EventPipe IPC, the same channel `dotnet-counters` and
 `dotnet-trace` use. Crucially, this is **not** raw ETW: no admin
 privileges required, no `CreateRemoteThread` heuristics that EDR products
 flag, and no source code changes in the target.
 
-- `DiagnosticsObserver.ObserveCounters` — opens an EventPipe session for
+- `DiagnosticsObserver.ObserveCounters`: opens an EventPipe session for
   one provider with `EventCounterIntervalSec=1`, listens for
-  `EventCounters` events for a bounded window (500ms–30s), aggregates the
+  `EventCounters` events for a bounded window (500ms-30s), aggregates the
   last observed `Mean` (averaging counters) or `Increment` (monotonic
   counters) value per counter name, and returns the snapshot.
-- `DiagnosticsObserver.CaptureEvents` — opens an EventPipe session
+- `DiagnosticsObserver.CaptureEvents`: opens an EventPipe session
   spanning one or more providers, captures every event (or only those
   matching an exact name filter), normalizes payloads to JSON-safe
   representations, and returns a bounded list with a `Truncated` flag
   when the cap is reached. Default cap is 500 events; max 10,000.
-- `DiagnosticsObserver.CaptureExceptionsDuring` — the causal oracle behind
+- `DiagnosticsObserver.CaptureExceptionsDuring`: the causal oracle behind
   `run_steps captureExceptions`: starts a CLR-exception EventPipe session,
   settles, runs the supplied action, drains, and stops, returning the exceptions
   thrown during the action. Uses the strongly-typed `ClrTraceEventParser`
   (`ExceptionStart`) because the Dynamic parser cannot decode the manifest-based
   `Microsoft-Windows-DotNETRuntime` payloads over EventPipe.
-- `PayloadNormalizer` — pure-function helper that converts arbitrary
+- `PayloadNormalizer`: pure-function helper that converts arbitrary
   TraceEvent payload values into a JSON-friendly representation
   (primitives pass through, `DateTime` is converted to UTC, `Guid` and
   enums become strings, byte arrays become hex, dictionaries and
@@ -279,7 +279,7 @@ The observer is the recommended oracle for two reasons it beats CLRMD:
    malware patterns and trip CrowdStrike Falcon, SentinelOne, and
    Microsoft Defender for Endpoint. EventPipe IPC does not.
 2. Time-series semantic. Counters give you allocation rate, exception
-   rate, GC frequency, thread pool growth — useful for "did this scenario
+   rate, GC frequency, thread pool growth, useful for "did this scenario
    leak?" oracles that a single point-in-time field read cannot answer.
 
 CLRMD remains the right tool when you need to read a specific field on a
@@ -292,31 +292,31 @@ DirectX surfaces, WebView2 content) by submitting a window screenshot
 plus a natural-language query to a vision model and reading back a
 bounding box.
 
-- `IElementGrounder` — the contract: `FindAsync(screenshotPath, query, ct)`
+- `IElementGrounder`, the contract: `FindAsync(screenshotPath, query, ct)`
   returns a `GroundedElement` (center coordinates, bounding box,
   confidence, reasoning, source).
-- `AnthropicVisionGrounder` — default implementation. Reads
+- `AnthropicVisionGrounder`: default implementation. Reads
   `ANTHROPIC_API_KEY` from the environment, calls the Anthropic Messages
   API with the screenshot encoded as base64 and a tightly-constrained
   prompt that asks for JSON-only output. Default model is
   `claude-sonnet-4-6`; override via `WINSIGHT_VISION_MODEL`. The endpoint
   itself can be overridden via `WINSIGHT_VISION_API_URL` for self-hosted
   proxies or routing through a corporate gateway.
-- `AnthropicResponseParser` — extracts the model's JSON object from the
+- `AnthropicResponseParser`: extracts the model's JSON object from the
   response envelope, robust to wrapping prose, markdown code fences,
   numeric strings, and braces inside reasoning text.
-- `OnnxLocalGrounder` — selectable with `WINSIGHT_VISION_BACKEND=onnx`. A fully
+- `OnnxLocalGrounder`: selectable with `WINSIGHT_VISION_BACKEND=onnx`. A fully
   local backend running Qwen2.5-VL-3B as a 3-ONNX split (vision encoder + token
   embedding + decoder) on plain ONNX Runtime with a hand-rolled mRoPE generation
   loop. It validates `WINSIGHT_VISION_ONNX_PATH` and requires
   `WINSIGHT_VISION_EP=cpu`, fails explicitly when misconfigured, and never falls
   back to the cloud. Execution is CPU-only in this build (the decoder's fused
-  MultiHeadAttention op is not yet supported on the DirectML EP — a tracked
+  MultiHeadAttention op is not yet supported on the DirectML EP; a tracked
   follow-up).
-- `QwenImagePreprocessing` / `QwenVisionTokenizer` — C# reimplementations of the
+- `QwenImagePreprocessing` / `QwenVisionTokenizer`: C# reimplementations of the
   Qwen2.5-VL smart-resize + patchify and the byte-level BPE tokenizer (via
   `CodeGenTokenizer` over a vocab patched with Qwen special tokens).
-- `GroundingCoordinateParser` — turns the model's textual point `[x,y]` or box
+- `GroundingCoordinateParser`: turns the model's textual point `[x,y]` or box
   `[x1,y1,x2,y2]` output (absolute pixels in the resized image space) into one
   click center; the grounder denormalizes it to original-image pixels and stores
   it in `GroundedElement` as a zero-area box.
@@ -342,20 +342,20 @@ image metrics. This module intentionally does not use Anomalib/PatchCore:
 Winsight drives the app into known states, so it has a baseline and does not
 need unsupervised novelty detection.
 
-- `VisualDiffer` — loads two same-sized PNGs, computes grayscale SSIM (Gaussian
+- `VisualDiffer`: loads two same-sized PNGs, computes grayscale SSIM (Gaussian
   11x11, sigma 1.5) both as a global mean and as the worst NxN block (local SSIM,
   to catch small localized changes), computes a pixelmatch-style YIQ pixel-diff
   ratio with anti-aliased-edge detection, and writes an optional red heatmap.
-- `VisualDiffOptions` — global + local SSIM thresholds, pixel-diff threshold,
+- `VisualDiffOptions`: global + local SSIM thresholds, pixel-diff threshold,
   pixelmatch color threshold, ignore rectangles, and optional diff-map path.
   Defaults are read from `WINSIGHT_VISUAL_SSIM_THRESHOLD`,
   `WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD`, `WINSIGHT_VISUAL_PIXEL_THRESHOLD`, and
   `WINSIGHT_VISUAL_COLOR_THRESHOLD`.
-- `VisualDiffResult` — pass/fail (or baseline-created/updated) verdict, global
+- `VisualDiffResult`: pass/fail (or baseline-created/updated) verdict, global
   SSIM, local SSIM minimum, pixel-diff ratio, diff-map path, and reasoning
   returned by `compare_visual_baseline`. Captures use the window client area for
   determinism.
-- `VisualIgnoreRegion` — JSON-friendly rectangle DTO used by the MCP tool to
+- `VisualIgnoreRegion`: JSON-friendly rectangle DTO used by the MCP tool to
   mask dynamic UI such as clocks, cursors, caret blinks, or animations.
 
 The comparison fails hard on image-size differences. Ignore rectangles exclude
@@ -435,7 +435,7 @@ copied it from has been rebuilt since (`WINSIGHT_SOURCE_BUILD_DIR`). A client
 session keeps the server process it started with, so a stale tool list is
 visible there.
 
-Logging is forced to stderr — stdout is reserved for the MCP protocol.
+Logging is forced to stderr: stdout is reserved for the MCP protocol.
 
 ## Threading and lifetime
 
@@ -464,7 +464,7 @@ image-returning capture tools). The guard:
   `WINSIGHT_TRACE_DIR` is set: tool name, duration, success/error, and
   payload byte count.
 - Lets truly fatal exceptions propagate (`OutOfMemoryException`,
-  `StackOverflowException`, `ThreadAbortException`) — masking those
+  `StackOverflowException`, `ThreadAbortException`): masking those
   would hide a process-wide failure.
 
 The reason this guard exists rather than relying on the MCP framework's

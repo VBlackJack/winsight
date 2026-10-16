@@ -25,7 +25,7 @@ namespace Winsight.Mcp.Tests;
 /// ToolSafety is the outer guard at the MCP tool boundary. If it stops working,
 /// any unhandled exception inside any tool will kill the .NET host and close
 /// the stdio transport, leaving every other tool dead for the rest of the
-/// agent session — exactly the regression that triggered its introduction.
+/// agent session, exactly the regression that triggered its introduction.
 /// These tests pin down its invariants.
 /// </summary>
 public class ToolSafetyTests
@@ -55,7 +55,7 @@ public class ToolSafetyTests
     [Fact]
     public void Catches_com_exception_so_uia_failures_do_not_kill_the_host()
     {
-        // COMException is the canonical UIA failure type — Codex hit one in the
+        // COMException is the canonical UIA failure type; Codex hit one in the
         // wild while driving Win11Forge, which crashed the whole MCP host.
         // CA2201 normally forbids throwing reserved exceptions, but here we are
         // simulating a runtime-originated COMException to validate the guard.

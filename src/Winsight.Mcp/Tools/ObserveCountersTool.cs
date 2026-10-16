@@ -28,7 +28,7 @@ public static class ObserveCountersTool
 
     [McpServerTool(Name = "observe_counters")]
     [Description("Subscribe to .NET EventCounters from a managed process via EventPipe (the official " +
-                 "Microsoft diagnostic IPC, not raw ETW — works without admin and is invisible to EDR " +
+                 "Microsoft diagnostic IPC, not raw ETW, so it works without admin and is invisible to EDR " +
                  "since it is the same channel dotnet-counters and dotnet-trace use). " +
                  "Useful as a non-intrusive oracle: read exception-count, cpu-usage, alloc-rate, gc-heap-size, " +
                  "threadpool-thread-count, and other counters before/after an action to assert behavior. " +
@@ -41,7 +41,7 @@ public static class ObserveCountersTool
         string providerName = DefaultProvider,
         [Description("Observation window in milliseconds. Min 500, max 30000. Default 2000.")]
         int durationMs = 2000,
-        [Description("Target managed process id. Optional — falls back to the session default set by set_target.")]
+        [Description("Target managed process id. Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>

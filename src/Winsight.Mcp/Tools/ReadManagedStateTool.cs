@@ -36,7 +36,7 @@ public static class ReadManagedStateTool
         string typeName,
         [Description("Field name on the type, including backing-field naming, e.g. '_internalCount'.")]
         string fieldName,
-        [Description("Target managed process id. Optional — falls back to the session default set by set_target.")]
+        [Description("Target managed process id. Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>

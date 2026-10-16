@@ -47,7 +47,7 @@ public static class TypeIntoWebViewTool
         [Description("Optional per-command timeout in milliseconds. Defaults to " +
                      "WINSIGHT_CDP_TIMEOUT_MS or 10000.")]
         int? timeoutMs = null,
-        [Description("Host process id that owns the WebView2 endpoint. Optional — falls back to the session default set by set_target.")]
+        [Description("Host process id that owns the WebView2 endpoint. Optional; falls back to the session default set by set_target.")]
         int? hostProcessId = null)
     {
         return ToolSafety.SafeInvokeAsync(async () =>

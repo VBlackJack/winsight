@@ -18,7 +18,7 @@ namespace Winsight.Core.Models;
 /// One step in a <c>run_steps</c> batch. A flat, discriminated shape: the
 /// <see cref="Action"/> selects which underlying primitive runs, and the rest
 /// of the fields carry that primitive's parameters (only the relevant ones are
-/// read). Keeping it flat — rather than a polymorphic union — is what lets an
+/// read). Keeping it flat (rather than a polymorphic union) is what lets an
 /// LLM fill a step reliably.
 /// </summary>
 public sealed record BatchStep(

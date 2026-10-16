@@ -23,8 +23,8 @@ using Xunit;
 namespace Winsight.Core.Tests;
 
 /// <summary>
-/// Covers the orchestration logic — sequencing, the journal, stop-on-error, and
-/// pre-dispatch validation — using steps that fail before touching live UIA, so
+/// Covers the orchestration logic (sequencing, the journal, stop-on-error, and
+/// pre-dispatch validation) using steps that fail before touching live UIA, so
 /// no desktop is required.
 /// </summary>
 public sealed class StepRunnerTests

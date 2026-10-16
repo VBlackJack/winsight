@@ -26,10 +26,10 @@ public static class ListWindowsTool
 {
     [McpServerTool(Name = "list_windows")]
     [Description("Enumerate top-level windows, in z-order (topmost first). Without processId, returns " +
-                 "every named window on the desktop — use it to discover candidate target processes. " +
+                 "every named window on the desktop; use it to discover candidate target processes. " +
                  "With processId, returns that process's full window stack exhaustively, including " +
                  "untitled modal dialogs, MessageBoxes, dropdown menus, flyouts, and tooltip overlays " +
-                 "that desktop enumeration hides — use it to find the dialog or overlay to act on, then " +
+                 "that desktop enumeration hides; use it to find the dialog or overlay to act on, then " +
                  "scope other tools to it via windowTitle. Each window reports process id, native window " +
                  "handle, title, process name, foreground flag, bounding rectangle, plus kind " +
                  "(main/dialog/popup/menu/tooltip/other), className, ownerHandle, and isModal. " +

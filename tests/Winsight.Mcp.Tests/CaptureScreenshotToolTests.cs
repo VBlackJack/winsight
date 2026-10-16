@@ -46,7 +46,7 @@ public class CaptureScreenshotToolTests
         root.GetProperty("error").GetString()
             .Should().Contain($"process {NoWindowProcessId}");
         // JsonOptions.Default ignores null members, so `data` is absent on
-        // failure — that is expected and matches every other failing tool's shape.
+        // failure; that is expected and matches every other failing tool's shape.
         root.TryGetProperty("data", out _).Should().BeFalse();
     }
 

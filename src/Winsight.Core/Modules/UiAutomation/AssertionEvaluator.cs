@@ -45,7 +45,7 @@ public readonly record struct AssertionResult(bool Passed, string Detail);
 /// Evaluates an assertion against an <see cref="ElementState"/>. Pure, so the
 /// pass/fail semantics behind the <c>assert</c> step and <c>assert_element</c>
 /// tool are unit-tested without live UI Automation. Text comparisons use the
-/// element's Value when it has one, otherwise its Name — so both inputs and
+/// element's Value when it has one, otherwise its Name, so both inputs and
 /// labels can be asserted.
 /// </summary>
 public static class AssertionEvaluator

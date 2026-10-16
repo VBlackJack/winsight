@@ -25,10 +25,10 @@ namespace Winsight.Mcp.Tools;
 public static class DescribeUiTool
 {
     [McpServerTool(Name = "describe_ui")]
-    [Description("Answer \"what can I do here?\" — return the window's actionable elements as a compact, " +
+    [Description("Answer \"what can I do here?\": return the window's actionable elements as a compact, " +
                  "position-ordered list (top-to-bottom, left-to-right) instead of a full UIA tree. Each " +
                  "entry keeps only what you need to act: controlType, label (name), value/toggle/selection " +
-                 "and enabled/visible state, bounds, and a recommendedLocator — the smallest criterion " +
+                 "and enabled/visible state, bounds, and a recommendedLocator, the smallest criterion " +
                  "(automationId, else name, else controlType+index) that targets it for click_element / " +
                  "type_text / select_item. Use this to orient on an unfamiliar window before acting; reach " +
                  "for inspect_ui_tree only when you need the full structure. Interactable kinds: buttons, " +
@@ -42,7 +42,7 @@ public static class DescribeUiTool
         string? windowTitle = null,
         [Description("Maximum elements to return. Default 200.")]
         int maxResults = AffordanceScanner.DefaultMaxResults,
-        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id (from list_windows). Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>

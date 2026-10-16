@@ -47,7 +47,7 @@ public static class FindElementVisuallyTool
                  "Default backend is the Anthropic Claude Sonnet 4.6 vision API; configure it with " +
                  "the ANTHROPIC_API_KEY environment variable. Set WINSIGHT_VISION_BACKEND=onnx for the " +
                  "fully local Qwen2.5-VL backend (WINSIGHT_VISION_ONNX_PATH), which runs on-host and " +
-                 "never falls back to cloud — use it for regulated or sensitive content.")]
+                 "never falls back to cloud, so use it for regulated or sensitive content.")]
     public static Task<string> FindElementVisuallyAsync(
         IElementGrounder grounder,
         WindowCapture capture,
@@ -63,7 +63,7 @@ public static class FindElementVisuallyTool
                      "When set, the point is clicked via click_point and the click result is returned " +
                      "alongside the grounding. Omit to only locate.")]
         string? act = null,
-        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id (from list_windows). Optional; falls back to the session default set by set_target.")]
         int? processId = null,
         CancellationToken cancellationToken = default)
     {

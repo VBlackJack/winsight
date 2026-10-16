@@ -25,7 +25,7 @@ namespace Winsight.Mcp.Tools;
 /// Outer guard applied at the tool boundary so no exception ever escapes to the
 /// MCP transport. An unhandled exception in a tool kills the entire .NET host
 /// process, which closes the stdio transport and renders every other tool
-/// permanently unusable for the rest of the agent's session — observed in the
+/// permanently unusable for the rest of the agent's session, as observed in the
 /// wild on UIA work that surfaced a COMException. Wrapping every tool in this
 /// helper turns any throw into a structured OperationResult the agent can act on.
 /// </summary>

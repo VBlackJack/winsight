@@ -17,7 +17,7 @@ namespace Winsight.Core.Models;
 /// <summary>
 /// A structural snapshot of a process's UI at a point in time: its top-level
 /// windows and its actionable elements. Diffing two snapshots yields what
-/// changed after an action — the agent's feedback sense.
+/// changed after an action: the agent's feedback sense.
 /// </summary>
 public sealed record UiSnapshot(
     IReadOnlyList<WindowDescriptor> Windows,

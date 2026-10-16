@@ -72,7 +72,7 @@ public class DescribeUiScenarioTests
             // The ComboBox is surfaced too (a select_item target).
             elements.Should().Contain(e => e.AutomationId == OptionSelectorId && e.ControlType == "ComboBox");
 
-            // Only interactable kinds — the static Count label is not in the list.
+            // Only interactable kinds: the static Count label is not in the list.
             elements.Should().NotContain(e => e.AutomationId == ReadyLabelId);
         }
         finally
