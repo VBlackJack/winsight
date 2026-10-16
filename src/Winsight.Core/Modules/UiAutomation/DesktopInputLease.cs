@@ -13,10 +13,16 @@
 // limitations under the License.
 
 using System.Diagnostics;
+using Winsight.Core.Modules.UserActivity;
 
 namespace Winsight.Core.Modules.UiAutomation;
 
-/// <summary>Cross-process arbitration within the interactive Windows session; sync and reentrant.</summary>
+/// <summary>
+/// Cross-process arbitration within the interactive Windows session; sync and
+/// reentrant. The outermost lease also enforces the yield-to-user policy and
+/// records its injection window in the session input ledger, so every
+/// Winsight process can tell its own input from a human's.
+/// </summary>
 public sealed class DesktopInputLease : IDisposable
 {
     private const int DefaultWaitMs = 1000;
@@ -45,6 +51,30 @@ public sealed class DesktopInputLease : IDisposable
             mutex.Dispose();
             throw new TimeoutException("desktop_busy: another Winsight instance is using this desktop. Observe again before retrying.");
         }
+        string? refusal;
+        try
+        {
+            // Sample before marking the injection, so the input that preceded it
+            // is recorded as human even when the yield policy is off.
+            long? humanIdleMs = UserActivityMonitor.ReadHumanIdleMs();
+            refusal = UserActivityPolicy.CheckYield(UserActivityPolicy.YieldToUserMs, () => humanIdleMs);
+            if (refusal is null)
+            {
+                InputLedger.MarkInjectionStart(UserActivityMonitor.TickNow());
+            }
+        }
+        catch
+        {
+            mutex.ReleaseMutex();
+            mutex.Dispose();
+            throw;
+        }
+        if (refusal is not null)
+        {
+            mutex.ReleaseMutex();
+            mutex.Dispose();
+            throw new InvalidOperationException(refusal);
+        }
         _depth = 1;
         return new DesktopInputLease(mutex);
     }
@@ -56,6 +86,7 @@ public sealed class DesktopInputLease : IDisposable
         _depth--;
         if (_mutex is not null)
         {
+            InputLedger.MarkInjectionEnd(UserActivityMonitor.TickNow());
             _mutex.ReleaseMutex();
             _mutex.Dispose();
         }

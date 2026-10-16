@@ -37,10 +37,12 @@ public sealed class ActionInvoker
     private const int TooltipPollIntervalMs = 50;
     private const int TooltipProximityPx = 400;
     private const int TooltipTextDepth = 3;
-    private const int PreHoverSettleMs = 150;
+    private const int PreHoverSettleMs = PointerDispatch.DefaultSettleMs;
     private const int FocusInputSettleMs = 100;
     private const int SystemMetricDragWidth = 68;
     private const int SystemMetricDragHeight = 69;
+    private const string FocusedWindowChanged =
+        "The target window changed while it was brought to the foreground. Observe again before retrying.";
 
     /// <summary>
     /// Click the located element. <see cref="ClickStyle.Primary"/> prefers the
@@ -69,12 +71,8 @@ public sealed class ActionInvoker
             switch (style)
             {
                 case ClickStyle.DoubleClick:
-                    element.DoubleClick();
-                    return OperationResult.Ok();
-
                 case ClickStyle.RightClick:
-                    element.RightClick();
-                    return OperationResult.Ok();
+                    return PointerDispatch.Click(ClickablePoint(element), style) ?? OperationResult.Ok();
 
                 default:
                     return InvokePrimaryAction(element);
@@ -89,7 +87,11 @@ public sealed class ActionInvoker
     /// When <paramref name="windowRelative"/> is true the point is interpreted in
     /// the target window's coordinate space (same origin as a full-window
     /// screenshot) and translated to screen space; otherwise it is treated as an
-    /// absolute screen coordinate.
+    /// absolute screen coordinate. The pointer moves first, settles for
+    /// <paramref name="settleMs"/> (see <see cref="PointerDispatch"/>), and the
+    /// press happens only if it is still there. With
+    /// <paramref name="focusWindow"/> the target window is raised and verified
+    /// in the foreground before the point is validated.
     /// </summary>
     public OperationResult ClickPoint(
         int processId,
@@ -99,33 +101,59 @@ public sealed class ActionInvoker
         string? windowTitle = null,
         bool windowRelative = true,
         bool allowOutOfWindow = false,
-        WindowIdentity? expectedWindow = null)
+        WindowIdentity? expectedWindow = null,
+        bool focusWindow = false,
+        int? settleMs = null)
     {
+        if (PointerDispatch.ValidateSettle(settleMs) is { } settleError)
+        {
+            return OperationResult.Failure(settleError);
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
-            return ClickPointCore(processId, x, y, style, windowTitle, windowRelative, allowOutOfWindow, expectedWindow);
+            return ClickPointCore(
+                processId, x, y, style, windowTitle, windowRelative, allowOutOfWindow, expectedWindow,
+                focusWindow, settleMs);
         }
     }
 
     private static OperationResult ClickPointCore(
         int processId, int x, int y, ClickStyle style, string? windowTitle,
-        bool windowRelative, bool allowOutOfWindow, WindowIdentity? expectedWindow)
+        bool windowRelative, bool allowOutOfWindow, WindowIdentity? expectedWindow,
+        bool focusWindow, int? settleMs)
     {
-        WindowIdentity window;
-        if (expectedWindow is not null)
+        if (expectedWindow is not null && expectedWindow.ProcessId != processId)
         {
-            if (expectedWindow.ProcessId != processId)
-            {
-                return OperationResult.Failure("The captured window belongs to a different process.");
-            }
-            window = expectedWindow;
+            return OperationResult.Failure("The captured window belongs to a different process.");
         }
-        else if (!WindowGeometry.TryResolveWindow(
-                     processId, windowTitle, out window, out string? resolveError,
-                     screenPoint: !windowRelative && !allowOutOfWindow ? new System.Drawing.Point(x, y) : null))
+        if (!TryResolveClickWindow(processId, x, y, windowTitle, windowRelative, allowOutOfWindow, expectedWindow,
+                out WindowIdentity window, out string? resolveError))
         {
             return OperationResult.Failure(resolveError!);
+        }
+        if (focusWindow)
+        {
+            WindowFocusResult focus = WindowFocus.FocusWindow(
+                new IntPtr(window.Handle), windowTitle ?? string.Empty, processId);
+            if (!focus.Success)
+            {
+                return OperationResult.Failure(focus.Error!);
+            }
+            // Raising a minimized or covered window can move it: resolve its frame again.
+            if (expectedWindow is null)
+            {
+                if (!TryResolveClickWindow(processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null,
+                        out WindowIdentity raised, out resolveError))
+                {
+                    return OperationResult.Failure(resolveError!);
+                }
+                if (raised.Handle != window.Handle)
+                {
+                    return OperationResult.Failure(FocusedWindowChanged);
+                }
+                window = raised;
+            }
         }
         int screenX;
         int screenY;
@@ -161,26 +189,45 @@ public sealed class ActionInvoker
         }
 
         System.Drawing.Point point = new(screenX, screenY);
-        // Recheck immediately before dispatch, after all coordinate validation.
-        if (!WindowGeometry.TryValidatePointRecipient(
-                window, screenX, screenY, allowOutOfWindow && expectedWindow is null, out string? recipientError))
+        bool allowOtherWindow = allowOutOfWindow && expectedWindow is null;
+        // Check before the move, then again after the settle: hovering can open
+        // a popup over the point.
+        string? RecipientRefusal() =>
+            WindowGeometry.TryValidatePointRecipient(window, screenX, screenY, allowOtherWindow, out string? error)
+                ? null
+                : error;
+        if (RecipientRefusal() is { } recipientError)
         {
-            return OperationResult.Failure(recipientError!);
+            return OperationResult.Failure(recipientError);
         }
-        switch (style)
-        {
-            case ClickStyle.DoubleClick:
-                Mouse.DoubleClick(point, MouseButton.Left);
-                break;
-            case ClickStyle.RightClick:
-                Mouse.Click(point, MouseButton.Right);
-                break;
-            default:
-                Mouse.Click(point, MouseButton.Left);
-                break;
-        }
+        return PointerDispatch.Click(point, style, settleMs, RecipientRefusal)
+            ?? OperationResult.OkWith(new ClickPointResult(screenX, screenY));
+    }
 
-        return OperationResult.OkWith(new ClickPointResult(screenX, screenY));
+    private static bool TryResolveClickWindow(
+        int processId, int x, int y, string? windowTitle, bool windowRelative, bool allowOutOfWindow,
+        WindowIdentity? expectedWindow, out WindowIdentity window, out string? error)
+    {
+        if (expectedWindow is not null)
+        {
+            window = expectedWindow;
+            error = null;
+            return true;
+        }
+        return WindowGeometry.TryResolveWindow(
+            processId, windowTitle, out window, out error,
+            screenPoint: !windowRelative && !allowOutOfWindow ? new System.Drawing.Point(x, y) : null);
+    }
+
+    /// <summary>The element's clickable point, or the center of its bounds when it publishes none.</summary>
+    private static System.Drawing.Point ClickablePoint(AutomationElement element)
+    {
+        if (element.TryGetClickablePoint(out System.Drawing.Point clickable))
+        {
+            return clickable;
+        }
+        System.Drawing.Rectangle bounds = element.BoundingRectangle;
+        return new System.Drawing.Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
     }
 
     /// <summary>
@@ -615,8 +662,7 @@ public sealed class ActionInvoker
             return OperationResult.Ok();
         }
 
-        element.Click();
-        return OperationResult.Ok();
+        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary) ?? OperationResult.Ok();
     }
 
     internal static string WebView2InputRefusal(

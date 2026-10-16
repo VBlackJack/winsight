@@ -30,7 +30,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 51 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 53 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -194,7 +194,9 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 51 tools.
+server is connected and lists all 53 tools.
+After rebuilding Winsight, restart the client session: a session keeps the
+server process, and the tool list, it started with.
 
 ### Smoke check from the shell
 
@@ -309,10 +311,12 @@ For measured model trials and application-specific suites, see
 | `describe_ui`                 | List a window's actionable elements with ready-to-use locators ("what can I do here?") |
 | `snapshot_ui` / `diff_ui`     | Capture a UI baseline and report what an action changed (windows, elements, field values) |
 | `click_element`               | Click a located element (single/double/right, strict locators) |
-| `click_point`                 | Click a window-relative or bounded screen coordinate (acts on a visually grounded point) |
+| `click_point`                 | Click a window-relative or bounded screen coordinate (acts on a visually grounded point); the pointer settles before the press, and `focusWindow` raises the target first |
 | `type_text`                   | Type into a located element (refuses WebView2 targets) |
 | `send_key_chord`              | Focus a window and send a keyboard chord with scan codes and extended-key flags |
 | `get_focused_element`         | Report the element that owns keyboard focus, and whether it is inside WebView2 |
+| `get_user_activity`           | Report whether a person is using the desktop: time since the last human input (Winsight's own input excluded), foreground window, locked session |
+| `wait_for_user_idle`          | Wait until nobody has used the mouse or keyboard for a given time |
 | `hover_element`               | Hover an element and capture/assert its tooltip popup (or HelpText fallback) |
 | `select_item`                 | Select an item by exact name, substring or pattern in a ComboBox/ListBox/Tab/Tree |
 | `drag`                        | Drag between elements or points, paced for OLE drag and drop |
@@ -366,6 +370,7 @@ Optional guardrails:
 | `WINSIGHT_ALLOWED_PROCESS_NAMES` | Comma/semicolon allowlist of process names every process-scoped tool must pass |
 | `WINSIGHT_ALLOWED_EXECUTABLES` | Comma/semicolon allowlist for `launch_app` executable paths |
 | `WINSIGHT_DRY_RUN` | `1`/`true`/`yes` blocks mutating tools and `run_steps` screenshot writes, returning what would have run |
+| `WINSIGHT_YIELD_TO_USER_MS` | Milliseconds: every screen-changing action fails with `user_active` while a human input is more recent than this. Unset or `0` disables it |
 | `WINSIGHT_TRACE` / `WINSIGHT_TRACE_DIR` | Write tool JSONL traces and `run_steps` replay artifacts |
 
 ## License

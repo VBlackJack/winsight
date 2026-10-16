@@ -65,12 +65,12 @@ public static class ManageWindowTool
             {
                 return Serialize(OperationResult.Failure(invalid));
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "manage_window",
                     new { processId = pid, action, x, y, width, height, windowTitle })
-                is { } dryRun)
+                is { } gated)
             {
-                return Serialize(dryRun);
+                return Serialize(gated);
             }
             return Serialize(manager.Apply(pid, parsed, x, y, width, height, windowTitle));
         });

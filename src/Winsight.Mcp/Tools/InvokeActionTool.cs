@@ -31,6 +31,11 @@ public static class InvokeActionTool
         "Send synthetic keyboard input even when it would land inside a WebView2 surface. Default false: " +
         "such input has crashed ctfmon, so prefer type_into_webview for web content.";
 
+    // Kept in step with PointerDispatch.DefaultSettleMs and MaxSettleMs by InvokeActionToolDescriptionTests.
+    internal const string SettleMsDescription =
+        "Milliseconds the pointer rests on the point before the press, so the target sees the move first " +
+        "(0 to 2000, default 150).";
+
     [McpServerTool(Name = "click_element")]
     [Description("Locate a UI element and click it. Locator criteria are combined with AND across all " +
                  "top-level windows of the process; if several elements match, the call fails and lists " +
@@ -74,12 +79,12 @@ public static class InvokeActionTool
                         $"Unknown clickStyle \"{clickStyle}\". Accepted values: {ClickStyleParser.AcceptedValues}."),
                     JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "click_element",
                     new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, clickStyle })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(
@@ -96,7 +101,10 @@ public static class InvokeActionTool
                  "origin as a full-window screenshot), so the (x, y) from find_element_visually can be " +
                  "passed straight through; set coordinateSpace=screen for absolute desktop coordinates. " +
                  "Screen coordinates are still required to fall inside a visible target process window " +
-                 "unless allowOutOfWindow=true. The target window should be visible and unoccluded. Returns " +
+                 "unless allowOutOfWindow=true. The target window should be visible and unoccluded; pass " +
+                 "focusWindow=true to raise it first. The pointer moves, settles for settleMs, and presses only " +
+                 "if it is still there (error cursor_moved otherwise), so immediate-mode UIs (iced, winit, egui) " +
+                 "see the move before the press. Returns " +
                  "an OperationResult JSON whose data carries the absolute screenX/screenY that was clicked.")]
     public static string ClickPoint(
         ActionInvoker invoker,
@@ -113,6 +121,11 @@ public static class InvokeActionTool
         string? coordinateSpace = null,
         [Description("When coordinateSpace=screen, allow the point to be outside the target window bounds. Default false.")]
         bool allowOutOfWindow = false,
+        [Description("Bring the target window to the foreground and verify it before validating the point; " +
+                     "fails if focus cannot be verified. Default false.")]
+        bool focusWindow = false,
+        [Description(SettleMsDescription)]
+        int? settleMs = null,
         [Description(ProcessIdDescription)]
         int? processId = null)
     {
@@ -121,6 +134,10 @@ public static class InvokeActionTool
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
+            }
+            if (PointerDispatch.ValidateSettle(settleMs) is { } settleError)
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(settleError), JsonOptions.Default);
             }
             ClickStyle style = ClickStyle.Primary;
             if (!string.IsNullOrEmpty(clickStyle) && !ClickStyleParser.TryParse(clickStyle, out style))
@@ -149,15 +166,21 @@ public static class InvokeActionTool
                     JsonOptions.Default);
             }
 
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "click_point",
-                    new { processId = pid, x, y, clickStyle, windowTitle, coordinateSpace, allowOutOfWindow })
-                is { } dryRun)
+                    new
+                    {
+                        processId = pid, x, y, clickStyle, windowTitle, coordinateSpace, allowOutOfWindow,
+                        focusWindow, settleMs,
+                    })
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
-            OperationResult result = invoker.ClickPoint(pid, x, y, style, windowTitle, windowRelative, allowOutOfWindow);
+            OperationResult result = invoker.ClickPoint(
+                pid, x, y, style, windowTitle, windowRelative, allowOutOfWindow,
+                focusWindow: focusWindow, settleMs: settleMs);
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -206,12 +229,12 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure("text is required."), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "type_text",
                     new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, focusWindow, allowWebView2Input, textLength = text.Length })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(
@@ -250,12 +273,12 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(parseError!), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "send_key_chord",
                     new { processId = pid, chord, windowTitle, allowWebView2Input })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             OperationResult result = invoker.SendKeyChord(pid, chord, windowTitle, allowWebView2Input);
@@ -310,12 +333,12 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(matcherError!), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "select_item",
                     new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, itemName, itemNameContains, itemNamePattern })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(
@@ -363,12 +386,12 @@ public static class InvokeActionTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(targetError), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "hover_element",
                     new { processId = pid, automationId, name, className, controlType, nameContains, index, windowTitle, expectedTooltipText, timeoutMs })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             ElementLocator locator = LocatorFactory.From(

@@ -35,6 +35,12 @@ public class RunStepsScenarioTests
     private const string CounterFieldName = "_internalCount";
     private const string IncrementButtonId = "IncrementButton";
     private const string CountLabelId = "CountLabel";
+    private const string OpenDialogButtonId = "OpenDialogButton";
+    private const string NoteInputId = "NoteInput";
+    private const string ConfirmNoteButtonId = "ConfirmNoteButton";
+    private const string LastNoteLabelId = "LastNoteLabel";
+    private const string DialogTitleFragment = "Note";
+    private const string NoteText = "dialog inside a guarded batch";
 
     [Fact]
     public void One_batch_clicks_five_times_and_asserts_the_count()
@@ -129,6 +135,51 @@ public class RunStepsScenarioTests
             result.Completed.Should().Be(1);
             result.Steps.Should().HaveCount(2, "the third step must be skipped after the failure");
             result.Steps[1].Error.Should().NotBeNullOrEmpty();
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void A_dialog_opened_by_the_target_does_not_stop_a_guarded_batch()
+    {
+        string executablePath = SampleAppLocator.ResolveExecutablePath();
+        File.Exists(executablePath).Should().BeTrue(
+            $"the sample app must be built before running E2E tests (looked at: {executablePath})");
+
+        using Process process = Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = false })
+            ?? throw new InvalidOperationException("Failed to start sample app.");
+
+        try
+        {
+            var waiter = new ElementWaiter();
+            OperationResult appeared = waiter.Wait(
+                process.Id, new ElementLocator(AutomationId: CountLabelId), WaitCondition.Exists);
+            appeared.Success.Should().BeTrue(appeared.Error);
+
+            var runner = new StepRunner(
+                new ActionInvoker(), waiter, new ElementStateReader(), new WindowCapture());
+            List<BatchStep> steps = new()
+            {
+                new BatchStep("click", Label: "open", AutomationId: OpenDialogButtonId),
+                new BatchStep("wait", AutomationId: NoteInputId, WindowTitle: DialogTitleFragment, Condition: "exists"),
+                new BatchStep("type", Label: "note", AutomationId: NoteInputId, WindowTitle: DialogTitleFragment, Text: NoteText),
+                new BatchStep("click", Label: "confirm", AutomationId: ConfirmNoteButtonId, WindowTitle: DialogTitleFragment),
+                new BatchStep("wait", AutomationId: NoteInputId, Condition: "not_exists"),
+                new BatchStep("click", Label: "after-dialog", AutomationId: IncrementButtonId),
+                new BatchStep("wait", AutomationId: LastNoteLabelId, NameContains: NoteText, Condition: "exists"),
+            };
+
+            BatchResult result = runner.Run(steps, process.Id, stopOnError: true);
+
+            result.ForegroundChanged.Should().BeFalse(
+                "the dialog belongs to the target: " + string.Join("; ", result.Steps.Select(s => s.Error)));
+            result.Success.Should().BeTrue(string.Join("; ", result.Steps.Select(s => s.Error)));
         }
         finally
         {

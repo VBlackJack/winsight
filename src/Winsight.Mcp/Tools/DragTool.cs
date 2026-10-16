@@ -116,12 +116,12 @@ public static class DragTool
             {
                 return Serialize(OperationResult.Failure(invalid));
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "drag",
                     new { processId = pid, source, target = destination, pacing, coordinateSpace = space, allowOutOfWindow, windowTitle })
-                is { } dryRun)
+                is { } gated)
             {
-                return Serialize(dryRun);
+                return Serialize(gated);
             }
 
             return Serialize(invoker.Drag(pid, source, destination, pacing, windowTitle, windowRelative, allowOutOfWindow));

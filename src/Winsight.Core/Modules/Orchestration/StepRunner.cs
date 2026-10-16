@@ -16,6 +16,7 @@ using System.Diagnostics;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.UiAutomation;
+using Winsight.Core.Modules.UserActivity;
 
 namespace Winsight.Core.Modules.Orchestration;
 
@@ -35,17 +36,29 @@ public sealed class StepRunner
     private readonly ElementWaiter _waiter;
     private readonly ElementStateReader _stateReader;
     private readonly WindowCapture _capture;
+    private readonly IForegroundReader _foreground;
 
     public StepRunner(
         ActionInvoker invoker,
         ElementWaiter waiter,
         ElementStateReader stateReader,
         WindowCapture capture)
+        : this(invoker, waiter, stateReader, capture, NativeForegroundReader.Instance)
+    {
+    }
+
+    internal StepRunner(
+        ActionInvoker invoker,
+        ElementWaiter waiter,
+        ElementStateReader stateReader,
+        WindowCapture capture,
+        IForegroundReader foreground)
     {
         _invoker = invoker;
         _waiter = waiter;
         _stateReader = stateReader;
         _capture = capture;
+        _foreground = foreground;
     }
 
     /// <summary>
@@ -54,20 +67,32 @@ public sealed class StepRunner
     /// <paramref name="stopOnError"/> is true, the run stops at the first failing
     /// step; otherwise it runs them all and reports every outcome. When
     /// <paramref name="maxDurationMs"/> is set, the run stops before a step once
-    /// the elapsed time reaches the budget, marking the result timed out.
+    /// the elapsed time reaches the budget, marking the result timed out. When
+    /// <paramref name="stopOnForegroundChange"/> is true, the run stops before a
+    /// screen-changing step if the foreground moved to a window the batch did
+    /// not cause (see <see cref="ForegroundGuard"/>), whatever
+    /// <paramref name="stopOnError"/> says.
     /// </summary>
     public BatchResult Run(
         IReadOnlyList<BatchStep> steps,
         int? defaultProcessId,
         bool stopOnError,
         int? maxDurationMs = null,
-        bool dryRun = false)
+        bool dryRun = false,
+        bool stopOnForegroundChange = true)
     {
         ArgumentNullException.ThrowIfNull(steps);
 
         List<StepResult> results = new(steps.Count);
         int? failedAtIndex = null;
         bool timedOut = false;
+        bool foregroundChanged = false;
+        bool guardForeground = stopOnForegroundChange && !dryRun;
+        HashSet<int> batchProcessIds = steps
+            .Select(step => step.ProcessId ?? defaultProcessId)
+            .OfType<int>()
+            .ToHashSet();
+        ForegroundSample baseline = guardForeground ? _foreground.Read() : default;
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         for (int i = 0; i < steps.Count; i++)
@@ -79,9 +104,29 @@ public sealed class StepRunner
             }
 
             BatchStep step = steps[i];
+            bool screenStep = IsScreenAction(Normalize(step.Action));
+            if (guardForeground && screenStep)
+            {
+                ForegroundSample current = _foreground.Read();
+                if (!ForegroundGuard.Accepts(baseline, current, _foreground.Exists(baseline.Handle), batchProcessIds))
+                {
+                    results.Add(new StepResult(
+                        i, step.Action ?? string.Empty, step.Label, false,
+                        ForegroundGuard.Describe(baseline, current),
+                        new { expectedForeground = baseline, actualForeground = current }));
+                    failedAtIndex ??= i;
+                    foregroundChanged = true;
+                    break;
+                }
+            }
+
             OperationResult outcome = ExecuteSafely(step, defaultProcessId, dryRun);
             results.Add(new StepResult(
                 i, step.Action ?? string.Empty, step.Label, outcome.Success, outcome.Error, outcome.Data));
+            if (guardForeground && screenStep)
+            {
+                baseline = _foreground.Read();
+            }
 
             if (!outcome.Success)
             {
@@ -96,7 +141,8 @@ public sealed class StepRunner
         int completed = results.Count(r => r.Success);
         bool success = failedAtIndex is null && !timedOut;
         return new BatchResult(
-            success, completed, steps.Count, failedAtIndex, results, Exceptions: null, TimedOut: timedOut);
+            success, completed, steps.Count, failedAtIndex, results, Exceptions: null, TimedOut: timedOut,
+            ForegroundChanged: foregroundChanged);
     }
 
     private OperationResult ExecuteSafely(BatchStep step, int? defaultProcessId, bool dryRun)
@@ -113,7 +159,7 @@ public sealed class StepRunner
 
     private OperationResult Execute(BatchStep step, int? defaultProcessId, bool dryRun)
     {
-        string action = (step.Action ?? string.Empty).Trim().ToLowerInvariant();
+        string action = Normalize(step.Action);
         if (action.Length == 0)
         {
             return OperationResult.Failure("BatchStep is missing 'action'.");
@@ -147,9 +193,16 @@ public sealed class StepRunner
                 step.ClickStyle,
                 step.CoordinateSpace,
                 step.AllowOutOfWindow,
+                step.SettleMs,
+                step.FocusWindow,
                 step.WindowTitle,
                 step.OutputPath,
             });
+        }
+
+        if (IsScreenAction(action) && UserActivityPolicy.CheckYield() is { } userActive)
+        {
+            return OperationResult.Failure(userActive);
         }
 
         return action switch
@@ -220,6 +273,10 @@ public sealed class StepRunner
         {
             return clickError;
         }
+        if (PointerDispatch.ValidateSettle(step.SettleMs) is { } settleError)
+        {
+            return OperationResult.Failure(settleError);
+        }
         return TryCoordinateSpace(step.CoordinateSpace, out _, out OperationResult spaceError)
             ? null
             : spaceError;
@@ -262,7 +319,9 @@ public sealed class StepRunner
             style,
             step.WindowTitle,
             windowRelative,
-            step.AllowOutOfWindow ?? false);
+            step.AllowOutOfWindow ?? false,
+            focusWindow: step.FocusWindow ?? false,
+            settleMs: step.SettleMs);
     }
 
     private OperationResult Type(BatchStep step, int processId)
@@ -402,7 +461,13 @@ public sealed class StepRunner
     }
 
     private static bool IsMutatingAction(string action) =>
-        action is "click" or "click_point" or "type" or "key_chord" or "select" or "hover" or "screenshot";
+        IsScreenAction(action) || action is "screenshot";
+
+    // Steps that send input to the desktop; a screenshot only writes a file.
+    private static bool IsScreenAction(string action) =>
+        action is "click" or "click_point" or "type" or "key_chord" or "select" or "hover";
+
+    private static string Normalize(string? action) => (action ?? string.Empty).Trim().ToLowerInvariant();
 
     private static bool IsFatal(Exception ex) =>
         ex is OutOfMemoryException or StackOverflowException or ThreadAbortException;

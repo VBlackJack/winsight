@@ -68,12 +68,12 @@ public static class TypeIntoWebViewTool
             {
                 return JsonSerializer.Serialize(OperationResult.Failure("text is required."), JsonOptions.Default);
             }
-            if (ToolAccessPolicy.DryRunMutation(
+            if (ToolAccessPolicy.GuardMutation(
                     "type_into_webview",
                     new { hostProcessId = pid, port, targetId, textLength = text.Length, focusSelector })
-                is { } dryRun)
+                is { } gated)
             {
-                return JsonSerializer.Serialize(dryRun, JsonOptions.Default);
+                return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
 
             await using CdpClient client = await CdpClient

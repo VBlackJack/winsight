@@ -103,5 +103,30 @@ internal static class AgentRecipeCatalog
             ],
             "The dry-run validates, then the retried action succeeds.",
             "observe with includeScreenshot=true and inspect the affordance list."),
+
+        new(
+            "shared_desktop",
+            "Act on a screen a person is also using without taking it from them.",
+            "Use before any mouse or keyboard action when someone else may be at the machine.",
+            [
+                "get_user_activity: read humanIdleMs, foreground and sessionLocked",
+                "wait_for_user_idle with idleMs before a batch",
+                "run_steps keeps stopOnForegroundChange=true",
+                "on user_active or foreground_changed: wait_for_user_idle, observe, rerun the remaining steps",
+            ],
+            "The batch completes with foregroundChanged=false and no user_active refusal.",
+            "Ask the person for a quiet moment; set WINSIGHT_YIELD_TO_USER_MS to make every action yield."),
+
+        new(
+            "immediate_mode_ui",
+            "Click and verify in GPU-drawn UIs that expose no automation tree (iced, winit, egui).",
+            "Use when observe finds no actionable elements inside the window.",
+            [
+                "capture_screenshot, then pick window-relative coordinates",
+                "click_point focusWindow=true (settleMs raises the default pointer rest if hover lags)",
+                "compare_visual_baseline or capture_screenshot to verify",
+            ],
+            "The capture shows the expected change after the click.",
+            "On cursor_moved, check get_user_activity; on an occluded refusal, retry with focusWindow=true."),
     ];
 }

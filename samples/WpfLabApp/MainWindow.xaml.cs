@@ -38,6 +38,9 @@ public partial class MainWindow : Window
     private const int MaxLogEntries = 300;
     private const int AddTabDelayMs = 700;
     private const string TabDragFormat = "Winsight.WpfLab.TabHeader";
+    private const string PointerProbeArgument = "--pointer-probe";
+    private const int PointerProbeWidth = 480;
+    private const int PointerProbeHeight = 320;
     private static readonly TimeSpan ClockInterval = TimeSpan.FromSeconds(1);
     private static readonly string[] InitialTabs = { "alpha", "beta", "gamma" };
     private static readonly (string Host, string Protocol, int LatencyMs)[] Servers =
@@ -50,6 +53,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _clock;
     private readonly List<(TreeViewItem Item, (string Host, string Protocol, int LatencyMs) Server)> _serverItems = new();
     private LowLevelKeyboardProbe? _keyboardProbe;
+    private PointerProbeWindow? _pointerProbe;
+    private int _probePresses;
     private Point _dragStart;
     private TabItem? _dragCandidate;
     private int _addedTabs;
@@ -80,6 +85,31 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => SizeLabel.Text = string.Create(
             CultureInfo.InvariantCulture, $"Size: {(int)ActualWidth}x{(int)ActualHeight}");
         PreviewKeyDown += OnPreviewKeyDown;
+        ContentRendered += OnContentRendered;
+    }
+
+    // The pointer probe opens on request only: a second top-level window would
+    // change which window the other scenarios focus and capture by default.
+    private void OnContentRendered(object? sender, EventArgs e)
+    {
+        if (!Environment.GetCommandLineArgs().Contains(PointerProbeArgument, StringComparer.OrdinalIgnoreCase) ||
+            !NativeMethods.GetWindowRect(new WindowInteropHelper(this).Handle, out NativeRect frame))
+        {
+            return;
+        }
+        int left = frame.Left + (frame.Right - frame.Left - PointerProbeWidth) / 2;
+        int top = frame.Top + (frame.Bottom - frame.Top - PointerProbeHeight) / 2;
+        _pointerProbe = PointerProbeWindow.Open(left, top, PointerProbeWidth, PointerProbeHeight, OnProbePress);
+    }
+
+    private void OnProbePress(ProbePress press)
+    {
+        _probePresses++;
+        ProbePressKind.Text = press.Kind.ToString();
+        ProbePressPoint.Text = string.Create(CultureInfo.InvariantCulture, $"{press.PressX},{press.PressY}");
+        ProbeHoverPoint.Text = string.Create(CultureInfo.InvariantCulture, $"{press.HoverX},{press.HoverY}");
+        ProbePressCount.Text = _probePresses.ToString(CultureInfo.InvariantCulture);
+        AppendLog($"probe {press.Kind} press={ProbePressPoint.Text} hover={ProbeHoverPoint.Text}");
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -93,6 +123,7 @@ public partial class MainWindow : Window
     {
         _clock.Stop();
         _keyboardProbe?.Uninstall();
+        _pointerProbe?.Dispose();
         base.OnClosed(e);
     }
 
@@ -334,5 +365,18 @@ public partial class MainWindow : Window
     {
         [DllImport("user32.dll")]
         public static extern short GetKeyState(int nVirtKey);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 }

@@ -40,7 +40,8 @@ public sealed record BatchStep(
     int? Y = null,
     string? CoordinateSpace = null,
     bool? AllowOutOfWindow = null,
-    // type.
+    int? SettleMs = null,
+    // type and click_point.
     string? Text = null,
     bool? FocusWindow = null,
     // key_chord.

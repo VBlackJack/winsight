@@ -34,7 +34,7 @@ public static class RunStepsTool
                  "(automationId, name, className, controlType, nameContains, index, descendantText, " +
                  "windowTitle) work like click_element. Actions: " +
                  "'click' (clickStyle), " +
-                 "'click_point' (x, y, clickStyle, coordinateSpace, allowOutOfWindow), " +
+                 "'click_point' (x, y, clickStyle, coordinateSpace, allowOutOfWindow, focusWindow, settleMs), " +
                  "'type' (text, focusWindow), " +
                  "'key_chord' (chord), " +
                  "'select' (itemName), " +
@@ -53,7 +53,10 @@ public static class RunStepsTool
                  "captureExceptions=true to attach, in 'exceptions', the exceptions the target process " +
                  "threw during the batch (a causal oracle; requires the batch-level processId). Does not " +
                  "launch or close apps — use launch_app/close_app around the batch. Set dryRun=true " +
-                 "to validate and journal mutating steps without clicking/typing.")]
+                 "to validate and journal mutating steps without clicking/typing. On a shared desktop the batch " +
+                 "stops with foreground_changed (and foregroundChanged=true) before a step that would touch the " +
+                 "screen if the foreground moved to a window the batch did not open; steps fail with user_active " +
+                 "when WINSIGHT_YIELD_TO_USER_MS is set and a person used the desktop more recently than that.")]
     public static string RunSteps(
         StepRunner runner,
         DiagnosticsObserver diagnostics,
@@ -73,7 +76,10 @@ public static class RunStepsTool
         [Description("When true, mutating steps are journaled but not executed. Also enabled globally by WINSIGHT_DRY_RUN.")]
         bool dryRun = false,
         [Description("When true, write a replay JSON artifact even when WINSIGHT_TRACE is disabled.")]
-        bool traceRun = false)
+        bool traceRun = false,
+        [Description("Stop before a screen-changing step when the foreground moved to a window outside the " +
+                     "batch's processes since the previous one (someone took the screen). Default true.")]
+        bool stopOnForegroundChange = true)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -129,12 +135,14 @@ public static class RunStepsTool
                         effectiveProcessId,
                         stopOnError,
                         maxDurationMs,
-                        effectiveDryRun));
+                        effectiveDryRun,
+                        stopOnForegroundChange));
                 result = batch! with { Exceptions = exceptions };
             }
             else
             {
-                result = runner.Run(prepared, effectiveProcessId, stopOnError, maxDurationMs, effectiveDryRun);
+                result = runner.Run(
+                    prepared, effectiveProcessId, stopOnError, maxDurationMs, effectiveDryRun, stopOnForegroundChange);
             }
 
             result = result with { DryRun = effectiveDryRun };

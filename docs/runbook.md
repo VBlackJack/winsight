@@ -20,6 +20,27 @@ looks like "select" or the best candidate is a combo/list/tab, the draft clicks
 the candidate and sets `requiresReview=true`; observe the opened options, then
 use `select_item` or a `run_steps` `select` step with an explicit `itemName`.
 
+## Shared Desktop
+
+The screen may be in use by a person or by another agent session.
+
+1. `get_user_activity` before taking the mouse or keyboard; `humanIdleMs` is the
+   time since the last human input, Winsight's own input excluded.
+2. `wait_for_user_idle` with the quiet period you need before a batch.
+3. Keep `run_steps stopOnForegroundChange=true` (the default): a batch stops with
+   `foreground_changed` before touching the screen again when someone takes the
+   foreground.
+4. Set `WINSIGHT_YIELD_TO_USER_MS` (for example `5000`) in the server
+   environment to make every screen-changing tool fail with `user_active` while
+   a person is active.
+
+For GPU-drawn UIs without an automation tree (iced, winit, egui), click with
+`click_point focusWindow=true`. The pointer rests on the point before the press
+(`settleMs`, default 150 ms); raise it if the application renders slower.
+
+After rebuilding Winsight, restart the client session. A running session keeps
+the server process it started with, and its tool list, until it reconnects.
+
 ## Drive UIA Through MCP
 
 Do not script UIA by nesting ad-hoc PowerShell inside an agent session.
