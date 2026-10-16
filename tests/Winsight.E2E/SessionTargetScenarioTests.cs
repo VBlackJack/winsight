@@ -26,7 +26,7 @@ namespace Winsight.E2E;
 
 /// <summary>
 /// Proves the set_target ergonomic: after set_target, a process-scoped tool
-/// drives the app without repeating processId — the session default is used.
+/// drives the app without repeating processId: the session default is used.
 /// </summary>
 [Trait("Category", "E2E")]
 public class SessionTargetScenarioTests
@@ -62,7 +62,7 @@ public class SessionTargetScenarioTests
             }
             target.ProcessId.Should().Be(process.Id);
 
-            // click_element with no processId — resolved from the session target.
+            // click_element with no processId, resolved from the session target.
             string clickJson = InvokeActionTool.ClickElement(
                 new ActionInvoker(), target, automationId: IncrementButtonId);
             using (JsonDocument clickDoc = JsonDocument.Parse(clickJson))

@@ -19,19 +19,22 @@ using Xunit;
 namespace Winsight.Mcp.Tests;
 
 /// <summary>
-/// The French documentation uses French accents but none of the typographic
+/// The documentation, English and French, uses none of the typographic
 /// stand-ins for ASCII characters: an ASCII character says the same thing and
-/// survives a Windows console, a diff and a CI log. The scan is recursive, and
-/// a separate test proves it reaches the nested French folder, because a
+/// survives a Windows console, a diff and a CI log. French accents stay allowed.
+/// The scan covers the READMEs, the changelog and docs/ recursively, and a
+/// separate test proves it reaches the nested French folder, because a
 /// non-recursive sweep once passed while whole folders were never opened.
 /// </summary>
 public sealed class DocumentationTypographyGuardTests
 {
     private const string SolutionFile = "Winsight.slnx";
+    private const string EnglishReadme = "README.md";
     private const string FrenchReadme = "README.fr.md";
+    private const string Changelog = "CHANGELOG.md";
     private const string FrenchDocsFolder = "fr";
     private const string DocsFolder = "docs";
-    private const string MarkdownPattern = "*.md";
+    private static readonly string[] DocumentPatterns = { "*.md", "*.html" };
 
     // Refused characters, each with the ASCII to write instead. This table only
     // refuses; arrows, box drawing, check marks and emoji are not in it and stay allowed.
@@ -60,10 +63,10 @@ public sealed class DocumentationTypographyGuardTests
     };
 
     [Fact]
-    public void French_documentation_uses_only_ascii_punctuation_and_french_accents()
+    public void Documentation_uses_only_ascii_punctuation_and_french_accents()
     {
         List<string> findings = new();
-        foreach (string file in FrenchDocuments())
+        foreach (string file in Documents())
         {
             string[] lines = File.ReadAllLines(file);
             for (int line = 0; line < lines.Length; line++)
@@ -84,12 +87,14 @@ public sealed class DocumentationTypographyGuardTests
     public void The_scan_reaches_the_nested_french_folder()
     {
         string frenchFolder = Path.Combine(RepositoryRoot(), DocsFolder, FrenchDocsFolder);
-        List<string> scanned = FrenchDocuments();
+        List<string> scanned = Documents();
 
         scanned.Should().Contain(
             file => Path.GetDirectoryName(file)!.StartsWith(frenchFolder, StringComparison.OrdinalIgnoreCase),
             "the guard must descend into docs/fr, not only read the repository root");
+        scanned.Should().Contain(file => Path.GetFileName(file) == EnglishReadme);
         scanned.Should().Contain(file => Path.GetFileName(file) == FrenchReadme);
+        scanned.Should().Contain(file => Path.GetFileName(file) == Changelog);
     }
 
     [Fact]
@@ -98,12 +103,20 @@ public sealed class DocumentationTypographyGuardTests
         "éèêàâçùîôûëïÉÈÀÇ".Where(Refused.ContainsKey).Should().BeEmpty();
     }
 
-    private static List<string> FrenchDocuments()
+    private static List<string> Documents()
     {
         string root = RepositoryRoot();
-        List<string> files = new() { Path.Combine(root, FrenchReadme) };
-        files.AddRange(Directory.EnumerateFiles(
-            Path.Combine(root, DocsFolder, FrenchDocsFolder), MarkdownPattern, SearchOption.AllDirectories));
+        List<string> files = new()
+        {
+            Path.Combine(root, EnglishReadme),
+            Path.Combine(root, FrenchReadme),
+            Path.Combine(root, Changelog),
+        };
+        foreach (string pattern in DocumentPatterns)
+        {
+            files.AddRange(Directory.EnumerateFiles(
+                Path.Combine(root, DocsFolder), pattern, SearchOption.AllDirectories));
+        }
         return files;
     }
 

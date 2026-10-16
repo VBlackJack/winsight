@@ -7,7 +7,7 @@
 Winsight is a [Model Context Protocol](https://modelcontextprotocol.io) server
 and SDK that lets AI agents (Claude Code, Cursor, Windsurf, custom agents)
 inspect, drive, and assert against Windows desktop applications under
-development — going beyond what UI Automation alone can do.
+development, going beyond what UI Automation alone can do.
 
 ## Get started in 60 seconds
 
@@ -92,10 +92,10 @@ their model/image/reference fixtures are absent.
 | ------------------------------- | ------- | ------- | ------- |
 | Window discovery                | yes     |         |         |
 | Classified windows (dialog/popup/menu/tooltip, owner, modal) |   | yes     |         |
-| Affordance summary (`describe_ui` — actionable elements + locators) |   | yes     |         |
-| Change perception (`snapshot_ui` / `diff_ui` — what an action changed) |   | yes     |         |
+| Affordance summary (`describe_ui`: actionable elements + locators) |   | yes     |         |
+| Change perception (`snapshot_ui` / `diff_ui`: what an action changed) |   | yes     |         |
 | App lifecycle (launch + wait for window, close) |   | yes     |         |
-| Session target (set_target — omit processId per call) |   | yes     |         |
+| Session target (set_target: omit processId per call) |   | yes     |         |
 | UIA tree inspection             | yes     |         |         |
 | Click / type via UIA            | yes     |         |         |
 | Coordinate clicks (window/screen space) |   | yes     |         |
@@ -238,14 +238,14 @@ calls the Anthropic Claude vision API.
 | Variable                    | Required | Default                                  |
 | --------------------------- | -------- | ---------------------------------------- |
 | `WINSIGHT_VISION_BACKEND`   | no       | `anthropic` (`anthropic` or `onnx`)      |
-| `ANTHROPIC_API_KEY`         | yes, for `anthropic` | —                           |
+| `ANTHROPIC_API_KEY`         | yes, for `anthropic` | -                           |
 | `WINSIGHT_VISION_MODEL`     | no       | `claude-sonnet-4-6`                      |
 | `WINSIGHT_VISION_API_URL`   | no       | `https://api.anthropic.com/v1/messages`  |
 | `WINSIGHT_VISION_MIN_CONFIDENCE` | no  | `0.5` (minimum confidence required before `find_element_visually` executes `act`) |
-| `WINSIGHT_VISION_ONNX_PATH` | yes, for `onnx` | —                                |
+| `WINSIGHT_VISION_ONNX_PATH` | yes, for `onnx` | -                                |
 | `WINSIGHT_VISION_EP`        | no, for `onnx` | `cpu` (DirectML is not enabled in this build) |
 
-> **Privacy note** — with the `anthropic` backend, the screenshot is sent to
+> **Privacy note**: with the `anthropic` backend, the screenshot is sent to
 > the configured API. `WINSIGHT_VISION_BACKEND=onnx` runs a local Qwen2.5-VL
 > model fully on-host (see
 > [docs/local-onnx-grounder.md](docs/local-onnx-grounder.md) for provisioning)
@@ -261,7 +261,7 @@ By default `capture_screenshot` and intermediate captures/diff maps taken by
 also return the PNG inline as an MCP image, so an in-process agent sees the UI
 without touching disk; the file path still matters for an out-of-process
 supervisor. Set the `WINSIGHT_OUTPUT_DIR` environment variable to
-redirect captures into a directory a supervisor agent can read — for example a
+redirect captures into a directory a supervisor agent can read, for example a
 folder shared with the agent host. The directory is created on first write;
 an explicit `outputPath` argument to `capture_screenshot` always takes
 precedence.
@@ -354,7 +354,7 @@ For measured model trials and application-specific suites, see
 | `manage_window`               | Move, resize, maximize, minimize or restore a window    |
 | `get_element_state`           | Read an element's state (value, toggle, selection, focus) |
 | `wait_for_element`            | Wait until an element exists/disappears/enables/shows, value or name matches, child count reached, or state is stable |
-| `assert_element`              | Assert a condition on an element (equals/contains/greater_than/checked/enabled/…) with clear pass/fail |
+| `assert_element`              | Assert a condition on an element (equals/contains/greater_than/checked/enabled/...) with clear pass/fail |
 | `read_managed_state`          | Read a managed field via CLRMD attach                  |
 | `capture_screenshot`          | PNG capture of a topmost or title-scoped window, returned inline as an MCP image (PrintWindow PW_RENDERFULLCONTENT) |
 | `compare_visual_baseline`     | Compare a captured window to a baseline PNG (SSIM + pixel diff) |
@@ -382,13 +382,13 @@ the connected agent broad capability over that desktop session:
 - `read_managed_state` attaches to a managed process and reads its memory (CLRMD);
   `observe_counters` / `capture_events` open EventPipe sessions on it.
 - `capture_screenshot` writes to any `outputPath` you pass (it is **not** sandboxed
-  to a directory — the agent already has broad file access, so confining this one
+  to a directory: the agent already has broad file access, so confining this one
   tool would be theater rather than a boundary). `compare_visual_baseline` is the
   exception: its `baselineKey` is confined to the baseline directory.
 
 Run the server only on a development machine you control, under the same user
 account as the agent, against applications you are developing or testing. It runs
-as your user — it grants no privilege you do not already have, and it should not
+as your user: it grants no privilege you do not already have, and it should not
 be exposed to an untrusted client. EventPipe-based oracles
 (`observe_counters`, `capture_events`) are the EDR-friendly path; the CLRMD attach
 in `read_managed_state` uses patterns some endpoint products flag.
@@ -407,4 +407,4 @@ Optional guardrails:
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0, see [LICENSE](LICENSE).

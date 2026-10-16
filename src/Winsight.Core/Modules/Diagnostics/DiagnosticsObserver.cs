@@ -53,7 +53,7 @@ public sealed class DiagnosticsObserver
     /// turning the time-windowed oracle into a causal one: start an EventPipe
     /// session, let it settle, run <paramref name="action"/>, drain briefly, then
     /// stop. Returns the <see cref="ExceptionThrownEventName"/> events observed in
-    /// that window (caught exceptions included — the runtime emits them too).
+    /// that window (caught exceptions included, since the runtime emits them too).
     /// The session is always stopped, even if <paramref name="action"/> throws;
     /// the action is expected to handle its own failures (the run_steps batch
     /// runner never throws), so the captured events are returned on normal

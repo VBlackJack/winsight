@@ -30,7 +30,7 @@ public static class AssertElementTool
                  "less_than (numeric on the value); enabled, disabled, visible, hidden; checked, unchecked " +
                  "(checkboxes); selected; exists. Provide 'expected' for the text/numeric operators. " +
                  "Returns success=true with the detail when the assertion holds, success=false with an " +
-                 "explanatory detail (expected vs actual) when it fails — unlike wait_for_element, this is " +
+                 "explanatory detail (expected vs actual) when it fails; unlike wait_for_element, this is " +
                  "an immediate check, not a poll. Same strict locator semantics as click_element. " +
                  "The same operators are available as an 'assert' step in run_steps.")]
     public static string AssertElement(
@@ -38,7 +38,7 @@ public static class AssertElementTool
         SessionTarget target,
         [Description("Assertion operator (see the list in this tool's description).")]
         string @operator,
-        [Description("Expected operand for text/numeric operators (equals, contains, greater_than, …).")]
+        [Description("Expected operand for text/numeric operators (equals, contains, greater_than, ...).")]
         string? expected = null,
         [Description("Exact AutomationId of the element.")]
         string? automationId = null,
@@ -56,7 +56,7 @@ public static class AssertElementTool
         string? descendantText = null,
         [Description("Restrict the search to windows whose title contains this text (modal dialogs, popups).")]
         string? windowTitle = null,
-        [Description("Target process id. Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id. Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>

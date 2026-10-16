@@ -16,7 +16,7 @@ namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>
 /// Classifies a top-level window into a coarse kind an agent can reason about
-/// — main window, dialog (incl. MessageBox), popup/overlay, menu, or tooltip —
+/// (main window, dialog (incl. MessageBox), popup/overlay, menu, or tooltip)
 /// from its Win32 class name, window styles, and ownership. The goal is to make
 /// transient surfaces (modal dialogs, dropdown menus, flyouts) discoverable, not
 /// merely reachable: an agent can list a process's windows and immediately tell

@@ -43,8 +43,8 @@ public static class CompareVisualBaselineTool
                  "or updateBaseline=true, the current capture is copied as the baseline and the " +
                  "result verdict is baseline_created or baseline_updated instead of pass/fail. " +
                  "The capture is the window CLIENT AREA only (no title bar/borders) for determinism. " +
-                 "Comparison uses pure .NET SSIM (Gaussian 11x11, sigma 1.5) — global and worst-block " +
-                 "local — plus a pixelmatch-style YIQ pixel diff with anti-aliased-edge detection. " +
+                 "Comparison uses pure .NET SSIM (Gaussian 11x11, sigma 1.5), global and worst-block " +
+                 "local, plus a pixelmatch-style YIQ pixel diff with anti-aliased-edge detection. " +
                  "Thresholds default from WINSIGHT_VISUAL_SSIM_THRESHOLD (0.98), " +
                  "WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD (0.85), WINSIGHT_VISUAL_PIXEL_THRESHOLD (0.005), " +
                  "and WINSIGHT_VISUAL_COLOR_THRESHOLD (0.1). Diff heatmaps are written under " +
@@ -77,7 +77,7 @@ public static class CompareVisualBaselineTool
         [Description("Attach the diff heatmap PNG as an inline image when a comparison runs (default " +
                      "true). Lets you see where the UI changed without opening the file.")]
         bool includeImage = true,
-        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id (from list_windows). Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvokeContent(() =>

@@ -24,8 +24,8 @@ using Xunit;
 namespace Winsight.E2E;
 
 /// <summary>
-/// The README's canonical example — "click Increment five times, then confirm
-/// the count" — as one run_steps call instead of six round trips: five clicks
+/// The README's canonical example ("click Increment five times, then confirm
+/// the count") as one run_steps call instead of six round trips: five clicks
 /// plus an inline assertion via wait value_equals, with a single journal back.
 /// </summary>
 [Trait("Category", "E2E")]

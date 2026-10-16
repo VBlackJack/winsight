@@ -76,7 +76,7 @@ public class DiagnosticsScenarioTests
             snapshot.Counters.Should().NotBeEmpty();
             snapshot.Counters.Should().ContainKey("cpu-usage");
 
-            // capture_events (low-rate slice — TplEventSource always emits something during a 1.5s window)
+            // capture_events (low-rate slice: TplEventSource always emits something during a 1.5s window)
             EventCaptureResult capture2 = observer.CaptureEvents(
                 process.Id,
                 providerNames: TplProviders,
@@ -89,7 +89,7 @@ public class DiagnosticsScenarioTests
             capture2.Truncated.Should().BeFalse(
                 "the E2E allows the diagnostics layer's full bounded event budget to avoid machine-noise flakes");
 
-            // detect_webview2_endpoints — sample app has none, exercises the empty path
+            // detect_webview2_endpoints: sample app has none, exercises the empty path
             var detector = new WebView2Detector();
             IReadOnlyList<WebView2Endpoint> endpoints = detector.Detect(process.Id);
             endpoints.Should().BeEmpty(

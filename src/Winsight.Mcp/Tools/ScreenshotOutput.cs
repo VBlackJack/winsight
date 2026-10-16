@@ -65,7 +65,7 @@ internal static class ScreenshotOutput
 
     /// <summary>
     /// Best-effort retention: keep only the most recent <see cref="MaxRetainedPerPrefix"/>
-    /// captures sharing the prefix, deleting older ones. Never throws — disk
+    /// captures sharing the prefix, deleting older ones. Never throws: disk
     /// hygiene must not break a capture.
     /// </summary>
     private static void PruneOldCaptures(string directory, string filePrefix)

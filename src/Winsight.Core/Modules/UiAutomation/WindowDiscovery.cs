@@ -20,8 +20,8 @@ namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>
 /// Enumerates visible top-level windows through Win32 (not UIA desktop
-/// children), so owned surfaces — modal dialogs, MessageBoxes, dropdown menus,
-/// flyouts, tooltips — are discoverable, not just reachable. Each window is
+/// children), so owned surfaces (modal dialogs, MessageBoxes, dropdown menus,
+/// flyouts, tooltips) are discoverable, not just reachable. Each window is
 /// classified (see <see cref="WindowClassifier"/>) and tagged with its owner and
 /// modality, so an agent can identify the dialog or overlay to act on. Windows
 /// are returned in z-order (topmost first), so the last opened overlay leads.
@@ -45,8 +45,8 @@ public sealed class WindowDiscovery
 
     /// <summary>
     /// Top-level windows, optionally restricted to one process. When
-    /// <paramref name="processId"/> is set, the listing is exhaustive — including
-    /// untitled dialogs, popups, menus, and overlays of that process — so an
+    /// <paramref name="processId"/> is set, the listing is exhaustive, including
+    /// untitled dialogs, popups, menus, and overlays of that process, so an
     /// agent sees the full window stack of the app under test. When it is null,
     /// only named windows are returned (desktop-wide discovery), to avoid the
     /// noise of every helper window on the desktop.

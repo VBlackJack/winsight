@@ -61,7 +61,7 @@ public class AssertScenarioTests
                 new ActionInvoker(), new ElementWaiter(), stateReader, new WindowCapture());
             var diagnostics = new DiagnosticsObserver();
 
-            // Click Increment, then assert the label shows the new count — all in one batch.
+            // Click Increment, then assert the label shows the new count, all in one batch.
             string okJson = RunStepsTool.RunSteps(
                 runner, diagnostics, target,
                 new[]

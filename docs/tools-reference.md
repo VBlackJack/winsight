@@ -7,8 +7,8 @@ For the preferred verified workflow, see [verified control](verified-control.md)
 `act_verified` returns explicit `status`, `dispatched` and `verified` fields;
 profile execution also reports its verified/stopped state. The OperationResult
 convention below describes the original tools and observation/configuration calls.
-Every tool returns a JSON string. Errors — whether from a known failure mode
-or an unexpected exception inside the tool body — are uniformly surfaced
+Every tool returns a JSON string. Errors (whether from a known failure mode
+or an unexpected exception inside the tool body) are uniformly surfaced
 inside an `OperationResult` shape (`{ "success": false, "error": "..." }`)
 rather than as MCP exceptions, so an agent can read and recover from them.
 A universal `ToolSafety` guard at the tool boundary catches anything the
@@ -26,7 +26,7 @@ still overrides the default. This is the ad-hoc counterpart to the batch-level
 
 | Tool           | Purpose                                                                    |
 | -------------- | -------------------------------------------------------------------------- |
-| `set_target`   | Set the session default process. Param `processId` (int). Returns `{ processId, windowCount }` — `windowCount` is how many top-level windows the process currently exposes (0 is allowed; it may still be starting). Call it right after `launch_app` or `list_windows`. |
+| `set_target`   | Set the session default process. Param `processId` (int). Returns `{ processId, windowCount }}`, where `windowCount` is how many top-level windows the process currently exposes (0 is allowed; it may still be starting). Call it right after `launch_app` or `list_windows`. |
 | `get_target`   | Return `{ processId }`, or `{ processId: null }` when none is set.          |
 | `clear_target` | Clear the default; subsequent calls must pass `processId` again.            |
 
@@ -222,7 +222,7 @@ without a follow-up `list_windows`/poll.
 | `waitForWindowTitle` | string? | no       | Case-insensitive substring of the window title to wait for. When omitted, waits for the process's main window |
 | `timeoutMs`          | int     | no       | Max wait for the window. Default 15000; max 120000                    |
 
-**Returns** — `OperationResult` wrapping a `LaunchResult`:
+**Returns**: `OperationResult` wrapping a `LaunchResult`:
 
 ```json
 {
@@ -261,13 +261,13 @@ process tree; a graceful request never escalates to a kill.
 | `processId` | int  | yes      | Process id to close (from `launch_app` or `list_windows`) |
 | `force`     | bool | no       | Kill the process tree immediately                      |
 
-**Returns** — `OperationResult` whose `data` reports `processId` and whether the
+**Returns**: `OperationResult` whose `data` reports `processId` and whether the
 process was force-killed; a process that is already gone is reported as success
 (`alreadyExited: true`).
 
 ## `list_windows`
 
-Enumerate top-level windows, in z-order (topmost first), through Win32 — so
+Enumerate top-level windows, in z-order (topmost first), through Win32, so
 owned surfaces that UIA desktop enumeration hides (modal dialogs, MessageBoxes,
 dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
 
@@ -277,7 +277,7 @@ dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
 | ----------- | ---- | ------- | --------------------------------------------------------------------------- |
 | `processId` | int? | null    | When set, return that process's **full** window stack exhaustively (including untitled dialogs, popups, and menus). When omitted, return every **named** top-level window on the desktop (discovery; avoids helper-window noise). |
 
-**Returns** — JSON array of `WindowDescriptor`:
+**Returns**: JSON array of `WindowDescriptor`:
 
 ```json
 [
@@ -297,13 +297,13 @@ dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
 ```
 
 `kind` is one of `main`, `dialog` (owned captioned window or Win32 `#32770`,
-including MessageBox), `popup` (captionless overlay — dropdown, flyout, context
+including MessageBox), `popup` (captionless overlay: dropdown, flyout, context
 menu), `menu` (Win32 `#32768`), `tooltip`, or `other`. `ownerHandle` is the
 owning window's handle (`0` when none), and `isModal` is true when the window
 owns a disabled parent (the platform's modal-dialog signal). The classification
 is Win32-style/ownership based and deterministic.
 
-**Typical flow** — call `list_windows` with the target `processId` after an
+**Typical flow**: call `list_windows` with the target `processId` after an
 action that may open a dialog or menu; pick the entry whose `kind` is `dialog`
 (or `popup`/`menu`), then scope `click_element`, `type_text`, `wait_for_element`,
 `capture_screenshot`, etc. to it with `windowTitle`. The topmost overlay is the
@@ -319,7 +319,7 @@ first matching entry, since the list is ordered front-to-back.
 | `automationId` | Exact, case-sensitive                                      |
 | `name`         | Exact, case-sensitive                                      |
 | `className`    | Exact, case-sensitive                                      |
-| `controlType`  | Exact, case-insensitive (`Button`, `Edit`, `CheckBox`, …)  |
+| `controlType`  | Exact, case-insensitive (`Button`, `Edit`, `CheckBox`, ...)  |
 | `nameContains` | Substring, case-insensitive                                |
 | `descendantText` | Substring, case-insensitive, in a bounded descendant Name or Value |
 | `index`        | Zero-based pick when several elements match the rest       |
@@ -327,20 +327,20 @@ first matching entry, since the list is ordered front-to-back.
 All provided criteria combine with AND. At least one criterion other than
 `index` must be set.
 
-- **Multi-window** — the search covers every visible top-level window of
+- **Multi-window**: the search covers every visible top-level window of
   the process (including owned modal dialogs, which UIA hides from desktop
   enumeration; Winsight reaches them through Win32 handles). Use
   `windowTitle` (case-insensitive substring of the window title) to scope
   the search to one window, e.g. a modal dialog.
-- **Strict mode** — when several elements match and no `index` is given,
+- **Strict mode**: when several elements match and no `index` is given,
   the call fails and lists the candidates (`index`, `automationId`,
   `name`, `controlType`, `windowTitle`, `score`, `reason`) in both the
   error message and `data`, so an agent can refine its locator in one
   round trip.
-- **Near misses** — when nothing matches, elements whose id or name
+- **Near misses**: when nothing matches, elements whose id or name
   partially overlaps the requested terms are suggested in the error, with
   lower scores and a `reason` such as `partialText`.
-- **Descendant text** — `descendantText` checks descendants up to depth 5.
+- **Descendant text**: `descendantText` checks descendants up to depth 5.
   It targets WPF controls whose parent exposes a non-human `Name`
   (for example a view-model type name) while the useful label is carried
   by a child `TextBlock` or value-bearing descendant.
@@ -355,7 +355,7 @@ Walk the UI Automation tree of a process window.
 
 | Name           | Type    | Default | Description                                                |
 | -------------- | ------- | ------- | ----------------------------------------------------------- |
-| `processId`    | int     | —       | Process id obtained from list_windows                       |
+| `processId`    | int     | -       | Process id obtained from list_windows                       |
 | `maxDepth`     | int     | 5       | Tree depth, capped at 20                                    |
 | `windowTitle`  | string? | null    | Inspect the first window whose title contains this text     |
 | `controlType`  | string? | null    | Keep only nodes of this control type (plus their ancestors) |
@@ -369,7 +369,7 @@ tooltip class) sits at the top of the z-order but is skipped, so hovering an
 element no longer makes `inspect_ui_tree` return the tooltip popup. A modal
 dialog is not an overlay and is still chosen when it is on top.
 
-**Returns** — JSON `UiElementNode` (recursive). `value` carries the current
+**Returns**: JSON `UiElementNode` (recursive). `value` carries the current
 Value-pattern content (text boxes, combo boxes) and is null when the
 element does not support the pattern, so the tree doubles as a read-only
 oracle:
@@ -396,7 +396,7 @@ oracle:
 
 ## `describe_ui`
 
-Answer "what can I do here?" — return the window's **actionable** elements as a
+Answer "what can I do here?": return the window's **actionable** elements as a
 compact, position-ordered list (top-to-bottom, left-to-right) instead of a full
 UIA tree. Use it to orient on an unfamiliar window before acting; reach for
 [`inspect_ui_tree`](#inspect_ui_tree) only when you need the full structure.
@@ -413,8 +413,8 @@ Interactable kinds kept: buttons, text inputs, checkboxes, radio buttons, combo
 boxes, lists and list items, tabs and tab items, menu items, hyperlinks, tree
 items, sliders. Static text and layout containers are dropped.
 
-**Returns** — `OperationResult` whose `data` is an array of `UiInteractable`,
-each with a `recommendedLocator` (the smallest criterion that targets it —
+**Returns**: `OperationResult` whose `data` is an array of `UiInteractable`,
+each with a `recommendedLocator` (the smallest criterion that targets it:
 `automationId` if unique, else a unique `name`, else `controlType` + `index`)
 ready to feed `click_element` / `type_text` / `select_item`:
 
@@ -439,7 +439,7 @@ ready to feed `click_element` / `type_text` / `select_item`:
 }
 ```
 
-The walk is breadth-first over the process windows, so a `controlType=…
+The walk is breadth-first over the process windows, so a `controlType=...
 index=N` recommendation uses the same index the locator tools do.
 
 ## `snapshot_ui` / `diff_ui`
@@ -459,9 +459,9 @@ captures a baseline and returns `verdict: "baseline_captured"`.
 | `windowTitle` | string? | null    | Scope the element capture to a window whose title contains this text |
 | `processId`   | int?    | null    | Target process id; falls back to the session target          |
 
-**`snapshot_ui` returns** — `OperationResult` with `{ processId, windowCount, interactableCount }`.
+**`snapshot_ui` returns**: `OperationResult` with `{ processId, windowCount, interactableCount }`.
 
-**`diff_ui` returns** — `OperationResult` whose `data` is a `UiChange`:
+**`diff_ui` returns**: `OperationResult` whose `data` is a `UiChange`:
 
 ```json
 {
@@ -514,7 +514,7 @@ and click it.
 **Resolution order** (`single`): Invoke pattern → Toggle pattern → mouse
 click on center. `double` and `right` are always physical mouse actions.
 
-**Returns** — `OperationResult`:
+**Returns**: `OperationResult`:
 
 ```json
 { "success": true }
@@ -553,7 +553,7 @@ on it.
 | `settleMs`        | int?    | no       | Milliseconds the pointer rests on the point before the press, 0 to 2000. Default 150. |
 
 `coordinateSpace=window` interprets `x,y` in the target window's coordinate
-space — the **same origin as a full-window screenshot**, so the `x,y` returned
+space, the **same origin as a full-window screenshot**, so the `x,y` returned
 by `find_element_visually` can be passed straight through. The tool resolves the
 window origin (topmost visible window, or the one scoped by `windowTitle`),
 verifies the point falls inside the window bounds, and translates it to screen
@@ -594,7 +594,7 @@ including another window of the same process, is refused. With
 `send_key_chord` and `drag`), its frame is resolved again, and the call fails
 if the window changed while it was raised.
 
-**Returns** — `OperationResult` whose `data` reports the absolute screen point
+**Returns**: `OperationResult` whose `data` reports the absolute screen point
 that was clicked:
 
 ```json
@@ -604,7 +604,7 @@ that was clicked:
 A point outside the resolved window bounds is an explicit failure that reports
 the window size, so the agent can correct the coordinate.
 
-> **Targeting a specific window** — without `windowTitle`, the window origin is
+> **Targeting a specific window**: without `windowTitle`, the window origin is
 > the **topmost** visible window of the process, which can be a transient
 > tooltip or popup rather than the one you measured against. When clicking a
 > point relative to a specific surface, pass `windowTitle`; this also narrows
@@ -648,7 +648,7 @@ synthetic keyboard input into WebView2 has crashed `ctfmon`, the text input
 host. Use `type_into_webview` (CDP) for web content; see `get_focused_element`
 for the detection signals.
 
-**Returns** — `OperationResult` (same shape as `click_element`).
+**Returns**: `OperationResult` (same shape as `click_element`).
 
 ## `send_key_chord`
 
@@ -886,11 +886,11 @@ request, for instance with a minimum size)
 
 ## `get_element_state`
 
-Read the observable state of a located element — the lightweight UI-level
+Read the observable state of a located element, the lightweight UI-level
 oracle for assertions. Prefer it over `read_managed_state` when the
 on-screen state is enough. Uses the shared locator parameters.
 
-**Returns** — `OperationResult` wrapping an `ElementState`:
+**Returns**: `OperationResult` wrapping an `ElementState`:
 
 ```json
 {
@@ -915,7 +915,7 @@ on-screen state is enough. Uses the shared locator parameters.
 
 Pattern-backed fields are null when the element does not support the
 corresponding pattern: `value` (Value pattern), `toggleState` (Toggle),
-`isSelected` (SelectionItem, e.g. a list item), `selectedItem` (Selection —
+`isSelected` (SelectionItem, e.g. a list item), `selectedItem` (Selection:
 the name of the first selected child of a container such as a ComboBox).
 
 ## `wait_for_element`
@@ -956,7 +956,7 @@ wait until the Tab named Sessions holds three tabs instead of sleeping:
   "expectedCount": 3, "childControlType": "TabItem", "timeoutMs": 5000 }
 ```
 
-**Returns** — `OperationResult` wrapping a `WaitOutcome` (also attached to
+**Returns**: `OperationResult` wrapping a `WaitOutcome` (also attached to
 timeout failures):
 
 ```json
@@ -974,18 +974,18 @@ timeout failures):
 
 ## `assert_element`
 
-Assert a condition on a located element and get a clear pass/fail — an immediate
+Assert a condition on a located element and get a clear pass/fail: an immediate
 check (no polling, unlike `wait_for_element`). The same operators are available
 as an `assert` step in [`run_steps`](#run_steps).
 
-**Parameters** — the shared locator parameters, plus:
+**Parameters**: the shared locator parameters, plus:
 
 | Name       | Type    | Required | Description                                              |
 | ---------- | ------- | -------- | -------------------------------------------------------- |
 | `operator` | string  | yes      | The assertion operator (below)                           |
 | `expected` | string? | for text/numeric operators | The expected operand                   |
 
-**Operators** — text operators compare the element's Value, falling back to its
+**Operators**: text operators compare the element's Value, falling back to its
 Name (so both inputs and labels work):
 
 | Operator | Holds when |
@@ -999,7 +999,7 @@ Name (so both inputs and labels work):
 | `selected` | the element is selected |
 | `exists` | the element was located (any match) |
 
-**Returns** — `OperationResult`: `success: true` with `data.assertion` (the
+**Returns**: `OperationResult`: `success: true` with `data.assertion` (the
 detail) when it holds; `success: false` with an explanatory `error`
 (expected vs actual) when it fails or the element is not found.
 
@@ -1010,7 +1010,7 @@ detail) when it holds; `success: false` with an explanatory `error`
 ## `run_steps`
 
 Run a sequence of UI steps in a single call, instead of one round trip per
-action. A whole scenario — drive, synchronize, assert, capture — becomes one
+action. A whole scenario (drive, synchronize, assert, capture) becomes one
 tool call that returns a per-step journal. Each step dispatches to the same
 primitive the matching single-action tool uses, so semantics are identical.
 
@@ -1027,7 +1027,7 @@ primitive the matching single-action tool uses, so semantics are identical.
 | `traceRun`    | bool        | no       | Write a replay JSON artifact even when global tracing is off. |
 | `stopOnForegroundChange` | bool | no    | Stop before a screen-changing step when the foreground moved to a window outside the batch (default true). |
 
-**Step shape** — a flat object with an `action` discriminator plus that action's
+**Step shape**: a flat object with an `action` discriminator plus that action's
 fields. The shared locator fields (`automationId`, `name`, `className`,
 `controlType`, `nameContains`, `index`, `descendantText`, `windowTitle`) work
 exactly like [`click_element`](#click_element). Each step may set its own
@@ -1062,7 +1062,7 @@ the batch (the process id is needed to scope the steps). A `screenshot` step
 records the capture's path in its journal `data` (the batch journal is JSON, so
 unlike the standalone `capture_screenshot` tool it does not inline the image).
 
-**Returns** — `OperationResult`-style failure on bad input, otherwise a
+**Returns**: `OperationResult`-style failure on bad input, otherwise a
 `BatchResult`:
 
 ```json
@@ -1101,14 +1101,14 @@ transition, and the target closing the baseline window are tolerated. Set
 `WINSIGHT_YIELD_TO_USER_MS` set, the same steps fail with `user_active` while a
 person used the desktop more recently than that.
 
-**Replay artifacts** — set `traceRun: true`, `WINSIGHT_TRACE=1`, or
+**Replay artifacts**: set `traceRun: true`, `WINSIGHT_TRACE=1`, or
 `WINSIGHT_TRACE_DIR` to write a replay JSON file. `BatchResult.tracePath` points
 to it. Use `replay_steps` to inspect or replay it.
 
-**Causal exception oracle** — with `captureExceptions: true`, an EventPipe
+**Causal exception oracle**: with `captureExceptions: true`, an EventPipe
 session runs around the whole batch and the result gains an `exceptions` array
 listing the exceptions the target process threw *during* the steps (caught ones
-included — the runtime emits them too), turning a time-windowed oracle into a
+included, since the runtime emits them too), turning a time-windowed oracle into a
 causal one. Each entry carries `ExceptionType` and `ExceptionMessage`. An empty
 array means none were observed; the field is absent when capture was not
 requested. This needs the batch-level `processId` (the session targets one
@@ -1135,7 +1135,7 @@ inspect the recorded actions without repeating clicks or keystrokes.
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| `tracePath` | string | — | Path returned by `run_steps.tracePath` |
+| `tracePath` | string | - | Path returned by `run_steps.tracePath` |
 | `processId` | int? | null | Optional process id override; otherwise uses the trace default, then the session target |
 | `dryRun` | bool | true | Keep true for inspection; set false to execute recorded mutating steps |
 
@@ -1155,7 +1155,7 @@ the requested type.
 | `typeName`  | string | Fully qualified .NET type name (namespace + class)             |
 | `fieldName` | string | Field name on the type, including backing-field naming         |
 
-**Returns** — `OperationResult` with `data` carrying the field value:
+**Returns**: `OperationResult` with `data` carrying the field value:
 
 ```json
 { "success": true, "data": 42 }
@@ -1194,13 +1194,13 @@ result is often a black rectangle.
 | `includeImage` | bool  | no       | Attach the captured PNG as an inline image (default true). Set false to return only the JSON path. |
 | `mainWindow`  | bool   | no       | Capture the process main window even when a dialog or overlay is on top of it; ignored with `windowTitle` |
 
-> **Output directory** — when `outputPath` is omitted, the capture is written
+> **Output directory**: when `outputPath` is omitted, the capture is written
 > under the directory named by the `WINSIGHT_OUTPUT_DIR` environment variable,
 > falling back to `%TEMP%\winsight`. Set it to redirect captures into a folder a
 > supervisor agent can read (e.g. a shared mount). The directory is created on
 > first write.
 
-**Returns** — MCP content with two blocks: a **text** block carrying the
+**Returns**: MCP content with two blocks: a **text** block carrying the
 `OperationResult` JSON wrapping a `ScreenshotResult`, and (unless
 `includeImage=false`) an **image** block with the captured PNG inline, so a
 supervising agent sees the UI directly without reading the file. The text block:
@@ -1218,7 +1218,7 @@ supervising agent sees the UI directly without reading the file. The text block:
 ```
 
 On failure (window minimized, `PrintWindow` returned false, output path
-not writable, target requires administrator and the host does not, …):
+not writable, target requires administrator and the host does not, ...):
 
 ```json
 {
@@ -1369,7 +1369,7 @@ when `updateBaseline=true`.
 Baselines live outside the repository by default. `baselineKey` must be a
 relative `.png` path and cannot escape the configured baseline directory.
 
-**Returns** — MCP content: a **text** block with the `OperationResult` JSON
+**Returns**: MCP content, a **text** block with the `OperationResult` JSON
 wrapping a `VisualDiffResult`, plus (when a comparison ran and produced a diff
 map, unless `includeImage=false`) an **image** block with the diff heatmap
 inline, so you can see where the UI changed without opening the file. The text
@@ -1434,7 +1434,7 @@ directly.
 | --------------- | ---- | -------- | ------------------------------------ |
 | `hostProcessId` | int  | yes      | The WPF/Win32 host pid (from list_windows) |
 
-**Returns** — JSON object:
+**Returns**: JSON object:
 
 ```json
 {
@@ -1462,10 +1462,10 @@ When no usable endpoint is found, `hint` carries an actionable message:
 **Notes**
 
 - Detection uses a single WMI query (`Win32_Process`) and an
-  `IPGlobalProperties.GetActiveTcpListeners()` snapshot — fast (~50 ms) and
+  `IPGlobalProperties.GetActiveTcpListeners()` snapshot: fast (~50 ms) and
   safe (no probe traffic on the target ports).
-- Listening detection looks at any local interface, not only loopback —
-  this matches WebView2's binding behavior.
+- Listening detection looks at any local interface, not only loopback,
+  which matches WebView2's binding behavior.
 
 ## `list_cdp_targets`
 
@@ -1476,7 +1476,7 @@ List the debuggable targets of a Chrome DevTools Protocol endpoint
 
 | Name            | Type | Default | Description                                  |
 | --------------- | ---- | ------- | -------------------------------------------- |
-| `port`          | int  | —       | CDP debugging port (`remoteDebuggingPort`).   |
+| `port`          | int  | -       | CDP debugging port (`remoteDebuggingPort`).   |
 | `hostProcessId` | int? | null    | Host process that owns the WebView2 endpoint. Falls back to `set_target`. |
 
 The port must match a listening `remoteDebuggingPort` reported by
@@ -1500,7 +1500,7 @@ The port must match a listening `remoteDebuggingPort` reported by
 ```
 
 `hint` is set when the endpoint answers but exposes no `page` target yet
-(content still navigating — retry after the app finishes loading). Pass a
+(content still navigating; retry after the app finishes loading). Pass a
 `page` target `id` to `evaluate_javascript` or `type_into_webview`.
 
 ## `evaluate_javascript`
@@ -1514,16 +1514,16 @@ ad-hoc actions UIA cannot reach.
 
 | Name         | Type    | Default | Description                                              |
 | ------------ | ------- | ------- | -------------------------------------------------------- |
-| `port`       | int     | —       | CDP debugging port.                                       |
-| `targetId`   | string  | —       | Page target id from `list_cdp_targets`.                   |
-| `expression` | string  | —       | JavaScript expression evaluated in the page context.      |
+| `port`       | int     | -       | CDP debugging port.                                       |
+| `targetId`   | string  | -       | Page target id from `list_cdp_targets`.                   |
+| `expression` | string  | -       | JavaScript expression evaluated in the page context.      |
 | `timeoutMs`  | int?    | null    | Per-command timeout; defaults to `WINSIGHT_CDP_TIMEOUT_MS` or 10000. |
 | `hostProcessId` | int? | null    | Host process that owns the WebView2 endpoint. Falls back to `set_target`. |
 
 The port must match a listening WebView2 endpoint owned by the authorized host
 process; raw loopback CDP ports are rejected.
 
-**Returns** — a `CdpEvaluationResult`:
+**Returns**: a `CdpEvaluationResult`:
 
 ```json
 {
@@ -1542,16 +1542,16 @@ and recover.
 Type text into a WebView2 page as real key events
 (`Input.dispatchKeyEvent` keyDown/keyUp pairs). Unlike the UIA-based
 `type_text`, this reaches keydown-driven surfaces such as xterm.js
-terminals hosted in `HwndHost` — the documented failure case for UIA
+terminals hosted in `HwndHost`, the documented failure case for UIA
 typing against embedded WebView2 content.
 
 **Parameters**
 
 | Name            | Type    | Default | Description                                                       |
 | --------------- | ------- | ------- | ----------------------------------------------------------------- |
-| `port`          | int     | —       | CDP debugging port.                                                |
-| `targetId`      | string  | —       | Page target id from `list_cdp_targets`.                            |
-| `text`          | string  | —       | Text to type. `\n` / `\r\n` become Enter, `\t` becomes Tab.        |
+| `port`          | int     | -       | CDP debugging port.                                                |
+| `targetId`      | string  | -       | Page target id from `list_cdp_targets`.                            |
+| `text`          | string  | -       | Text to type. `\n` / `\r\n` become Enter, `\t` becomes Tab.        |
 | `focusSelector` | string? | null    | CSS selector focused before typing (e.g. `.xterm-helper-textarea`). Fails explicitly when nothing matches. |
 | `timeoutMs`     | int?    | null    | Per-command timeout; defaults to `WINSIGHT_CDP_TIMEOUT_MS` or 10000. |
 | `hostProcessId` | int?    | null    | Host process that owns the WebView2 endpoint. Falls back to `set_target`. |
@@ -1590,11 +1590,11 @@ heuristics.
 
 | Name           | Type   | Default            | Description                              |
 | -------------- | ------ | ------------------ | ---------------------------------------- |
-| `processId`    | int    | —                  | Managed target process id                |
+| `processId`    | int    | -                  | Managed target process id                |
 | `providerName` | string | `System.Runtime`   | EventCounter provider                    |
 | `durationMs`   | int    | 2000               | Observation window. Min 500, max 30000   |
 
-**Returns** — JSON `CounterSnapshot`:
+**Returns**: JSON `CounterSnapshot`:
 
 ```json
 {
@@ -1642,20 +1642,20 @@ heuristics.
 
 Capture EventPipe events from one or more providers in a managed process.
 Useful for observing every exception thrown, every custom `EventSource`
-event, or any other diagnostic stream — without injecting code into the
+event, or any other diagnostic stream, without injecting code into the
 target.
 
 **Parameters**
 
 | Name              | Type     | Default | Description                                              |
 | ----------------- | -------- | ------- | -------------------------------------------------------- |
-| `processId`       | int      | —       | Managed target process id                                |
-| `providers`       | string[] | —       | EventSource provider names                               |
+| `processId`       | int      | -       | Managed target process id                                |
+| `providers`       | string[] | -       | EventSource provider names                               |
 | `durationMs`      | int      | 3000    | Capture window. Min 500, max 30000                       |
 | `maxEvents`       | int      | 500     | Hard cap on events kept (1..10000). Sets `truncated` if hit |
 | `eventNameFilter` | string?  | null    | Exact-match (case-sensitive) event name filter           |
 
-**Returns** — JSON `EventCaptureResult`:
+**Returns**: JSON `EventCaptureResult`:
 
 ```json
 {
@@ -1719,9 +1719,9 @@ SkiaSharp, DirectX surfaces, or any content UIA cannot see).
 | `processId`   | int     | yes      | Target process id (from list_windows)            |
 | `query`       | string  | yes      | Natural-language description of the target       |
 | `windowTitle` | string? | no       | Case-insensitive substring of the target window title. Use this to capture modal dialogs, popups, or secondary windows before visual grounding. |
-| `act`         | string? | no       | `single`, `double`, or `right` to click the grounded point in the same call (via `click_point`). Omitted by default — the tool only locates. |
+| `act`         | string? | no       | `single`, `double`, or `right` to click the grounded point in the same call (via `click_point`). Omitted by default: the tool only locates. |
 
-**Returns** — `OperationResult` whose `data` is the `GroundedElement`:
+**Returns**: `OperationResult` whose `data` is the `GroundedElement`:
 
 ```json
 {
@@ -1748,7 +1748,7 @@ straight to `click_point` with `coordinateSpace=screen`, or the window-relative
 `x,y` to `click_point` with the default `coordinateSpace=window`. `screenX` /
 `screenY` are null when the window origin could not be resolved.
 
-**Acting in one call** — when `act` is set, the grounded point is clicked
+**Acting in one call**: when `act` is set, the grounded point is clicked
 through the same path as `click_point` (window-relative) and the result wraps
 both the grounding and the click outcome. The click is refused when the returned
 confidence is below `WINSIGHT_VISION_MIN_CONFIDENCE` (default `0.5`); a
@@ -1764,8 +1764,8 @@ locate-only call still returns the low-confidence grounding for inspection.
 }
 ```
 
-If the call fails — missing API key, network error, or unparseable model
-output — the tool returns an `OperationResult` failure object instead:
+If the call fails (missing API key, network error, or unparseable model
+output), the tool returns an `OperationResult` failure object instead:
 
 ```json
 { "success": false, "error": "ANTHROPIC_API_KEY environment variable is not set. ..." }
@@ -1776,16 +1776,16 @@ output — the tool returns an `OperationResult` failure object instead:
 | Variable                    | Default                                  | Purpose                          |
 | --------------------------- | ---------------------------------------- | -------------------------------- |
 | `WINSIGHT_VISION_BACKEND`   | `anthropic`                              | `anthropic` or `onnx`            |
-| `ANTHROPIC_API_KEY`         | —                                        | Required for `anthropic`         |
+| `ANTHROPIC_API_KEY`         | -                                        | Required for `anthropic`         |
 | `WINSIGHT_VISION_MODEL`     | `claude-sonnet-4-6`                      | Anthropic model override         |
 | `WINSIGHT_VISION_API_URL`   | `https://api.anthropic.com/v1/messages`  | Anthropic endpoint override      |
 | `WINSIGHT_VISION_TIMEOUT_MS`| `60000`                                  | Per-request timeout for the Anthropic backend (bounded; transient 429/5xx are retried) |
 | `WINSIGHT_VISION_MIN_CONFIDENCE` | `0.5`                              | Minimum model confidence required before `act` clicks the grounded point |
-| `WINSIGHT_VISION_ONNX_PATH` | —                                        | Local Qwen2.5-VL ONNX model directory |
+| `WINSIGHT_VISION_ONNX_PATH` | -                                        | Local Qwen2.5-VL ONNX model directory |
 | `WINSIGHT_VISION_EP`        | `cpu`                                    | `cpu` only in this build |
 | `WINSIGHT_OUTPUT_DIR`       | `%TEMP%\winsight`                        | Directory for the intermediate `vision-{timestamp}.png` capture |
 
-**Privacy** — screenshots are transmitted to the configured API when using
+**Privacy**: screenshots are transmitted to the configured API when using
 `WINSIGHT_VISION_BACKEND=anthropic`. `WINSIGHT_VISION_BACKEND=onnx` runs a local
 Qwen2.5-VL model fully on-host and never falls back to Anthropic; see
 [docs/local-onnx-grounder.md](local-onnx-grounder.md) for provisioning.

@@ -22,7 +22,7 @@ using Winsight.Core.Models;
 namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>
-/// Surfaces a window's actionable elements as a compact, position-ordered list —
+/// Surfaces a window's actionable elements as a compact, position-ordered list,
 /// the perception layer behind <c>describe_ui</c>. Instead of returning a full
 /// UIA tree for the agent to parse, it keeps only interactable control types,
 /// reads each one's state, and attaches the smallest locator that targets it.

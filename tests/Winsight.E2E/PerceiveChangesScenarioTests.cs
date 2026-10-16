@@ -24,7 +24,7 @@ using Xunit;
 namespace Winsight.E2E;
 
 /// <summary>
-/// The feedback sense: snapshot_ui then diff_ui report what an action changed —
+/// The feedback sense: snapshot_ui then diff_ui report what an action changed,
 /// a toggled checkbox as a field change, and an opened dialog as a new window
 /// with new actionable elements.
 /// </summary>

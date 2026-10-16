@@ -48,7 +48,7 @@ public static class DetectWebView2EndpointsTool
         WebView2Detector detector,
         SessionTarget target,
         [Description("Host process id (from list_windows). The detector walks the entire descendant tree. " +
-                     "Optional — falls back to the session default set by set_target.")]
+                     "Optional; falls back to the session default set by set_target.")]
         int? hostProcessId = null)
     {
         return ToolSafety.SafeInvoke(() =>

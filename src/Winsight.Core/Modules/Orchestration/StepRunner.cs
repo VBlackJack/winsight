@@ -26,8 +26,8 @@ namespace Winsight.Core.Modules.Orchestration;
 
 /// <summary>
 /// Runs a sequence of <see cref="BatchStep"/>s in one call, dispatching each to the
-/// same primitives the individual MCP tools use, so a whole scenario — drive,
-/// synchronize, assert, capture — costs a single round trip instead of one per
+/// same primitives the individual MCP tools use, so a whole scenario (drive,
+/// synchronize, assert, capture) costs a single round trip instead of one per
 /// action. Each step is isolated: an exception becomes that step's failure
 /// rather than tearing down the batch.
 /// </summary>

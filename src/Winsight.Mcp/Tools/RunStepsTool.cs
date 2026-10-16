@@ -43,12 +43,12 @@ public static class RunStepsTool
                  "'key_chord' (chord), " +
                  "'select' (itemName), " +
                  "'hover' (expectedTooltipText, timeoutMs), " +
-                 "'wait' (condition, expectedValue, timeoutMs, pollIntervalMs, stableForMs) — the sync " +
+                 "'wait' (condition, expectedValue, timeoutMs, pollIntervalMs, stableForMs), the sync " +
                  "primitive, " +
                  "'wait_visual_change' (region, threshold, localThreshold, timeoutMs, pollIntervalMs) and " +
                  "'wait_visual_stable' (also stableComparisons) for windows without UIA; a wait_visual_change " +
                  "right after an action compares against a capture taken before that action, " +
-                 "'assert' (operator, expectedValue) — an immediate pass/fail check that fails the step " +
+                 "'assert' (operator, expectedValue), an immediate pass/fail check that fails the step " +
                  "with expected-vs-actual detail (operators like equals/contains/greater_than/checked/" +
                  "enabled; see assert_element; operator text_visible reads expectedValue with OCR, in " +
                  "region when given), " +
@@ -60,7 +60,7 @@ public static class RunStepsTool
                  "error, data }] }. Use 'label' on a step to tag it in the journal. Set " +
                  "captureExceptions=true to attach, in 'exceptions', the exceptions the target process " +
                  "threw during the batch (a causal oracle; requires the batch-level processId). Does not " +
-                 "launch or close apps — use launch_app/close_app around the batch. Set dryRun=true " +
+                 "launch or close apps; use launch_app/close_app around the batch. Set dryRun=true " +
                  "to validate and journal mutating steps without clicking/typing. On a shared desktop the batch " +
                  "stops with foreground_changed (and foregroundChanged=true) before a step that would touch the " +
                  "screen if the foreground moved to a window the batch did not open; steps fail with user_active " +

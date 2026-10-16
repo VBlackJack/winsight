@@ -206,7 +206,7 @@ public static class WindowGeometry
     /// <summary>
     /// Filters visible top-level windows by a case-insensitive title substring.
     /// Single-sourced so window-scoped capture and coordinate mapping resolve the
-    /// same window — the screen coordinates returned for a visually grounded point
+    /// same window: the screen coordinates returned for a visually grounded point
     /// must map against the window that was captured.
     /// </summary>
     internal static List<(IntPtr Handle, string Title)> FilterByTitle(

@@ -25,7 +25,7 @@ namespace Winsight.Mcp.Tools;
 public static class InvokeActionTool
 {
     private const string ProcessIdDescription =
-        "Target process id. Optional — falls back to the session default set by set_target.";
+        "Target process id. Optional; falls back to the session default set by set_target.";
 
     private const string AllowWebView2InputDescription =
         "Send synthetic keyboard input even when it would land inside a WebView2 surface. Default false: " +

@@ -27,9 +27,9 @@ public static class SessionTargetTool
     [McpServerTool(Name = "set_target")]
     [Description("Set the session's default target process so you do not repeat processId on every call. " +
                  "Once set, any process-scoped tool (click_element, type_text, wait_for_element, " +
-                 "capture_screenshot, run_steps, …) uses it when its own processId is omitted; an " +
+                 "capture_screenshot, run_steps, ...) uses it when its own processId is omitted; an " +
                  "explicit processId on a call still overrides it. Returns the target plus how many " +
-                 "top-level windows the process currently exposes (0 is allowed — it may still be " +
+                 "top-level windows the process currently exposes (0 is allowed; it may still be " +
                  "starting). Call this right after launch_app or list_windows.")]
     public static string SetTarget(
         SessionTarget target,

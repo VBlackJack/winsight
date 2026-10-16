@@ -41,7 +41,7 @@ public static class ListCdpTargetsTool
         SessionTarget target,
         [Description("CDP debugging port (RemoteDebuggingPort from detect_webview2_endpoints).")]
         int port,
-        [Description("Host process id that owns the WebView2 endpoint. Optional — falls back to the session default set by set_target.")]
+        [Description("Host process id that owns the WebView2 endpoint. Optional; falls back to the session default set by set_target.")]
         int? hostProcessId = null)
     {
         return ToolSafety.SafeInvokeAsync(async () =>

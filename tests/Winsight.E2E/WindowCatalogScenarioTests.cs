@@ -22,8 +22,8 @@ namespace Winsight.E2E;
 
 /// <summary>
 /// Proves the multi-window discoverability contract: once a modal dialog is up,
-/// a per-process listing surfaces both the main window and the dialog — the
-/// dialog classified as such and flagged modal — so an agent can find the
+/// a per-process listing surfaces both the main window and the dialog (the
+/// dialog classified as such and flagged modal), so an agent can find the
 /// surface to act on instead of having to guess a window title.
 /// </summary>
 [Trait("Category", "E2E")]

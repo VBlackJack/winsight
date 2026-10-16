@@ -25,7 +25,7 @@ namespace Winsight.E2E;
 /// <summary>
 /// Two-polarity calibration for the visual-regression differ against the live sample
 /// app: a same-vs-same noise floor (must PASS with default thresholds, proving
-/// specificity) and a real injected change — an Increment click that updates the count
+/// specificity) and a real injected change: an Increment click that updates the count
 /// label (must FAIL, proving sensitivity, especially the local SSIM criterion). The
 /// reported table is how thresholds are calibrated above the environment noise floor.
 /// </summary>
@@ -90,7 +90,7 @@ public class VisualRegressionCalibrationTests
             _output.WriteLine($"{"change(+1)",-16} {change.Ssim,-10:F6} {change.LocalSsimMin,-10:F6} {change.PixelDiffRatio,-12:F6} {change.Verdict}");
 
             noise.Passed.Should().BeTrue(
-                "two identical captures must pass (specificity) — else thresholds are below the noise floor");
+                "two identical captures must pass (specificity), else thresholds are below the noise floor");
             change.Passed.Should().BeFalse(
                 "a real Increment-click change must be detected (sensitivity)");
         }

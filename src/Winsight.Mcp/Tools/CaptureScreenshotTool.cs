@@ -55,7 +55,7 @@ public static class CaptureScreenshotTool
         [Description("Capture the process main window even when a dialog or overlay is on top of it. " +
                      "Ignored when windowTitle is set.")]
         bool mainWindow = false,
-        [Description("Target process id (from list_windows). Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id (from list_windows). Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvokeContent(() =>

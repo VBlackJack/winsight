@@ -37,7 +37,7 @@ public static class PerceiveChangesTool
         SessionTarget target,
         [Description("Scope element capture to the first window whose title contains this text.")]
         string? windowTitle = null,
-        [Description("Target process id. Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id. Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
@@ -63,7 +63,7 @@ public static class PerceiveChangesTool
     [McpServerTool(Name = "diff_ui")]
     [Description("Report what changed in the target process's UI since the last snapshot_ui or diff_ui: " +
                  "windowsOpened/windowsClosed, elementsAdded/elementsRemoved, and elementsChanged (per-field " +
-                 "before/after for value, toggle, selection, enabled, visible). This is the feedback sense — " +
+                 "before/after for value, toggle, selection, enabled, visible). This is the feedback sense: " +
                  "use it after an action to confirm its effect without re-inspecting everything. The current " +
                  "state becomes the new baseline, so successive calls chain. With no prior snapshot, this " +
                  "captures a baseline and returns verdict=baseline_captured.")]
@@ -73,7 +73,7 @@ public static class PerceiveChangesTool
         SessionTarget target,
         [Description("Scope element capture to the first window whose title contains this text.")]
         string? windowTitle = null,
-        [Description("Target process id. Optional — falls back to the session default set by set_target.")]
+        [Description("Target process id. Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>

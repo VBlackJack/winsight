@@ -28,7 +28,7 @@ public static class LifecycleTool
     [Description("Start an application and wait until its window is actually present before returning, " +
                  "so you never race a still-initializing UI. Returns an OperationResult whose data " +
                  "carries the new processId and a classified window descriptor (kind, bounds, etc.) " +
-                 "ready to drive — no follow-up list_windows/poll needed. Fails if the process exits " +
+                 "ready to drive, with no follow-up list_windows/poll needed. Fails if the process exits " +
                  "during startup or no window appears within the timeout.")]
     public static string LaunchApp(
         AppLauncher launcher,
@@ -70,7 +70,7 @@ public static class LifecycleTool
         SessionTarget target,
         [Description("Kill the process tree immediately instead of requesting a graceful close.")]
         bool force = false,
-        [Description("Process id to close (from launch_app or list_windows). Optional — falls back to the session default set by set_target.")]
+        [Description("Process id to close (from launch_app or list_windows). Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvoke(() =>
