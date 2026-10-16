@@ -1,5 +1,7 @@
 # Architecture
 
+*[Version française](fr/architecture.md)*
+
 Winsight is layered so that each capability is independently usable, replaceable,
 and testable. The MCP server is a thin adapter; the value lives in the engine.
 
@@ -22,14 +24,19 @@ and testable. The MCP server is a thin adapter; the value lives in the engine.
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Winsight.Core                                          │
-│   • Models        — pure data records (DTOs)            │
-│   • UiAutomation  — FlaUI UIA3 finder / BFS / actions   │
-│   • ManagedState  — CLRMD non-suspending heap walk      │
-│   • Capture       — PrintWindow PW_RENDERFULLCONTENT    │
-│   • WebView2      — WMI process tree + CDP detection    │
-│   • Diagnostics   — EventPipe counters + events         │
-│   • Vision        — IElementGrounder + vision backends  │
-│   • VisualRegression — baseline screenshot diffing      │
+│   • Models        - pure data records (DTOs)            │
+│   • UiAutomation  - FlaUI UIA3 finder / BFS / actions   │
+│   • Lifecycle     - launch and close applications       │
+│   • Orchestration - run_steps batches and guards        │
+│   • ManagedState  - CLRMD non-suspending heap walk      │
+│   • Capture       - PrintWindow PW_RENDERFULLCONTENT    │
+│   • WebView2      - WMI process tree + CDP detection    │
+│   • Diagnostics   - EventPipe counters + events         │
+│   • Vision        - IElementGrounder + vision backends  │
+│   • VisualRegression - baseline diffs and visual waits  │
+│   • UserActivity  - shared-desktop input attribution    │
+│   • Clipboard     - text, save and restore, private     │
+│   • Ocr           - Windows.Media.Ocr text reading      │
 └─────────────────────────────────────────────────────────┘
                          │  Win32 / .NET diagnostic APIs
                          ▼
@@ -71,6 +78,15 @@ Pure data records. No behavior, no IO.
   payload) bounded by a configurable cap with a `truncated` flag.
 - `GroundedElement` — bounding box, confidence, and reasoning returned
   by `find_element_visually`.
+- `UserActivitySnapshot` and `ForegroundWindowInfo`: output of
+  `get_user_activity` (human idle time, last input source, foreground window
+  with its title withheld outside the target, locked session).
+- `ClipboardTextResult` and `TypeKeysResult`: clipboard text and length, and
+  what `type_keys` sent (mode, window, focused element, clipboard restore).
+- `WindowRegion`: a rectangle in window coordinates, shared by the visual
+  waits, OCR and capture cropping.
+- `VisualTextResult`, `VisualTextLine`, `VisualTextWord`: OCR output with
+  rectangles in window coordinates.
 
 ### Winsight.Core/Modules/UiAutomation
 
@@ -121,6 +137,25 @@ Wraps FlaUI (UIA3):
   screen-space, the action partner of visual grounding), types (writable Value
   pattern / keyboard fallback), selects items in ComboBox/ListBox/Tab
   containers, and scrolls off-screen elements into view before physical actions.
+  Coordinate actions (`ClickPoint`, `ScrollPoint`, `HoverPoint`) share one path:
+  resolve the window, optionally raise it (`focusWindow`), validate the point
+  recipient, then hand the point to `PointerDispatch`. `TypeKeys` types into the
+  foreground window of the target without a UIA element, as keystrokes or as a
+  paste that restores the clipboard.
+- `PointerDispatch`: every physical pointer action in three beats: move, rest
+  for `settleMs` (default 150 ms), read the pointer back (`cursor_moved` when
+  other input moved it), revalidate the recipient, then press, turn the wheel or
+  hold without moving again. Immediate-mode UIs (iced on winit) resolve hover
+  once per frame from the last `WM_MOUSEMOVE`; a move and a press sent together
+  act on the previous position. `IPointerDriver` lets unit tests record the
+  sequence.
+- `TextTyper`: plans text as `KEYEVENTF_UNICODE` strokes (Enter and Tab as
+  keys, surrogate pairs as two units) and sends them paced, checking before each
+  stroke that the target still owns the foreground.
+- `DesktopInputLease`: session-wide mutex that serializes physical input
+  across Winsight processes. The outermost lease also enforces the
+  yield-to-user policy and records its injection window in the input ledger
+  (see UserActivity).
 - `ElementStateReader` — builds `ElementState` snapshots from located
   elements (the UI-level oracle behind `get_element_state`).
 - `AssertionEvaluator` — pure operator evaluation (equals/contains/greater_than/
@@ -146,7 +181,17 @@ Wraps FlaUI (UIA3):
   step to the existing action/sync/oracle/capture primitives (no duplicated
   logic). Steps are exception-isolated (one failure becomes that step's result,
   not a batch abort), stop-on-error halts at the first failure, and the run
-  returns a `BatchResult` journal. Backs the `run_steps` tool.
+  returns a `BatchResult` journal. Backs the `run_steps` tool. Before each
+  screen-changing step it applies the yield-to-user policy and, unless
+  `stopOnForegroundChange` is off, `ForegroundGuard`. When a
+  `wait_visual_change` step follows a screen-changing step, the runner captures
+  the reference image before that step, so a fast change is not missed. The
+  `assert` step with operator `text_visible` reads the window through OCR.
+- `ForegroundGuard`: pure rule that stops a batch when the foreground moved,
+  between steps, to a window outside the batch's processes (someone took the
+  screen). Dialogs of the target, transitions without a foreground and the
+  loss of the baseline window are tolerated. `IForegroundReader` lets tests
+  script the foreground.
 
 ### Winsight.Core/Modules/ManagedState
 
@@ -169,7 +214,9 @@ Window screenshot capture via the Win32 `PrintWindow` API with the
   `PrintWindow`, and saves a PNG to the requested path. Full-window captures
   default to the topmost visible window in z-order so modal dialogs and popups
   are addressable; client-area baseline captures prefer the process main window
-  unless a title scope is provided.
+  unless a title scope is provided. `CaptureFrame` returns the same full-window
+  capture in memory, optionally cropped to a `WindowRegion`, as a
+  `CapturedFrame` (bitmap, window identity, region) for the visual waits and OCR.
 
 The `PW_RENDERFULLCONTENT` flag is what lets the call render DirectX-composed
 WPF windows correctly. Without it, accelerated surfaces come back as black
@@ -314,6 +361,60 @@ need unsupervised novelty detection.
 The comparison fails hard on image-size differences. Ignore rectangles exclude
 pixels from both the SSIM denominator and the pixel-diff ratio.
 
+- `VisualDiffer.Compare(Bitmap, Bitmap, options)`: the same comparison on
+  in-memory images, used to watch a window rather than check a baseline file.
+- `VisualWaiter`: backs `wait_for_visual_change` (poll until a capture differs
+  from a reference) and `wait_for_visual_stable` (poll until a number of
+  consecutive comparisons show no change). The loops take an injected frame
+  source and `IWaitClock`, so they are tested without a desktop.
+
+### Winsight.Core/Modules/UserActivity
+
+Tells a person's input from Winsight's on a shared desktop, without a
+low-level hook (which endpoint products flag).
+
+- `InputLedger`: named shared memory (`Local\Winsight.InputLedger.<session>`)
+  holding the last injection window (start, end, in progress) and the last
+  input attributed to a human. Every Winsight process in the session writes
+  its injections there through `DesktopInputLease`.
+- `InputAttributor`: pure attribution by time: the last input
+  (`GetLastInputInfo`) is Winsight's when it falls inside the injection window
+  widened by 50 ms, a human's otherwise. Handles the 32-bit tick wrap and
+  ignores an injection left active by a crashed process after 60 s.
+- `UserActivityMonitor`: snapshot for `get_user_activity` (human idle time,
+  foreground window and process, locked session through
+  `WTSQuerySessionInformation`) and the polling behind `wait_for_user_idle`.
+- `UserActivityPolicy`: reads `WINSIGHT_YIELD_TO_USER_MS`; screen-changing
+  tools, `run_steps` steps and the outermost input lease fail with
+  `user_active` while a human input is more recent than the threshold.
+
+Known limits: a person's input made during a Winsight injection is masked by
+it, and input injected by another tool counts as human.
+
+### Winsight.Core/Modules/Clipboard
+
+- `ClipboardThread`: a dedicated STA thread that owns a message-only window
+  and pumps its messages for the life of the process. The clipboard owner
+  receives messages when another application takes the clipboard; an owner
+  that did not pump would stall it.
+- `ClipboardService`: reads and writes text, and saves and restores every
+  clipboard format held in a memory block (bitmaps, metafiles and private
+  handles are reported as skipped). Text Winsight writes carries
+  `ExcludeClipboardContentFromMonitorProcessing`,
+  `CanIncludeInClipboardHistory=0` and `CanUploadToCloudClipboard=0`.
+- `ClipboardPolicy`: every clipboard tool and `type_keys mode=paste` refuse
+  with `clipboard_disabled` unless `WINSIGHT_ALLOW_CLIPBOARD` is set.
+
+### Winsight.Core/Modules/Ocr
+
+- `VisualTextReader`: captures the window or a region in memory, enlarges it
+  (default x2, bounded by the engine maximum), and runs `Windows.Media.Ocr`,
+  offline, in the requested language or the user profile languages. Lines and
+  words come back with rectangles mapped to window coordinates
+  (`OcrGeometry`). This is why Core targets `net10.0-windows10.0.19041.0`.
+- `VisualTextMatcher`: the `text_visible` comparison: case-insensitive,
+  whitespace collapsed, line by line and across lines.
+
 ### Winsight.Mcp
 
 A `Microsoft.Extensions.Hosting` host that registers the engine modules as
@@ -325,6 +426,14 @@ A singleton `SessionTarget` holds the session default process: process-scoped
 tools take an optional `processId` and fall back to it (`set_target` /
 `get_target` / `clear_target` manage it), so an agent driving one app need not
 repeat the id.
+
+`ToolListAnnouncer` sends `notifications/tools/list_changed` once the client
+has initialized. `ServerBuildInfo` gives `get_winsight_guide` the build this
+process runs (product version with commit, file time, process start), the
+tools it registered, and whether the source output that `tools\run-mcp.ps1`
+copied it from has been rebuilt since (`WINSIGHT_SOURCE_BUILD_DIR`). A client
+session keeps the server process it started with, so a stale tool list is
+visible there.
 
 Logging is forced to stderr — stdout is reserved for the MCP protocol.
 
@@ -371,7 +480,9 @@ The universal guard pins the failure to the calling tool only.
 `SessionTarget` is also the process-policy choke point. `TryResolve` and
 `TrySet` enforce optional allowlists before any process-scoped tool runs:
 `WINSIGHT_ALLOWED_PROCESS_IDS`, `WINSIGHT_ALLOWED_PROCESS_NAMES`, and
-`WINSIGHT_ALLOWED_EXECUTABLES` for `launch_app`. The CDP tools also require
+`WINSIGHT_ALLOWED_EXECUTABLES` for `launch_app`. `ToolAccessPolicy.GuardMutation`
+gates every screen-changing tool: dry-run preview first, then the
+yield-to-user refusal. The CDP tools also require
 the requested port to be a listening socket owned by a WebView2 process
 discovered under the authorized host process, so a raw loopback port is not
 enough to bypass the process policy. `WINSIGHT_DRY_RUN` blocks mutating MCP
@@ -418,6 +529,12 @@ persisted to disk. Repairable high-level failures share the same data shape:
 | Type/field not found in heap              | `OperationResult.Failure(...)`                        |
 | Architecture / elevation mismatch         | CLRMD attach throws; ToolSafety wraps it as `OperationResult.Failure(message)` and the host stays up |
 | Any other unhandled exception in a tool   | ToolSafety wraps it as `OperationResult.Failure(message)`, stderr-logs the full stack, returns to caller |
+| A person used the desktop more recently than `WINSIGHT_YIELD_TO_USER_MS` | `user_active: ...`, nothing is sent |
+| The foreground moved between `run_steps` steps | The batch stops with `foreground_changed` and `foregroundChanged: true` |
+| The pointer moved during a settle         | `cursor_moved: ...`, the press, wheel or hold is not sent |
+| Clipboard tool without `WINSIGHT_ALLOW_CLIPBOARD` | `clipboard_disabled: ...` |
+| No OCR component for the language          | `ocr_unavailable: ...` listing the installed languages |
+| A visual or idle wait never holds          | `timed_out: ...` with the last measurements |
 
 ## What is intentionally absent at this point
 
@@ -429,6 +546,9 @@ persisted to disk. Repairable high-level failures share the same data shape:
   baseline-based SSIM + pixel diff; unsupervised anomaly detection would be a
   separate feature if there is a concrete need later.
 - Process-injection-based instrumentation (DLL injection, MinHook).
+- Low-level input hooks (`WH_MOUSE_LL`, `WH_KEYBOARD_LL`) in the server.
+  User activity is attributed by time through the input ledger instead; the
+  WPF lab's keyboard hook is a test target, not part of Winsight.
 - DPI-aware coordinate mapping for multi-monitor setups.
 - D3D11 `Present` hook for capturing surfaces UIA cannot see.
 - Cross-elevation UIA / CLRMD inspection. A standard-user winsight host

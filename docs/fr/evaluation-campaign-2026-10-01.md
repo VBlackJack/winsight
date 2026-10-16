@@ -1,5 +1,7 @@
 # Campagne d'évaluation du 2026-10-01
 
+*[English version](../evaluation-campaign-2026-10-01.md)*
+
 Le banc accepte maintenant les décisions du CLI Codex, des suites applicatives
 externes, des états protégés, des listes d'actions/cibles autorisées et des
 traces structurées. La première tâche sur une application réelle a réussi trois
@@ -91,4 +93,4 @@ par défaut `codex-default-count1.jsonl`, refus du nom desktop
 `codex-count1-v4.jsonl`, régression initiale `scripted.jsonl`. Ces fichiers sont
 ignorés par Git. Les changements restent locaux, sans commit, push ni release.
 
-[Utiliser le banc](model-evaluation.fr.md) · [English version](evaluation-campaign-2026-10-01.md)
+[Utiliser le banc](model-evaluation.md)

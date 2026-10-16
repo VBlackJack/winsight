@@ -1,5 +1,7 @@
 # Evaluation campaign, 2026-10-01
 
+*[Version française](fr/evaluation-campaign-2026-10-01.md)*
+
 The evaluator now supports Codex CLI decisions, external application suites,
 protected-state grading, action/target allowlists and structured trial traces.
 The first real application task passed three times on PuTTY. This is a bounded
@@ -99,4 +101,4 @@ Retained under `.validation/eval-20261001/`:
 These local artifacts are ignored by Git. Source and English/French guides are
 working-tree changes; no commit, push or release was performed.
 
-[Run the evaluator](model-evaluation.md) · [Version française](evaluation-campaign-2026-10-01.fr.md)
+[Run the evaluator](model-evaluation.md)

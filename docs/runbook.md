@@ -1,5 +1,7 @@
 # Winsight UIA Runbook
 
+*[Version française](fr/runbook.md)*
+
 ## Preferred AI Loop
 
 Use the high-level agent tools first:

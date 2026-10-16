@@ -1,5 +1,7 @@
 # Verified control validation
 
+*[Version française](fr/verified-control-validation.md)*
+
 Local validation on Windows, 2026-09-05. These results cover the native fixture
 and deterministic contracts; they do not represent model-comparison scores.
 

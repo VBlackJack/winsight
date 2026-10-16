@@ -1,5 +1,7 @@
 # Verified control
 
+*[Version française](fr/verified-control.md)*
+
 The preferred loop is `observe_scene` -> `act_verified` -> a new observation.
 The original tools remain available for existing clients. Run `get_winsight_guide`
 to discover the preferred loop. Client configuration is unchanged for Codex,

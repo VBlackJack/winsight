@@ -9,6 +9,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- French documentation: `README.fr.md` and `docs/fr/` mirror the README and
+  every document under `docs/` except the release notes, each version linking
+  to the other at the top. A test keeps the French files free of typographic
+  stand-ins for ASCII characters and proves it reaches `docs/fr/`.
 - `get_user_activity`: time since the last human input, with the input of every
   Winsight process in the session excluded through a shared input ledger, the
   foreground window (its title only for the target process) and whether the
@@ -75,6 +79,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `docs/architecture.md` covers the user activity, clipboard and OCR modules,
+  the pointer settle, the foreground guard and the visual waits. The README
+  tool table lists all 61 tools, and the README layout includes `WpfLabApp`,
+  `Winsight.Setup` and `Winsight.Eval`. The two French evaluation documents
+  moved from `docs/*.fr.md` to `docs/fr/`.
 - Winsight.Core, Winsight.Mcp, the evaluation runner and the tests target
   `net10.0-windows10.0.19041.0` for `Windows.Media.Ocr`. Build outputs moved to
   `bin\<configuration>\net10.0-windows10.0.19041.0`; `run-mcp.ps1`, the smoke

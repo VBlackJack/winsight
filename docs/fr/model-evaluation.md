@@ -1,5 +1,7 @@
 # Évaluation des modèles
 
+*[English version](../model-evaluation.md)*
+
 Le banc sépare les décisions du modèle, le résultat observable et les effets
 sur les contrôles protégés. Il accepte les vingt scénarios WPF existants, des
 suites JSON externes, des adaptateurs exécutables de confiance et le CLI Codex.
@@ -128,4 +130,4 @@ Examiner le compagnon après un échec. Trois essais réussis d'une seule tâche
 ne constituent ni une couverture applicative générale ni un classement des
 modèles.
 
-[Première campagne mesurée](evaluation-campaign-2026-10-01.fr.md) · [English version](model-evaluation.md)
+[Première campagne mesurée](evaluation-campaign-2026-10-01.md)
