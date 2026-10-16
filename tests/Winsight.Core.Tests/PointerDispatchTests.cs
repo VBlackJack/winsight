@@ -95,6 +95,55 @@ public sealed class PointerDispatchTests
     }
 
     [Theory]
+    [InlineData(false, "scroll -3")]
+    [InlineData(true, "hscroll -3")]
+    public void Scroll_moves_settles_then_turns_the_wheel_where_the_pointer_rests(bool horizontal, string expectedTurn)
+    {
+        RecordingPointer pointer = new();
+
+        PointerDispatch.Scroll(Target, -3, horizontal, settleMs: 80, driver: pointer).Should().BeNull();
+
+        pointer.Calls.Should().Equal("move 400,300", "wait 80", expectedTurn);
+    }
+
+    [Fact]
+    public void Scroll_is_refused_when_the_pointer_was_moved()
+    {
+        RecordingPointer pointer = new() { Drift = new Size(0, 25) };
+
+        PointerDispatch.Scroll(Target, 2, false, driver: pointer)!.Error.Should().StartWith("cursor_moved:");
+        pointer.Calls.Should().NotContain(call => call.Contains("scroll", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Hover_holds_the_pointer_and_presses_nothing()
+    {
+        RecordingPointer pointer = new();
+
+        PointerDispatch.Hover(Target, holdMs: 500, settleMs: 100, driver: pointer).Should().BeNull();
+
+        pointer.Calls.Should().Equal("move 400,300", "wait 100", "wait 500");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(PointerDispatch.MaxScrollNotches + 1)]
+    [InlineData(-PointerDispatch.MaxScrollNotches - 1)]
+    public void Out_of_range_wheel_turns_are_refused(int notches)
+    {
+        PointerDispatch.ValidateScroll(notches).Should().Contain("delta");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(PointerDispatch.MaxHoverHoldMs + 1)]
+    public void Out_of_range_hover_holds_are_refused(int holdMs)
+    {
+        PointerDispatch.ValidateHold(holdMs).Should().Contain("holdMs");
+        PointerDispatch.ValidateHold(null).Should().BeNull();
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData(0)]
     [InlineData(PointerDispatch.MaxSettleMs)]
@@ -132,5 +181,8 @@ public sealed class PointerDispatchTests
         public void Click(MouseButton button) => Calls.Add($"click {button}");
 
         public void DoubleClick(MouseButton button) => Calls.Add($"double {button}");
+
+        public void Scroll(int notches, bool horizontal) =>
+            Calls.Add($"{(horizontal ? "hscroll" : "scroll")} {notches}");
     }
 }

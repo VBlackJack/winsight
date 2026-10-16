@@ -563,13 +563,18 @@ public static class AgentExperienceTool
     }
 
     [McpServerTool(Name = "get_winsight_guide")]
-    [Description("Return a compact embedded guide for agents: preferred workflows, repair loops, and when to use high-level tools.")]
-    public static string GetWinsightGuide()
+    [Description("Return a compact embedded guide for agents: preferred workflows, repair loops, and when to use " +
+                 "high-level tools. Also reports the server build this session runs (version, buildTimeUtc), the " +
+                 "exact registeredTools, and newerBuildAvailable: when it is true, or a tool named in docs is " +
+                 "missing from registeredTools, the client session is stale and must be restarted.")]
+    public static string GetWinsightGuide(McpServer? server = null)
     {
         return ToolSafety.SafeInvoke(() =>
             JsonSerializer.Serialize(
                 OperationResult.OkWith(new
                 {
+                    server = ServerBuildInfo.Describe(
+                        server?.ServerOptions.ToolCollection?.Select(tool => tool.ProtocolTool.Name) ?? []),
                     defaultLoop = DefaultLoop,
                     preferredTools = new
                     {

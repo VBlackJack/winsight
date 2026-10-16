@@ -30,7 +30,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 59 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 61 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -196,9 +196,12 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 59 tools.
+server is connected and lists all 61 tools.
 After rebuilding Winsight, restart the client session: a session keeps the
-server process, and the tool list, it started with.
+server process, and the tool list, it started with. `get_winsight_guide`
+reports the build a session runs, its exact tool list and, when launched
+through `tools\run-mcp.ps1`, whether a newer build is waiting
+(`newerBuildAvailable`).
 
 ### Smoke check from the shell
 
@@ -305,7 +308,7 @@ For measured model trials and application-specific suites, see
 | `type_and_assert`             | Type and immediately assert observable state |
 | `get_agent_state`             | Compact target, guardrail, memory, last-failure, and embedded recipe context |
 | `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
-| `get_winsight_guide`          | Embedded agent playbook for the preferred loop and repair policy |
+| `get_winsight_guide`          | Embedded agent playbook for the preferred loop and repair policy, plus the running build and its registered tools |
 | `launch_app`                  | Start an app and wait until its window is ready (returns a classified descriptor) |
 | `close_app`                   | Request graceful closure, or explicitly force termination |
 | `list_windows`                | Enumerate top-level windows (classified; per-process surfaces dialogs/popups/menus) |
@@ -319,6 +322,7 @@ For measured model trials and application-specific suites, see
 | `get_focused_element`         | Report the element that owns keyboard focus, and whether it is inside WebView2 |
 | `get_user_activity`           | Report whether a person is using the desktop: time since the last human input (Winsight's own input excluded), foreground window, locked session |
 | `wait_for_user_idle`          | Wait until nobody has used the mouse or keyboard for a given time |
+| `scroll_point` / `hover_point` | Turn the mouse wheel, or rest the pointer, at a coordinate, with the checks of `click_point` |
 | `type_keys`                   | Type text into a window without a UIA element to type into (Unicode keystrokes, or a paste that restores the clipboard) |
 | `set_clipboard_text` / `read_clipboard_text` | Write or read the clipboard text; off unless `WINSIGHT_ALLOW_CLIPBOARD` is set |
 | `wait_for_visual_change` / `wait_for_visual_stable` | Wait until a window or region looks different, or stops changing, instead of sleeping |

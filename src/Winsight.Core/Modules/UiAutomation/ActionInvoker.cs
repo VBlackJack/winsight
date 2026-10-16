@@ -120,16 +120,76 @@ public sealed class ActionInvoker
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
-            return ClickPointCore(
-                processId, x, y, style, windowTitle, windowRelative, allowOutOfWindow, expectedWindow,
-                focusWindow, settleMs);
+            return PointActionCore(
+                processId, x, y, windowTitle, windowRelative, allowOutOfWindow, expectedWindow, focusWindow,
+                (point, revalidate) => PointerDispatch.Click(point, style, settleMs, revalidate));
         }
     }
 
-    private static OperationResult ClickPointCore(
-        int processId, int x, int y, ClickStyle style, string? windowTitle,
+    /// <summary>
+    /// Turn the mouse wheel by <paramref name="notches"/> at a coordinate, with
+    /// the same coordinate spaces, window checks, <paramref name="focusWindow"/>
+    /// and pointer settle as <see cref="ClickPoint"/>. Positive notches scroll
+    /// up, or right when <paramref name="horizontal"/>.
+    /// </summary>
+    public OperationResult ScrollPoint(
+        int processId,
+        int x,
+        int y,
+        int notches,
+        bool horizontal = false,
+        string? windowTitle = null,
+        bool windowRelative = true,
+        bool allowOutOfWindow = false,
+        bool focusWindow = false,
+        int? settleMs = null)
+    {
+        if ((PointerDispatch.ValidateScroll(notches) ?? PointerDispatch.ValidateSettle(settleMs)) is { } invalid)
+        {
+            return OperationResult.Failure(invalid);
+        }
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
+        lock (DesktopInputGate)
+        {
+            return PointActionCore(
+                processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null, focusWindow,
+                (point, revalidate) => PointerDispatch.Scroll(point, notches, horizontal, settleMs, revalidate));
+        }
+    }
+
+    /// <summary>
+    /// Rest the pointer on a coordinate, with the same checks as
+    /// <see cref="ClickPoint"/>, and keep it there for <paramref name="holdMs"/>
+    /// so hover styles and tooltips of a drawn UI appear. Nothing is pressed.
+    /// </summary>
+    public OperationResult HoverPoint(
+        int processId,
+        int x,
+        int y,
+        int? holdMs = null,
+        string? windowTitle = null,
+        bool windowRelative = true,
+        bool allowOutOfWindow = false,
+        bool focusWindow = false,
+        int? settleMs = null)
+    {
+        if ((PointerDispatch.ValidateHold(holdMs) ?? PointerDispatch.ValidateSettle(settleMs)) is { } invalid)
+        {
+            return OperationResult.Failure(invalid);
+        }
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
+        lock (DesktopInputGate)
+        {
+            return PointActionCore(
+                processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null, focusWindow,
+                (point, revalidate) => PointerDispatch.Hover(point, holdMs, settleMs, revalidate));
+        }
+    }
+
+    private static OperationResult PointActionCore(
+        int processId, int x, int y, string? windowTitle,
         bool windowRelative, bool allowOutOfWindow, WindowIdentity? expectedWindow,
-        bool focusWindow, int? settleMs)
+        bool focusWindow, Func<System.Drawing.Point, Func<string?>, OperationResult?> dispatch)
     {
         if (expectedWindow is not null && expectedWindow.ProcessId != processId)
         {
@@ -208,8 +268,7 @@ public sealed class ActionInvoker
         {
             return OperationResult.Failure(recipientError);
         }
-        return PointerDispatch.Click(point, style, settleMs, RecipientRefusal)
-            ?? OperationResult.OkWith(new ClickPointResult(screenX, screenY));
+        return dispatch(point, RecipientRefusal) ?? OperationResult.OkWith(new ClickPointResult(screenX, screenY));
     }
 
     private static bool TryResolveClickWindow(

@@ -3,7 +3,10 @@
 #
 # Smoke test for Winsight.Mcp.
 # Spawns the server, exchanges initialize + tools/list over stdio, and reports
-# the discovered tool count and names. Exits non-zero on any failure.
+# the discovered tool count and names. Also requires the
+# notifications/tools/list_changed the server sends after initialization, and
+# checks that get_winsight_guide reports the same tools and a current build.
+# Exits non-zero on any failure.
 #
 # Usage:
 #   .\tools\smoke-mcp.ps1
@@ -13,7 +16,7 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
-    [int]$ExpectedToolCount = 59,
+    [int]$ExpectedToolCount = 61,
     [int]$ResponseTimeoutSeconds = 10
 )
 
@@ -63,16 +66,34 @@ try {
     $proc.StandardInput.Flush()
 
     $proc.StandardInput.WriteLine('{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
+    $proc.StandardInput.WriteLine('{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_winsight_guide","arguments":{}}}')
     $proc.StandardInput.Flush()
 
-    $toolsResponseTask = $proc.StandardOutput.ReadLineAsync()
-    if (-not $toolsResponseTask.Wait([TimeSpan]::FromSeconds($ResponseTimeoutSeconds))) {
+    # Notifications may arrive before, between or after the responses: read
+    # messages until both responses and the list_changed notification are in.
+    $responses = @{}
+    $listChanged = $false
+    $deadline = [DateTime]::UtcNow.AddSeconds($ResponseTimeoutSeconds)
+    while (($responses.Count -lt 2 -or -not $listChanged) -and [DateTime]::UtcNow -lt $deadline) {
+        $lineTask = $proc.StandardOutput.ReadLineAsync()
+        $remaining = $deadline - [DateTime]::UtcNow
+        if ($remaining -lt [TimeSpan]::Zero -or -not $lineTask.Wait($remaining)) {
+            break
+        }
+        $message = $lineTask.Result | ConvertFrom-Json
+        if ($message.method -eq "notifications/tools/list_changed") {
+            $listChanged = $true
+        }
+        elseif ($null -ne $message.id) {
+            $responses[[int]$message.id] = $message
+        }
+    }
+    if (-not $responses.ContainsKey(2)) {
         Write-Error "Timeout waiting for tools/list response."
         exit 3
     }
-    $toolsResponse = $toolsResponseTask.Result
 
-    $parsed = $toolsResponse | ConvertFrom-Json
+    $parsed = $responses[2]
     $tools = $parsed.result.tools
     $count = ($tools | Measure-Object).Count
 
@@ -85,6 +106,27 @@ try {
     if ($count -ne $ExpectedToolCount) {
         Write-Error "Expected $ExpectedToolCount tools, got $count."
         exit 4
+    }
+
+    if (-not $listChanged) {
+        Write-Error "No notifications/tools/list_changed after initialization."
+        exit 5
+    }
+
+    if (-not $responses.ContainsKey(3)) {
+        Write-Error "Timeout waiting for the get_winsight_guide response."
+        exit 6
+    }
+    $guide = ($responses[3].result.content[0].text | ConvertFrom-Json).data.server
+    $guideCount = ($guide.registeredTools | Measure-Object).Count
+    Write-Host "Guide: version $($guide.version), $guideCount registered tools, newer build available: $($guide.newerBuildAvailable)" -ForegroundColor DarkGray
+    if ($guideCount -ne $count) {
+        Write-Error "get_winsight_guide lists $guideCount tools but tools/list returned $count."
+        exit 6
+    }
+    if ($guide.newerBuildAvailable -ne $false) {
+        Write-Error "get_winsight_guide should report newerBuildAvailable=false for the build it runs (got '$($guide.newerBuildAvailable)')."
+        exit 6
     }
 
     Write-Host ""

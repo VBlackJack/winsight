@@ -28,6 +28,8 @@ New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 try {
     Copy-Item -Path (Join-Path $sourceDir "*") -Destination $runtimeDir -Recurse -Force
     $runtimeDll = Join-Path $runtimeDir "winsight-mcp.dll"
+    # Lets get_winsight_guide tell a session that a newer build exists than the copy it runs.
+    $env:WINSIGHT_SOURCE_BUILD_DIR = $sourceDir
     & dotnet $runtimeDll
     exit $LASTEXITCODE
 }

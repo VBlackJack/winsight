@@ -608,6 +608,26 @@ the window size, so the agent can correct the coordinate.
 > point relative to a specific surface, pass `windowTitle`; this also narrows
 > `coordinateSpace=screen` bounds checks to the intended window family.
 
+## `scroll_point` / `hover_point`
+
+Turn the mouse wheel, or rest the pointer, at a coordinate, for lists, canvases
+and hover effects that UI Automation cannot reach. Both take the `click_point`
+parameters except `clickStyle` (`x`, `y`, `windowTitle`, `coordinateSpace`,
+`allowOutOfWindow`, `focusWindow`, `settleMs`, `processId`) and run the same
+checks: the point must reach a visible target window, and the pointer settles
+on it and is read back before anything else happens.
+
+| Name | Tool | Type | Description |
+| ---- | ---- | ---- | ----------- |
+| `delta` | `scroll_point` | int | Wheel notches, -50 to 50 and not 0. Positive scrolls up, or right with `horizontal` |
+| `horizontal` | `scroll_point` | bool | Turn the horizontal wheel. Default false |
+| `holdMs` | `hover_point` | int? | Time the pointer stays after the settle, 0 to 10000; it is checked again afterwards |
+
+Windows delivers the wheel to the window under the pointer, which is why the
+pointer moves there first. `hover_point` presses nothing; capture or
+`read_text_visually` afterwards to see what appeared. Both return the absolute
+`screenX`/`screenY`, and fail with `cursor_moved` if other input moved the pointer.
+
 ## `type_text`
 
 Locate an element and write text into it. Same locator parameters as
@@ -1017,6 +1037,8 @@ in the journal.
 | `click`       | `click_element`      | `clickStyle`                                                   |
 | `click_point` | `click_point`        | `x`, `y`, `clickStyle`, `coordinateSpace`, `allowOutOfWindow`, `focusWindow`, `settleMs` |
 | `type`        | `type_text`          | `text`, `focusWindow`                                          |
+| `scroll_point` | `scroll_point`     | `x`, `y`, `delta`, `horizontal`, and the `click_point` fields except `clickStyle` |
+| `hover_point` | `hover_point`        | `x`, `y`, `holdMs`, and the `click_point` fields except `clickStyle` |
 | `type_keys`   | `type_keys`          | `text`, `mode` (`keys` or `paste`), `restoreDelayMs`, `windowTitle` |
 | `key_chord`   | `send_key_chord`     | `chord`                                                        |
 | `select`      | `select_item`        | `itemName`                                                    |

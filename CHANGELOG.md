@@ -38,6 +38,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   taken before the action that precedes it.
 - `read_text_visually` and the `run_steps` assert operator `text_visible`,
   through the offline Windows OCR engine, with rectangles in window coordinates.
+- `scroll_point` and `hover_point`, and the matching `run_steps` steps: wheel
+  notches (vertical or horizontal) and a pointer rest at a coordinate, with the
+  coordinate spaces, window checks, `focusWindow` and settle of `click_point`.
+- `get_winsight_guide` reports the server build (version with commit, file
+  time, process start), the exact registered tools, and `newerBuildAvailable`
+  when `tools\run-mcp.ps1` launched it from a source output that has since been
+  rebuilt. The server announces `notifications/tools/list_changed` after
+  initialization, and the smoke test requires it.
 - Codex CLI decision-source evaluation, exact-target/action-bounded external
   suites, a disposable PuTTY port scenario, and structured trial sidecars.
 - Independent protected-state grading with explicit unknown coverage, retained

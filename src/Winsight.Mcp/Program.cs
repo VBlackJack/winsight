@@ -15,6 +15,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Server;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.Clipboard;
 using Winsight.Core.Modules.Cdp;
@@ -82,6 +84,7 @@ public static class Program
             .AddMcpServer()
             .WithStdioServerTransport()
             .WithToolsFromAssembly();
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, ToolListAnnouncer>();
 
         await builder.Build().RunAsync();
     }

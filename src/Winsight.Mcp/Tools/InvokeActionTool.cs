@@ -185,6 +185,132 @@ public static class InvokeActionTool
         });
     }
 
+    [McpServerTool(Name = "scroll_point")]
+    [Description("Turn the mouse wheel at a coordinate, for lists and canvases that UI Automation cannot " +
+                 "scroll (iced, winit, egui). Same coordinates and checks as click_point: window-relative by " +
+                 "default, the point must reach a visible target window, focusWindow raises it first, and the " +
+                 "pointer settles on the point (settleMs) before the wheel turns, because Windows sends the " +
+                 "wheel to the window under the pointer. delta is in wheel notches: positive scrolls up, or " +
+                 "right with horizontal=true. Returns the absolute screenX/screenY.")]
+    public static string ScrollPoint(
+        ActionInvoker invoker,
+        SessionTarget target,
+        [Description("X coordinate. Window-relative by default; see coordinateSpace.")]
+        int x,
+        [Description("Y coordinate. Window-relative by default; see coordinateSpace.")]
+        int y,
+        [Description("Wheel notches, -50 to 50 and not 0. Positive scrolls up (or right when horizontal).")]
+        int delta,
+        [Description("Turn the horizontal wheel instead. Default false.")]
+        bool horizontal = false,
+        [Description("Restrict the target window to those whose title contains this text.")]
+        string? windowTitle = null,
+        [Description("Coordinate space: window (default) or screen.")]
+        string? coordinateSpace = null,
+        [Description("When coordinateSpace=screen, allow the point to be outside the target window bounds. Default false.")]
+        bool allowOutOfWindow = false,
+        [Description("Bring the target window to the foreground and verify it first. Default false.")]
+        bool focusWindow = false,
+        [Description(SettleMsDescription)]
+        int? settleMs = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            if (!TryPointTarget(target, processId, coordinateSpace, out int pid, out bool windowRelative, out string? error))
+            {
+                return Serialize(OperationResult.Failure(error!));
+            }
+            if (ToolAccessPolicy.GuardMutation(
+                    "scroll_point",
+                    new { processId = pid, x, y, delta, horizontal, windowTitle, coordinateSpace, focusWindow, settleMs })
+                is { } gated)
+            {
+                return Serialize(gated);
+            }
+            return Serialize(invoker.ScrollPoint(
+                pid, x, y, delta, horizontal, windowTitle, windowRelative, allowOutOfWindow, focusWindow, settleMs));
+        });
+    }
+
+    [McpServerTool(Name = "hover_point")]
+    [Description("Rest the pointer on a coordinate without pressing, to reveal hover styles, tooltips or " +
+                 "menus that a drawn UI only shows under the pointer. Same coordinates and checks as " +
+                 "click_point; the pointer settles (settleMs), then stays for holdMs and is checked again " +
+                 "(cursor_moved if something moved it). Capture or read_text_visually afterwards to see the " +
+                 "effect. Use hover_element when UI Automation can locate the element. Returns the absolute " +
+                 "screenX/screenY.")]
+    public static string HoverPoint(
+        ActionInvoker invoker,
+        SessionTarget target,
+        [Description("X coordinate. Window-relative by default; see coordinateSpace.")]
+        int x,
+        [Description("Y coordinate. Window-relative by default; see coordinateSpace.")]
+        int y,
+        [Description("Milliseconds to keep the pointer still after the settle (0 to 10000). Default 0.")]
+        int? holdMs = null,
+        [Description("Restrict the target window to those whose title contains this text.")]
+        string? windowTitle = null,
+        [Description("Coordinate space: window (default) or screen.")]
+        string? coordinateSpace = null,
+        [Description("When coordinateSpace=screen, allow the point to be outside the target window bounds. Default false.")]
+        bool allowOutOfWindow = false,
+        [Description("Bring the target window to the foreground and verify it first. Default false.")]
+        bool focusWindow = false,
+        [Description(SettleMsDescription)]
+        int? settleMs = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            if (!TryPointTarget(target, processId, coordinateSpace, out int pid, out bool windowRelative, out string? error))
+            {
+                return Serialize(OperationResult.Failure(error!));
+            }
+            if (ToolAccessPolicy.GuardMutation(
+                    "hover_point",
+                    new { processId = pid, x, y, holdMs, windowTitle, coordinateSpace, focusWindow, settleMs })
+                is { } gated)
+            {
+                return Serialize(gated);
+            }
+            return Serialize(invoker.HoverPoint(
+                pid, x, y, holdMs, windowTitle, windowRelative, allowOutOfWindow, focusWindow, settleMs));
+        });
+    }
+
+    private static bool TryPointTarget(
+        SessionTarget target,
+        int? processId,
+        string? coordinateSpace,
+        out int pid,
+        out bool windowRelative,
+        out string? error)
+    {
+        windowRelative = true;
+        if (!target.TryResolve(processId, out pid, out string targetError))
+        {
+            error = targetError;
+            return false;
+        }
+        string space = (coordinateSpace ?? "window").Trim();
+        if (string.Equals(space, "screen", StringComparison.OrdinalIgnoreCase))
+        {
+            windowRelative = false;
+        }
+        else if (!string.Equals(space, "window", StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Unknown coordinateSpace \"{coordinateSpace}\". Accepted values: window, screen.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    private static string Serialize(OperationResult result) => JsonSerializer.Serialize(result, JsonOptions.Default);
+
     [McpServerTool(Name = "type_text")]
     [Description("Locate a UI element and set its value (via the Value pattern) or type into it " +
                  "(via keyboard fallback). Same strict locator semantics as click_element. " +

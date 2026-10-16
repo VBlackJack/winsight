@@ -34,6 +34,9 @@
                 <TextBlock x:Name="ProbePressCount" Text="0" AutomationProperties.AutomationId="ProbePressCount" />
                 <TextBlock Text="Text typed into the pointer probe (WM_CHAR, newline as \n):" Margin="0,6,0,0" />
                 <TextBlock x:Name="ProbeTypedText" Text="" AutomationProperties.AutomationId="ProbeTypedText" />
+                <TextBlock Text="Pointer probe wheel total and current frame hover:" Margin="0,6,0,0" />
+                <TextBlock x:Name="ProbeWheel" Text="v=0 h=0" AutomationProperties.AutomationId="ProbeWheel" />
+                <TextBlock x:Name="ProbeHoverNow" Text="none" AutomationProperties.AutomationId="ProbeHoverNow" />
             </StackPanel>
             <ListBox x:Name="KeyLog"
                      Margin="0,8,0,0"

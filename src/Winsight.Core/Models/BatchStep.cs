@@ -41,6 +41,10 @@ public sealed record BatchStep(
     string? CoordinateSpace = null,
     bool? AllowOutOfWindow = null,
     int? SettleMs = null,
+    // scroll_point (wheel notches, positive up) and hover_point.
+    int? Delta = null,
+    bool? Horizontal = null,
+    int? HoldMs = null,
     // type and click_point.
     string? Text = null,
     bool? FocusWindow = null,

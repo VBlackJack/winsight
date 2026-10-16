@@ -33,6 +33,9 @@ internal interface IPointerDriver
 
     /// <summary>Two press and release pairs at the current position, without moving.</summary>
     void DoubleClick(MouseButton button);
+
+    /// <summary>Turn the wheel by whole notches at the current position; positive is up, or right when horizontal.</summary>
+    void Scroll(int notches, bool horizontal);
 }
 
 internal sealed class FlaUiPointerDriver : IPointerDriver
@@ -48,6 +51,18 @@ internal sealed class FlaUiPointerDriver : IPointerDriver
     public void Click(MouseButton button) => Mouse.Click(button);
 
     public void DoubleClick(MouseButton button) => Mouse.DoubleClick(button);
+
+    public void Scroll(int notches, bool horizontal)
+    {
+        if (horizontal)
+        {
+            Mouse.HorizontalScroll(notches);
+        }
+        else
+        {
+            Mouse.Scroll(notches);
+        }
+    }
 }
 
 /// <summary>
@@ -71,6 +86,12 @@ public static class PointerDispatch
 
     internal const string CursorMovedCode = "cursor_moved";
 
+    /// <summary>Largest wheel turn one call sends, in notches.</summary>
+    public const int MaxScrollNotches = 50;
+
+    /// <summary>Longest time a hover keeps the pointer still after the settle.</summary>
+    public const int MaxHoverHoldMs = 10_000;
+
     /// <summary>Validate a caller-supplied settle; null means the default.</summary>
     public static string? ValidateSettle(int? settleMs) =>
         settleMs is < 0 or > MaxSettleMs
@@ -78,6 +99,68 @@ public static class PointerDispatch
                 CultureInfo.InvariantCulture,
                 $"settleMs must be between 0 and {MaxSettleMs} (got {settleMs}).")
             : null;
+
+    /// <summary>Validate a wheel turn: a non-zero number of notches within the bound.</summary>
+    public static string? ValidateScroll(int notches) =>
+        notches == 0 || Math.Abs(notches) > MaxScrollNotches
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"delta must be a non-zero number of wheel notches between -{MaxScrollNotches} and {MaxScrollNotches} (got {notches}).")
+            : null;
+
+    /// <summary>Validate a hover hold; null means no hold beyond the settle.</summary>
+    public static string? ValidateHold(int? holdMs) =>
+        holdMs is < 0 or > MaxHoverHoldMs
+            ? string.Create(
+                CultureInfo.InvariantCulture, $"holdMs must be between 0 and {MaxHoverHoldMs} (got {holdMs}).")
+            : null;
+
+    /// <summary>
+    /// Move to <paramref name="point"/>, settle, check the pointer is still
+    /// there, then turn the wheel. Windows sends the wheel to the window under
+    /// the pointer, so the pointer must be on the target first.
+    /// </summary>
+    internal static OperationResult? Scroll(
+        Point point,
+        int notches,
+        bool horizontal,
+        int? settleMs = null,
+        Func<string?>? revalidate = null,
+        IPointerDriver? driver = null)
+    {
+        IPointerDriver pointer = driver ?? FlaUiPointerDriver.Instance;
+        if (Settle(pointer, point, settleMs, revalidate) is { } refusal)
+        {
+            return refusal;
+        }
+        pointer.Scroll(notches, horizontal);
+        return null;
+    }
+
+    /// <summary>
+    /// Move to <paramref name="point"/>, settle, and keep the pointer there for
+    /// <paramref name="holdMs"/> so hover effects and tooltips can appear. The
+    /// pointer is checked again after the hold.
+    /// </summary>
+    internal static OperationResult? Hover(
+        Point point,
+        int? holdMs = null,
+        int? settleMs = null,
+        Func<string?>? revalidate = null,
+        IPointerDriver? driver = null)
+    {
+        IPointerDriver pointer = driver ?? FlaUiPointerDriver.Instance;
+        if (Settle(pointer, point, settleMs, revalidate) is { } refusal)
+        {
+            return refusal;
+        }
+        if (holdMs is > 0)
+        {
+            pointer.Wait(holdMs.Value);
+            return CheckPosition(pointer, point, holdMs.Value);
+        }
+        return null;
+    }
 
     /// <summary>
     /// Move to <paramref name="point"/>, wait <paramref name="settleMs"/>, check
@@ -93,25 +176,9 @@ public static class PointerDispatch
         IPointerDriver? driver = null)
     {
         IPointerDriver pointer = driver ?? FlaUiPointerDriver.Instance;
-        int settle = settleMs ?? DefaultSettleMs;
-
-        pointer.MoveTo(point);
-        pointer.Wait(settle);
-
-        Point actual = pointer.Position;
-        if (Math.Abs(actual.X - point.X) > CursorTolerancePx || Math.Abs(actual.Y - point.Y) > CursorTolerancePx)
+        if (Settle(pointer, point, settleMs, revalidate) is { } refusal)
         {
-            return OperationResult.FailureWith(
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{CursorMovedCode}: the pointer is at ({actual.X}, {actual.Y}) instead of ({point.X}, {point.Y}) " +
-                    $"after a {settle} ms settle; other input moved it. Check get_user_activity before retrying."),
-                new { expectedX = point.X, expectedY = point.Y, actualX = actual.X, actualY = actual.Y });
-        }
-
-        if (revalidate?.Invoke() is { } refusal)
-        {
-            return OperationResult.Failure(refusal);
+            return refusal;
         }
 
         switch (style)
@@ -127,5 +194,32 @@ public static class PointerDispatch
                 break;
         }
         return null;
+    }
+
+    private static OperationResult? Settle(IPointerDriver pointer, Point point, int? settleMs, Func<string?>? revalidate)
+    {
+        int settle = settleMs ?? DefaultSettleMs;
+        pointer.MoveTo(point);
+        pointer.Wait(settle);
+        if (CheckPosition(pointer, point, settle) is { } moved)
+        {
+            return moved;
+        }
+        return revalidate?.Invoke() is { } refusal ? OperationResult.Failure(refusal) : null;
+    }
+
+    private static OperationResult? CheckPosition(IPointerDriver pointer, Point point, int waitedMs)
+    {
+        Point actual = pointer.Position;
+        if (Math.Abs(actual.X - point.X) <= CursorTolerancePx && Math.Abs(actual.Y - point.Y) <= CursorTolerancePx)
+        {
+            return null;
+        }
+        return OperationResult.FailureWith(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{CursorMovedCode}: the pointer is at ({actual.X}, {actual.Y}) instead of ({point.X}, {point.Y}) " +
+                $"after {waitedMs} ms; other input moved it. Check get_user_activity before retrying."),
+            new { expectedX = point.X, expectedY = point.Y, actualX = actual.X, actualY = actual.Y });
     }
 }
