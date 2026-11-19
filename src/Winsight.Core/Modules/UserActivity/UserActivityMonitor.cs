@@ -34,6 +34,7 @@ public sealed class UserActivityMonitor
     public const int MaxIdleMs = 600_000;
     public const int MaxWaitTimeoutMs = 600_000;
     public const int DefaultPollMs = 100;
+    public const int DefaultProgressIntervalMs = 1_000;
 
     private const string TimedOutCode = "timed_out";
     private const int MaxTitleLength = 512;
@@ -44,21 +45,33 @@ public sealed class UserActivityMonitor
     private const int SessionStateLocked = 0;
     private const int SessionStateUnlocked = 1;
 
+    private readonly IUserActivityBackend _backend;
+
+    public UserActivityMonitor()
+        : this(NativeUserActivityBackend.Instance)
+    {
+    }
+
+    internal UserActivityMonitor(IUserActivityBackend backend)
+    {
+        _backend = backend;
+    }
+
     /// <summary>
     /// Snapshot the desktop. The foreground title is returned only when its
     /// process is in <paramref name="revealTitleFor"/>.
     /// </summary>
     public UserActivitySnapshot Read(IReadOnlyCollection<int>? revealTitleFor = null)
     {
-        (uint now, uint lastInput, InputAttribution attribution) = Sample();
+        (uint now, uint lastInput, InputAttribution attribution) = Sample(_backend);
         long? humanIdle = HumanIdleMs(now, attribution);
         int? yieldMs = UserActivityPolicy.YieldToUserMs;
         return new UserActivitySnapshot(
             InputAttributor.AgeMs(now, lastInput),
             attribution.LastInputIsWinsight ? SourceWinsight : SourceHuman,
             humanIdle,
-            ReadForeground(revealTitleFor),
-            ReadSessionLocked(),
+            _backend.ReadForeground(revealTitleFor),
+            _backend.ReadSessionLocked(),
             yieldMs,
             UserActivityPolicy.IsActive(humanIdle, yieldMs));
     }
@@ -70,18 +83,18 @@ public sealed class UserActivityMonitor
     /// </summary>
     internal static long? ReadHumanIdleMs()
     {
-        (uint now, _, InputAttribution attribution) = Sample();
+        (uint now, _, InputAttribution attribution) = Sample(NativeUserActivityBackend.Instance);
         return HumanIdleMs(now, attribution);
     }
 
-    private static (uint Now, uint LastInput, InputAttribution Attribution) Sample()
+    private static (uint Now, uint LastInput, InputAttribution Attribution) Sample(IUserActivityBackend backend)
     {
-        uint now = TickNow();
-        uint lastInput = LastInputTick(now);
-        InputAttribution attribution = InputAttributor.Attribute(now, lastInput, InputLedger.Read());
+        uint now = backend.TickNow();
+        uint lastInput = backend.LastInputTick(now);
+        InputAttribution attribution = InputAttributor.Attribute(now, lastInput, backend.ReadLedger());
         if (!attribution.LastInputIsWinsight)
         {
-            InputLedger.RecordHuman(lastInput);
+            backend.RecordHuman(lastInput);
         }
         return (now, lastInput, attribution);
     }
@@ -99,6 +112,81 @@ public sealed class UserActivityMonitor
         int pollMs = DefaultPollMs,
         IReadOnlyCollection<int>? revealTitleFor = null)
     {
+        if (ValidateWaitBounds(idleMs, timeoutMs) is { } validationError)
+        {
+            return validationError;
+        }
+        int poll = Math.Max(1, pollMs);
+        long startMs = _backend.ElapsedMs();
+        while (true)
+        {
+            UserActivitySnapshot activity = Read(revealTitleFor);
+            long waitedMs = Math.Max(0, _backend.ElapsedMs() - startMs);
+            if (activity.HumanIdleMs is not long humanIdle || humanIdle >= idleMs)
+            {
+                return OperationResult.OkWith(new UserIdleWaitResult(true, waitedMs, idleMs, activity));
+            }
+            long remaining = timeoutMs - waitedMs;
+            if (remaining <= 0)
+            {
+                return TimeoutResult(timeoutMs, idleMs, waitedMs, humanIdle, activity);
+            }
+            // Sleep no longer than it takes the user to reach the idle mark.
+            int sleepMs = (int)Math.Min(remaining, Math.Min(poll, Math.Max(1, idleMs - humanIdle)));
+            _backend.Sleep(sleepMs);
+        }
+    }
+
+    /// <summary>
+    /// Asynchronous counterpart to <see cref="WaitForIdle"/> with a single
+    /// end-to-end timeout, periodic progress notifications and cancellation.
+    /// Never injects input.
+    /// </summary>
+    public async Task<OperationResult> WaitForIdleAsync(
+        int idleMs,
+        int timeoutMs,
+        int pollMs = DefaultPollMs,
+        IReadOnlyCollection<int>? revealTitleFor = null,
+        Action<long, int, bool?>? onProgress = null,
+        int progressIntervalMs = DefaultProgressIntervalMs,
+        CancellationToken cancellationToken = default)
+    {
+        if (ValidateWaitBounds(idleMs, timeoutMs) is { } validationError)
+        {
+            return validationError;
+        }
+        int poll = Math.Max(1, pollMs);
+        int reportEvery = Math.Max(1, progressIntervalMs);
+        long startMs = _backend.ElapsedMs();
+        long lastReportedMs = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            UserActivitySnapshot activity = Read(revealTitleFor);
+            long waitedMs = Math.Max(0, _backend.ElapsedMs() - startMs);
+            if (activity.HumanIdleMs is not long humanIdle || humanIdle >= idleMs)
+            {
+                onProgress?.Invoke(Math.Min(timeoutMs, waitedMs), timeoutMs, true);
+                return OperationResult.OkWith(new UserIdleWaitResult(true, waitedMs, idleMs, activity));
+            }
+            long remaining = timeoutMs - waitedMs;
+            if (remaining <= 0)
+            {
+                onProgress?.Invoke(Math.Min(timeoutMs, waitedMs), timeoutMs, false);
+                return TimeoutResult(timeoutMs, idleMs, waitedMs, humanIdle, activity);
+            }
+            if (onProgress is not null && waitedMs - lastReportedMs >= reportEvery)
+            {
+                lastReportedMs = waitedMs;
+                onProgress(Math.Min(timeoutMs, waitedMs), timeoutMs, null);
+            }
+            int sleepMs = (int)Math.Min(remaining, Math.Min(poll, Math.Max(1, idleMs - humanIdle)));
+            await _backend.DelayAsync(sleepMs, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static OperationResult? ValidateWaitBounds(int idleMs, int timeoutMs)
+    {
         if (idleMs is <= 0 or > MaxIdleMs)
         {
             return OperationResult.Failure(string.Create(
@@ -109,31 +197,48 @@ public sealed class UserActivityMonitor
             return OperationResult.Failure(string.Create(
                 CultureInfo.InvariantCulture, $"timeoutMs must be between 0 and {MaxWaitTimeoutMs} (got {timeoutMs})."));
         }
-        int poll = Math.Max(1, pollMs);
-        Stopwatch waited = Stopwatch.StartNew();
-        while (true)
-        {
-            UserActivitySnapshot activity = Read(revealTitleFor);
-            if (activity.HumanIdleMs is not long humanIdle || humanIdle >= idleMs)
-            {
-                return OperationResult.OkWith(new UserIdleWaitResult(true, waited.ElapsedMilliseconds, idleMs, activity));
-            }
-            long remaining = timeoutMs - waited.ElapsedMilliseconds;
-            if (remaining <= 0)
-            {
-                return OperationResult.FailureWith(
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"{TimedOutCode}: the user was still active after {timeoutMs} ms " +
-                        $"(last human input {humanIdle} ms ago, waiting for {idleMs} ms of idle)."),
-                    new UserIdleWaitResult(false, waited.ElapsedMilliseconds, idleMs, activity));
-            }
-            // Sleep no longer than it takes the user to reach the idle mark.
-            Thread.Sleep((int)Math.Min(remaining, Math.Min(poll, idleMs - humanIdle)));
-        }
+        return null;
     }
 
+    private static OperationResult TimeoutResult(
+        int timeoutMs,
+        int idleMs,
+        long waitedMs,
+        long humanIdle,
+        UserActivitySnapshot activity) =>
+        OperationResult.FailureWith(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{TimedOutCode}: the user was still active after {timeoutMs} ms " +
+                $"(last human input {humanIdle} ms ago, waiting for {idleMs} ms of idle)."),
+            new UserIdleWaitResult(false, waitedMs, idleMs, activity));
+
     internal static uint TickNow() => unchecked((uint)Environment.TickCount);
+
+    private sealed class NativeUserActivityBackend : IUserActivityBackend
+    {
+        public static readonly NativeUserActivityBackend Instance = new();
+
+        public uint TickNow() => UserActivityMonitor.TickNow();
+
+        public long ElapsedMs() => Environment.TickCount64;
+
+        public uint LastInputTick(uint now) => UserActivityMonitor.LastInputTick(now);
+
+        public LedgerState ReadLedger() => InputLedger.Read();
+
+        public void RecordHuman(uint tick) => InputLedger.RecordHuman(tick);
+
+        public ForegroundWindowInfo? ReadForeground(IReadOnlyCollection<int>? revealTitleFor) =>
+            UserActivityMonitor.ReadForeground(revealTitleFor);
+
+        public bool? ReadSessionLocked() => UserActivityMonitor.ReadSessionLocked();
+
+        public void Sleep(int milliseconds) => Thread.Sleep(milliseconds);
+
+        public Task DelayAsync(int milliseconds, CancellationToken cancellationToken) =>
+            Task.Delay(milliseconds, cancellationToken);
+    }
 
     private static uint LastInputTick(uint now)
     {

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Text.Json;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -73,41 +72,27 @@ public static class UserActivityTool
     {
         return ToolSafety.SafeInvokeAsync(async () =>
         {
-            if (progress is null || timeoutMs <= 1000)
-            {
-                return JsonSerializer.Serialize(
-                    monitor.WaitForIdle(idleMs, timeoutMs, revealTitleFor: RevealTitleFor(processId, target)),
-                    JsonOptions.Default);
-            }
-
-            int[] reveal = RevealTitleFor(processId, target);
-            Stopwatch elapsed = Stopwatch.StartNew();
-            OperationResult last = OperationResult.Failure("timed_out");
-            while (true)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                int remaining = Math.Max(0, timeoutMs - (int)elapsed.ElapsedMilliseconds);
-                int slice = Math.Min(1000, remaining);
-                last = monitor.WaitForIdle(idleMs, slice, revealTitleFor: reveal);
-                if (last.Success || remaining <= slice)
+            Action<long, int, bool?>? onProgress = progress is null
+                ? null
+                : (waitedMs, totalMs, completedIdle) => progress.Report(new ProgressNotificationValue
                 {
-                    progress.Report(new ProgressNotificationValue
+                    Progress = waitedMs,
+                    Total = totalMs,
+                    Message = completedIdle switch
                     {
-                        Progress = Math.Min(timeoutMs, (float)elapsed.ElapsedMilliseconds),
-                        Total = timeoutMs,
-                        Message = last.Success ? "Desktop is idle." : "Wait for user idle timed out.",
-                    });
-                    return JsonSerializer.Serialize(last, JsonOptions.Default);
-                }
-
-                progress.Report(new ProgressNotificationValue
-                {
-                    Progress = (float)elapsed.ElapsedMilliseconds,
-                    Total = timeoutMs,
-                    Message = $"Waiting for user idle ({elapsed.ElapsedMilliseconds}/{timeoutMs} ms)...",
+                        true => "Desktop is idle.",
+                        false => "Wait for user idle timed out.",
+                        null => $"Waiting for user idle ({waitedMs}/{totalMs} ms)...",
+                    },
                 });
-                await Task.Yield();
-            }
+
+            OperationResult result = await monitor.WaitForIdleAsync(
+                idleMs,
+                timeoutMs,
+                revealTitleFor: RevealTitleFor(processId, target),
+                onProgress: onProgress,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
 
