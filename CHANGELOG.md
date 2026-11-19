@@ -7,6 +7,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-19
+
 ### Added
 
 - `get_user_activity` now returns a `diagnostics` payload (`inputKind`, `cursorMoved`, `cursorPosition`, `inputHookActive`, `lastInputInjectedByOther`, and a bounded `recentInputs` sample list with inter-event deltas) to help diagnose phantom desktop input.

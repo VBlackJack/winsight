@@ -11,21 +11,21 @@ Windows en cours de développement, au-delà de ce que permet UI Automation seul
 
 ## Démarrer en 60 secondes
 
-**Recommandé:** téléchargez `Winsight-Setup-0.2.0-win-x64.exe` depuis
-[v0.2.0](https://github.com/VBlackJack/winsight/releases/tag/v0.2.0), fermez vos
+**Recommandé:** téléchargez `Winsight-Setup-0.2.1-win-x64.exe` depuis
+[v0.2.1](https://github.com/VBlackJack/winsight/releases/tag/v0.2.1), fermez vos
 clients et suivez l'assistant. Sélectionnez **Codex, Claude Desktop, Claude Code
 et/ou Gemini CLI**, puis redémarrez-les. Aucune commande en terminal ni aucune
 installation de .NET n'est nécessaire. Les clients eux-mêmes doivent déjà être
 installés. Consultez le [guide d'installation](docs/installation.html).
 
-Pour la version portable Windows x64, téléchargez `winsight-0.2.0-win-x64.zip` et
-`SHA256SUMS.txt` depuis [v0.2.0](https://github.com/VBlackJack/winsight/releases/tag/v0.2.0).
+Pour la version portable Windows x64, téléchargez `winsight-0.2.1-win-x64.zip` et
+`SHA256SUMS.txt` depuis [v0.2.1](https://github.com/VBlackJack/winsight/releases/tag/v0.2.1).
 Vérifiez l'archive avec `Get-FileHash -Algorithm SHA256`, extrayez-la, puis
 déclarez le chemin absolu de `winsight-mcp.exe` comme commande stdio de votre
 client MCP. L'archive inclut le runtime .NET; aucune installation de SDK n'est
 requise. Les poids des modèles de vision et les identifiants d'API se
 configurent séparément. Consultez les
-[notes de version](docs/fr/release-notes/v0.2.0.md) pour la configuration et les
+[notes de version](docs/fr/release-notes/v0.2.1.md) pour la configuration et les
 limites de validation.
 
 Pour compiler depuis les sources:
