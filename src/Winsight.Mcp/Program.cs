@@ -37,6 +37,8 @@ public static class Program
 {
     public static async Task Main(string[] args)
     {
+        ProcessDpiAwareness.TryEnablePerMonitorV2();
+
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
         // MCP requires stdout to be free for protocol traffic. Logs go to stderr.
