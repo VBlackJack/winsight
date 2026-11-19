@@ -85,8 +85,11 @@ public static class Program
         builder.Services
             .AddMcpServer()
             .WithStdioServerTransport()
-            .WithToolsFromAssembly();
+            .WithToolsFromAssembly()
+            .WithResourcesFromAssembly()
+            .WithPromptsFromAssembly();
         builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, ToolListAnnouncer>();
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, McpServerConfiguration>();
 
         await builder.Build().RunAsync();
     }

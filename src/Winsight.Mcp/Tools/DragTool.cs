@@ -27,7 +27,7 @@ public static class DragTool
     private const string WindowSpace = "window";
     private const string ScreenSpace = "screen";
 
-    [McpServerTool(Name = "drag")]
+    [McpServerTool(Name = "drag", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Drag from a source to a target with the left mouse button, paced for OLE drag and drop " +
                  "(WPF DragDrop.DoDragDrop): press on the source, hold, leave the system drag rectangle, move " +
                  "in several steps, settle on the target, wait, release. Each end is an element (source*/target* " +

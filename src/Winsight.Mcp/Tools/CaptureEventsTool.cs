@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class CaptureEventsTool
 {
-    [McpServerTool(Name = "capture_events")]
+    [McpServerTool(Name = "capture_events", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Capture EventPipe events from one or more providers in a managed process. " +
                  "Useful for observing exceptions thrown, custom EventSource events, or any other " +
                  "diagnostic stream without injecting code. To list every exception thrown by an app " +

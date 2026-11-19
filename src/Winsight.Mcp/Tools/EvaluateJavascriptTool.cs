@@ -25,7 +25,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class EvaluateJavascriptTool
 {
-    [McpServerTool(Name = "evaluate_javascript")]
+    [McpServerTool(Name = "evaluate_javascript", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true)]
     [Description("Evaluate a JavaScript expression inside an authorized WebView2 page over the Chrome " +
                  "DevTools Protocol (promises are awaited, the result is returned by value as JSON). " +
                  "Use this to read DOM state, extract visible text (e.g. document.body.innerText), or " +

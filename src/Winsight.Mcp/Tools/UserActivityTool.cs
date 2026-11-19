@@ -32,7 +32,7 @@ public static class UserActivityTool
         "Process whose foreground window title may be returned. Optional: falls back to the session " +
         "target. Titles of other processes are always withheld.";
 
-    [McpServerTool(Name = "get_user_activity")]
+    [McpServerTool(Name = "get_user_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Report whether a person is using this desktop, before taking the mouse or keyboard. " +
                  "Returns humanIdleMs (time since the last input not injected by any Winsight process in " +
                  "this session; null if none was seen), lastInputAgeMs and lastInputSource (human or " +
@@ -52,7 +52,7 @@ public static class UserActivityTool
                 JsonOptions.Default));
     }
 
-    [McpServerTool(Name = "wait_for_user_idle")]
+    [McpServerTool(Name = "wait_for_user_idle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Wait until nobody has touched the mouse or keyboard for idleMs (Winsight's own input " +
                  "excluded), or until timeoutMs elapses. Call it before a batch on a shared screen, or after " +
                  "a user_active or foreground_changed error. Returns { idle, waitedMs, idleMs, activity }; " +

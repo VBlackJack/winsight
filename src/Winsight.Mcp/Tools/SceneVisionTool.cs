@@ -25,7 +25,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class SceneVisionTool
 {
-    [McpServerTool(Name = "locate_scene_target")]
+    [McpServerTool(Name = "locate_scene_target", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true)]
     [Description("Vision fallback for a window in an existing scene. Uses the configured grounder (cloud or local ONNX), returning a NEW observation with v1 target and provenance/confidence. Query can describe visible text. This is not a dedicated OCR engine. Requires confidence >=0.8. act_verified rechecks the full screenshot bytes and window identity before clicking; visual change requires locating again. Use a native UIA or managed postcondition for verification.")]
     public static Task<string> Locate(SceneStore store, IElementGrounder grounder, string observation,
         long windowHandle, string query, CancellationToken cancellationToken = default)

@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class LifecycleTool
 {
-    [McpServerTool(Name = "launch_app")]
+    [McpServerTool(Name = "launch_app", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Start an application and wait until its window is actually present before returning, " +
                  "so you never race a still-initializing UI. Returns an OperationResult whose data " +
                  "carries the new processId and a classified window descriptor (kind, bounds, etc.) " +
@@ -60,7 +60,7 @@ public static class LifecycleTool
         });
     }
 
-    [McpServerTool(Name = "close_app")]
+    [McpServerTool(Name = "close_app", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Close a process by id. By default requests a graceful shutdown (CloseMainWindow) and " +
                  "reports stillRunning if it does not exit within the grace window; set force=true to " +
                  "kill the process tree immediately. Returns an OperationResult; a process that is " +

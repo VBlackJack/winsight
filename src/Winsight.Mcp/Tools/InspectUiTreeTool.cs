@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class InspectUiTreeTool
 {
-    [McpServerTool(Name = "inspect_ui_tree")]
+    [McpServerTool(Name = "inspect_ui_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Walk the UI Automation tree of a process window and return its structure. " +
                  "Each node carries automationId, name, controlType, className, enabled/visible flags, " +
                  "current value (Value pattern, when supported), and its bounding rectangle. " +

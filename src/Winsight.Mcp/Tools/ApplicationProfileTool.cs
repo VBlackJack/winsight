@@ -23,7 +23,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class ApplicationProfileTool
 {
-    [McpServerTool(Name = "save_app_profile")]
+    [McpServerTool(Name = "save_app_profile", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Explicitly save a reusable recipe for the target executable version and SHA256. 1..20 semantic steps; textParameter names runtime inputs, never store passwords or private text in recipes. Saving does not certify the recipe. dryRun previews without writing. Replaces a profile of the same name.")]
     public static string Save(ApplicationProfiles profiles, SessionTarget target, string name, ProfileStep[] steps,
         int? processId = null, bool dryRun = false) => ToolSafety.SafeInvoke(() =>
@@ -41,7 +41,7 @@ public static class ApplicationProfileTool
             return VerifiedSceneTool.Serialize(OperationResult.OkWith(new { dryRun = dryRun || ToolAccessPolicy.IsDryRunEnabled, profile, validated = false }));
         });
 
-    [McpServerTool(Name = "run_app_profile")]
+    [McpServerTool(Name = "run_app_profile", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Run a saved recipe with fresh observations and act_verified at every step. Refuses a changed executable/hash/version, missing parameters or ambiguous target. Stops at the first unverified result and never retries. Default dryRun=true returns a plan; use false only for an authorized workflow. Overall verified requires every postcondition; verification applies to this run only.")]
     public static Task<string> Run(ApplicationProfiles profiles, SceneStore store, SessionTarget target,
         string name, Dictionary<string, string>? parameters = null, int? processId = null, bool dryRun = true,

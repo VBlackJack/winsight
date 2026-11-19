@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class SessionTargetTool
 {
-    [McpServerTool(Name = "set_target")]
+    [McpServerTool(Name = "set_target", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Set the session's default target process so you do not repeat processId on every call. " +
                  "Once set, any process-scoped tool (click_element, type_text, wait_for_element, " +
                  "capture_screenshot, run_steps, ...) uses it when its own processId is omitted; an " +
@@ -52,7 +52,7 @@ public static class SessionTargetTool
         });
     }
 
-    [McpServerTool(Name = "get_target")]
+    [McpServerTool(Name = "get_target", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return the session's current default target process, or null when none is set.")]
     public static string GetTarget(SessionTarget target)
     {
@@ -62,7 +62,7 @@ public static class SessionTargetTool
                 JsonOptions.Default));
     }
 
-    [McpServerTool(Name = "clear_target")]
+    [McpServerTool(Name = "clear_target", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Clear the session's default target process. Subsequent process-scoped calls must " +
                  "pass processId explicitly again until a new set_target.")]
     public static string ClearTarget(SessionTarget target)

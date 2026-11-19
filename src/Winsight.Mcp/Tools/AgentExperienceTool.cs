@@ -40,7 +40,7 @@ public static class AgentExperienceTool
         "save_app_profile and run_app_profile for version-pinned reusable workflows",
     };
 
-    [McpServerTool(Name = "observe")]
+    [McpServerTool(Name = "observe", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("One-stop perception tool for agents. It returns the target windows, actionable " +
                  "elements with ready-to-use locators, likely next actions, recent session memory, " +
                  "and optionally a screenshot path. Use this before acting on an unfamiliar UI instead " +
@@ -112,7 +112,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "plan_steps")]
+    [McpServerTool(Name = "plan_steps", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Build a conservative run_steps draft from a natural-language goal and the current UI. " +
                  "This is a helper, not an LLM: it ranks visible controls and returns a proposed BatchStep " +
                  "plan that should be dry-run before execution.")]
@@ -177,7 +177,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "repair_locator")]
+    [McpServerTool(Name = "repair_locator", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Find likely replacement locators after a locator failed or became ambiguous. Searches " +
                  "the current UI plus session memory and returns ranked candidates with structured " +
                  "locator args usable in click_element/type_text/run_steps.")]
@@ -233,7 +233,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "act_and_observe")]
+    [McpServerTool(Name = "act_and_observe", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Run one BatchStep and return before/after structural feedback. Use this when an agent " +
                  "wants to click/type/select once and immediately see the UI diff without manually calling " +
                  "snapshot_ui + run_steps + diff_ui.")]
@@ -309,7 +309,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "click_and_wait")]
+    [McpServerTool(Name = "click_and_wait", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Macro: click a located element, then wait for a condition on either the same locator " +
                  "or a second locator. Returns click, wait, and UI diff. Use this instead of separate " +
                  "click_element + wait_for_element when synchronizing after a click.")]
@@ -400,7 +400,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "type_and_assert")]
+    [McpServerTool(Name = "type_and_assert", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Macro: type into a located element, then assert an element state. Use this for form " +
                  "fill operations that need immediate machine-checkable feedback.")]
     public static string TypeAndAssert(
@@ -501,7 +501,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "get_session_memory")]
+    [McpServerTool(Name = "get_session_memory", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return Winsight's session memory: recent observed locators and recent repairable failures.")]
     public static string GetSessionMemory(SessionTarget target, SessionMemory memory)
     {
@@ -509,7 +509,7 @@ public static class AgentExperienceTool
             JsonSerializer.Serialize(OperationResult.OkWith(memory.Snapshot(target.ProcessId)), JsonOptions.Default));
     }
 
-    [McpServerTool(Name = "clear_session_memory")]
+    [McpServerTool(Name = "clear_session_memory", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Clear Winsight's session memory without clearing the session target.")]
     public static string ClearSessionMemory(SessionMemory memory)
     {
@@ -520,7 +520,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "get_agent_state")]
+    [McpServerTool(Name = "get_agent_state", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return compact agent-oriented state: target, guardrails, recent memory, last failure, " +
                  "and available recipes. Use this when the agent is unsure what context it has.")]
     public static string GetAgentState(SessionTarget target, SessionMemory memory)
@@ -554,7 +554,7 @@ public static class AgentExperienceTool
         });
     }
 
-    [McpServerTool(Name = "get_winsight_guide")]
+    [McpServerTool(Name = "get_winsight_guide", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return a compact embedded guide for agents: preferred workflows, repair loops, and when to use " +
                  "high-level tools. Also reports the server build this session runs (version, buildTimeUtc), the " +
                  "exact registeredTools, and newerBuildAvailable: when it is true, or a tool named in docs is " +

@@ -38,7 +38,7 @@ public static class DetectWebView2EndpointsTool
         "WebView2 was started with --remote-debugging-port, but the port is not currently listening. " +
         "The renderer may have crashed or not finished startup.";
 
-    [McpServerTool(Name = "detect_webview2_endpoints")]
+    [McpServerTool(Name = "detect_webview2_endpoints", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Walk the process tree from the given host pid and report every msedgewebview2.exe " +
                  "descendant, indicating whether it was launched with --remote-debugging-port (Chrome " +
                  "DevTools Protocol). Use the returned port to attach Playwright/Puppeteer over CDP " +

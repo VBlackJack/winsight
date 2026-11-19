@@ -26,7 +26,7 @@ public static class PerceiveChangesTool
 {
     private const string VerdictBaselineCaptured = "baseline_captured";
 
-    [McpServerTool(Name = "snapshot_ui")]
+    [McpServerTool(Name = "snapshot_ui", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Capture a structural snapshot of the target process (its windows plus its actionable " +
                  "elements) and store it as the baseline for diff_ui. Call this right before an action " +
                  "you want to observe the effect of; then act; then call diff_ui to see what changed. " +
@@ -60,7 +60,7 @@ public static class PerceiveChangesTool
         });
     }
 
-    [McpServerTool(Name = "diff_ui")]
+    [McpServerTool(Name = "diff_ui", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Report what changed in the target process's UI since the last snapshot_ui or diff_ui: " +
                  "windowsOpened/windowsClosed, elementsAdded/elementsRemoved, and elementsChanged (per-field " +
                  "before/after for value, toggle, selection, enabled, visible). This is the feedback sense: " +

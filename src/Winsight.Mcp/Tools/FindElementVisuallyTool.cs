@@ -32,7 +32,7 @@ public static class FindElementVisuallyTool
     private const string ScreenshotPrefix = "vision-";
     private const double DefaultMinimumConfidence = 0.5;
 
-    [McpServerTool(Name = "find_element_visually")]
+    [McpServerTool(Name = "find_element_visually", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true)]
     [Description("Locate a UI element from a natural-language description by capturing a screenshot " +
                  "of the target window and grounding it via a vision model. Use windowTitle to target " +
                  "modal dialogs, popups, and secondary windows. Use this when " +

@@ -28,7 +28,7 @@ public static class RunStepsTool
     private const string ScreenshotAction = "screenshot";
     private const string ScreenshotPrefix = "screenshot-";
 
-    [McpServerTool(Name = "run_steps")]
+    [McpServerTool(Name = "run_steps", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Run a sequence of UI steps in a single call, instead of one round trip per action. " +
                  "Each step has an 'action' plus that action's fields; the shared locator fields " +
                  "(automationId, name, className, controlType, nameContains, index, descendantText, " +
@@ -171,7 +171,7 @@ public static class RunStepsTool
         });
     }
 
-    [McpServerTool(Name = "replay_steps")]
+    [McpServerTool(Name = "replay_steps", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Replay a run_steps trace artifact. By default this is a dry run, so it validates and " +
                  "journals the recorded mutating steps without clicking or typing. Pass dryRun=false " +
                  "only when you intentionally want to execute the recorded actions again.")]

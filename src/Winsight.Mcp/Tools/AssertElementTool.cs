@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class AssertElementTool
 {
-    [McpServerTool(Name = "assert_element")]
+    [McpServerTool(Name = "assert_element", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Assert a condition on a located element and get a clear pass/fail. Operators: equals, " +
                  "not_equals, contains, not_contains (on the element's value, else its name); greater_than, " +
                  "less_than (numeric on the value); enabled, disabled, visible, hidden; checked, unchecked " +

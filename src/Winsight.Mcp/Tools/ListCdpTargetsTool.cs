@@ -29,7 +29,7 @@ public static class ListCdpTargetsTool
         "The endpoint answered but exposes no 'page' target. The WebView2 content may still be " +
         "navigating; retry after the app finishes loading.";
 
-    [McpServerTool(Name = "list_cdp_targets")]
+    [McpServerTool(Name = "list_cdp_targets", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("List the debuggable targets of an authorized Chrome DevTools Protocol endpoint. " +
                  "The port must be reported by detect_webview2_endpoints for the session target or " +
                  "explicit hostProcessId. Returns one entry per target with its id, title, url and " +

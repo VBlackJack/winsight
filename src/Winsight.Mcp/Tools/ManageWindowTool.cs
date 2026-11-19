@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class ManageWindowTool
 {
-    [McpServerTool(Name = "manage_window")]
+    [McpServerTool(Name = "manage_window", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Move, resize, maximize, minimize or restore a top-level window of the target process: the " +
                  "main window by default, or the first window whose title contains windowTitle. Coordinates are " +
                  "screen pixels of the window's outer frame. Moving or resizing a maximized or minimized window " +

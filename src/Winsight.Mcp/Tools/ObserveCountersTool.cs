@@ -26,7 +26,7 @@ public static class ObserveCountersTool
 {
     private const string DefaultProvider = "System.Runtime";
 
-    [McpServerTool(Name = "observe_counters")]
+    [McpServerTool(Name = "observe_counters", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Subscribe to .NET EventCounters from a managed process via EventPipe (the official " +
                  "Microsoft diagnostic IPC, not raw ETW, so it works without admin and is invisible to EDR " +
                  "since it is the same channel dotnet-counters and dotnet-trace use). " +

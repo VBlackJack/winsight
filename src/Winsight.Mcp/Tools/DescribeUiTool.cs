@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class DescribeUiTool
 {
-    [McpServerTool(Name = "describe_ui")]
+    [McpServerTool(Name = "describe_ui", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Answer \"what can I do here?\": return the window's actionable elements as a compact, " +
                  "position-ordered list (top-to-bottom, left-to-right) instead of a full UIA tree. Each " +
                  "entry keeps only what you need to act: controlType, label (name), value/toggle/selection " +
