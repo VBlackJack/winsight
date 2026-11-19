@@ -260,7 +260,8 @@ public sealed class UserActivityMonitor
                 cursor,
                 sample.HookActive,
                 sample.InjectedByOther,
-                snapshot);
+                snapshot,
+                UiAutomation.InputContext.Capture());
         }
     }
 

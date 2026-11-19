@@ -52,7 +52,8 @@ public sealed record UserActivityDiagnostics(
     CursorPoint? CursorPosition,
     bool InputHookActive,
     bool? LastInputInjectedByOther,
-    IReadOnlyList<InputSample> RecentInputs);
+    IReadOnlyList<InputSample> RecentInputs,
+    InputContextSnapshot? InputContext = null);
 
 /// <summary>
 /// Who is using the shared desktop. <see cref="HumanIdleMs"/> is the time since

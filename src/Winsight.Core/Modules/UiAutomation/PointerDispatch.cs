@@ -329,6 +329,7 @@ public static class PointerDispatch
 
         if (startPosition is Point start && IsNear(actual, start))
         {
+            InputContextSnapshot inputContext = InputContext.Capture();
             IntegrityComparison? effectiveIntegrity = integrity;
             string integrityDetail = effectiveIntegrity is not null
                 ? string.Create(
@@ -340,10 +341,11 @@ public static class PointerDispatch
                     CultureInfo.InvariantCulture,
                     $"SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
                 : "SendInput=unknown";
+            string contextDetail = InputContext.FormatSummary(inputContext);
 
             string message = string.Create(
                 CultureInfo.InvariantCulture,
-                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {integrityDetail}). The synthetic move was not applied or was dropped by the OS.");
+                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
 
             object data = new
             {
@@ -378,6 +380,7 @@ public static class PointerDispatch
                         uipiBlocked = effectiveIntegrity.IsUipiBlocked,
                     }
                     : null,
+                inputContext,
             };
             return OperationResult.FailureWith(message, data);
         }
