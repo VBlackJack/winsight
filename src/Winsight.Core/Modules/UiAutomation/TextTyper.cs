@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.ComponentModel;
 using System.Globalization;
 using FlaUI.Core.WindowsAPI;
 
@@ -108,11 +109,14 @@ internal static class TextTyper
             KeyChordDispatcher.Dispatch([key]);
             return;
         }
-        if (!KeyChordDispatcher.TrySendUnicodeUnit(stroke.Unit))
+        KeySendResult result = KeyChordDispatcher.SendUnicodeUnit(stroke.Unit);
+        if (!result.Succeeded)
         {
-            throw new InvalidOperationException(
-                "SendInput rejected a character. Input may be blocked by a higher-integrity foreground window " +
-                "or a secure desktop.");
+            throw new Win32Exception(
+                result.LastWin32Error,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"SendInput rejected a character (SendInput={result.SentCount}/{result.ExpectedCount}, win32Error={result.LastWin32Error}). Input may be blocked by a higher-integrity foreground window or a secure desktop."));
         }
     }
 }

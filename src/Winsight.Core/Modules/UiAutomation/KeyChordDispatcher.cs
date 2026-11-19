@@ -25,6 +25,15 @@ internal readonly record struct KeyTransition(
     bool IsExtended,
     bool IsKeyUp);
 
+/// <summary>Result of a SendInput keyboard dispatch call.</summary>
+internal readonly record struct KeySendResult(
+    uint SentCount,
+    uint ExpectedCount,
+    int LastWin32Error)
+{
+    public bool Succeeded => SentCount == ExpectedCount;
+}
+
 /// <summary>
 /// Sends keyboard chords through SendInput the way a physical keyboard does:
 /// every transition carries its hardware scan code, and keys that live on the
@@ -161,14 +170,16 @@ internal static class KeyChordDispatcher
     /// receives it as WM_CHAR whatever the keyboard layout. A character outside
     /// the BMP is sent as its two surrogate units, one call each.
     /// </summary>
-    internal static bool TrySendUnicodeUnit(char unit)
+    internal static KeySendResult SendUnicodeUnit(char unit)
     {
         NativeInput[] inputs =
         {
             UnicodeInput(unit, KeyEventUnicode),
             UnicodeInput(unit, KeyEventUnicode | KeyEventKeyUp),
         };
-        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) == inputs.Length;
+        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
+        int lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+        return new KeySendResult(sent, (uint)inputs.Length, lastError);
     }
 
     private static NativeInput UnicodeInput(char unit, uint flags) =>
@@ -183,16 +194,18 @@ internal static class KeyChordDispatcher
 
     private static void Send(KeyTransition transition)
     {
-        if (!TrySend(transition))
+        KeySendResult result = TrySend(transition);
+        if (!result.Succeeded)
         {
             throw new Win32Exception(
-                Marshal.GetLastWin32Error(),
-                $"SendInput rejected the {(transition.IsKeyUp ? "release" : "press")} of {transition.VirtualKey}. " +
+                result.LastWin32Error,
+                $"SendInput rejected the {(transition.IsKeyUp ? "release" : "press")} of {transition.VirtualKey} " +
+                $"(SendInput={result.SentCount}/{result.ExpectedCount}, win32Error={result.LastWin32Error}). " +
                 "Input may be blocked by a higher-integrity foreground window or a secure desktop.");
         }
     }
 
-    private static bool TrySend(KeyTransition transition)
+    private static KeySendResult TrySend(KeyTransition transition)
     {
         uint flags = 0;
         if (transition.IsExtended)
@@ -219,7 +232,9 @@ internal static class KeyChordDispatcher
                 },
             },
         };
-        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) == inputs.Length;
+        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
+        int lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+        return new KeySendResult(sent, (uint)inputs.Length, lastError);
     }
 
     [DllImport("user32.dll", SetLastError = true)]
