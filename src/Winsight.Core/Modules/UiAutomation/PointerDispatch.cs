@@ -302,11 +302,34 @@ public static class PointerDispatch
         Func<string?>? revalidate,
         IntegrityComparison? integrity)
     {
+        InputContextSnapshot inputContext = InputContext.Capture();
+        if (InputContext.EvaluateBlock(inputContext) is { } blocked)
+        {
+            return OperationResult.FailureWith(
+                blocked.Message,
+                new
+                {
+                    code = blocked.Code,
+                    restrictions = blocked.Restrictions,
+                    inputContext = blocked.Context,
+                });
+        }
+
+        DesktopSwitchAttempt? desktopSwitch = null;
+        if (!inputContext.DesktopMatchesInput)
+        {
+            desktopSwitch = InputContext.TryAttachToInputDesktop(inputContext);
+            if (desktopSwitch.Succeeded)
+            {
+                inputContext = InputContext.Capture();
+            }
+        }
+
         int settle = settleMs ?? DefaultSettleMs;
         Point startPosition = pointer.Position;
         PointerMoveResult moveResult = pointer.MoveTo(point);
         pointer.Wait(settle);
-        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity) is { } moved)
+        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch) is { } moved)
         {
             return moved;
         }
@@ -319,7 +342,9 @@ public static class PointerDispatch
         int waitedMs,
         Point? startPosition,
         PointerMoveResult? moveResult,
-        IntegrityComparison? integrity)
+        IntegrityComparison? integrity,
+        InputContextSnapshot? inputContext = null,
+        DesktopSwitchAttempt? desktopSwitch = null)
     {
         Point actual = pointer.Position;
         if (IsNear(actual, target))
@@ -329,7 +354,7 @@ public static class PointerDispatch
 
         if (startPosition is Point start && IsNear(actual, start))
         {
-            InputContextSnapshot inputContext = InputContext.Capture();
+            InputContextSnapshot effectiveContext = inputContext ?? InputContext.Capture();
             IntegrityComparison? effectiveIntegrity = integrity;
             string integrityDetail = effectiveIntegrity is not null
                 ? string.Create(
@@ -341,7 +366,7 @@ public static class PointerDispatch
                     CultureInfo.InvariantCulture,
                     $"SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
                 : "SendInput=unknown";
-            string contextDetail = InputContext.FormatSummary(inputContext);
+            string contextDetail = InputContext.FormatSummary(effectiveContext, desktopSwitch);
 
             string message = string.Create(
                 CultureInfo.InvariantCulture,
@@ -380,7 +405,8 @@ public static class PointerDispatch
                         uipiBlocked = effectiveIntegrity.IsUipiBlocked,
                     }
                     : null,
-                inputContext,
+                inputContext = effectiveContext,
+                desktopSwitch,
             };
             return OperationResult.FailureWith(message, data);
         }

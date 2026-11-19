@@ -216,6 +216,91 @@ public sealed class PointerDispatchTests
         pointer.Calls.Should().NotContain(call => call.StartsWith("click", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Job_ui_restriction_returns_input_context_blocked_instead_of_move_not_applied()
+    {
+        InputContext.OverrideCapture = () => new InputContextSnapshot(
+            SessionId: 1,
+            ActiveConsoleSessionId: 1,
+            SessionMatchesConsole: true,
+            WindowStation: "WinSta0",
+            WindowStationVisible: true,
+            ThreadDesktop: "Default",
+            InputDesktop: "Default",
+            InputDesktopWin32Error: null,
+            DesktopMatchesInput: true,
+            InJob: true,
+            JobUiRestrictionsMask: InputContext.JobUiLimitHandles | InputContext.JobUiLimitDesktop,
+            JobUiRestrictions: InputContext.DecodeJobUiRestrictions(InputContext.JobUiLimitHandles | InputContext.JobUiLimitDesktop),
+            JobQueryWin32Error: null,
+            IsRestrictedToken: false,
+            IsAppContainer: false,
+            IntegrityLevel: "medium (0x2000)",
+            ParentChain: [new ProcessChainEntry(65456, "Claude.exe")]);
+        try
+        {
+            RecordingPointer pointer = new(new Point(100, 100)) { ApplyMove = false };
+
+            OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 150, driver: pointer);
+
+            refusal.Should().NotBeNull();
+            refusal!.Error.Should().StartWith($"{InputContext.InputContextBlockedCode}:")
+                .And.Contain("JOB_OBJECT_UILIMIT_HANDLES")
+                .And.Contain("JOB_OBJECT_UILIMIT_DESKTOP")
+                .And.NotContain(PointerDispatch.MoveNotAppliedCode);
+            pointer.Calls.Should().BeEmpty("input must be refused before attempting a blocked move");
+        }
+        finally
+        {
+            InputContext.OverrideCapture = null;
+        }
+    }
+
+    [Fact]
+    public void Desktop_mismatch_attempts_set_thread_desktop_before_move_and_reports_outcome()
+    {
+        bool switchAttempted = false;
+        InputContext.OverrideCapture = () => new InputContextSnapshot(
+            SessionId: 1,
+            ActiveConsoleSessionId: 1,
+            SessionMatchesConsole: true,
+            WindowStation: "WinSta0",
+            WindowStationVisible: true,
+            ThreadDesktop: "OtherDesktop",
+            InputDesktop: "Default",
+            InputDesktopWin32Error: null,
+            DesktopMatchesInput: false,
+            InJob: false,
+            JobUiRestrictionsMask: 0,
+            JobUiRestrictions: Array.Empty<string>(),
+            JobQueryWin32Error: null,
+            IsRestrictedToken: false,
+            IsAppContainer: false,
+            IntegrityLevel: "medium (0x2000)",
+            ParentChain: Array.Empty<ProcessChainEntry>());
+        InputContext.OverrideDesktopSwitch = ctx =>
+        {
+            switchAttempted = true;
+            return new DesktopSwitchAttempt(Attempted: true, Succeeded: false, Win32Error: 170, TargetDesktop: ctx.InputDesktop);
+        };
+        try
+        {
+            RecordingPointer pointer = new(new Point(100, 100)) { ApplyMove = false };
+
+            OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: pointer);
+
+            switchAttempted.Should().BeTrue();
+            refusal.Should().NotBeNull();
+            refusal!.Error.Should().StartWith($"{PointerDispatch.MoveNotAppliedCode}:")
+                .And.Contain("setThreadDesktop=False(err=170)");
+        }
+        finally
+        {
+            InputContext.OverrideCapture = null;
+            InputContext.OverrideDesktopSwitch = null;
+        }
+    }
+
     private sealed class RecordingPointer : IPointerDriver
     {
         private Point _position;

@@ -56,6 +56,7 @@ internal static class AgentFailure
         string code = ClassifyCode(status, message);
         (string suggestedTool, string guidance) = code switch
         {
+            "input_context_blocked" => ("get_user_activity", "Winsight is running in a restricted job object or non-interactive window station that blocks synthetic input. Launch winsight-mcp in an interactive desktop session without job UI restrictions."),
             "uipi_blocked" => ("set_target", "Target process runs at a higher integrity level than Winsight. Windows UIPI silently drops synthetic input; restart Winsight at the same integrity level."),
             "move_not_applied" => ("observe_scene", "The synthetic pointer move did not move the cursor (not caused by user input). Inspect SendInput error, integrity levels, and virtual desktop coordinates in the failure data."),
             "user_active" => ("wait_for_user_idle", "A person is using the desktop. Wait for idle, then call observe_scene."),
@@ -79,6 +80,7 @@ internal static class AgentFailure
 
     private static string ClassifyCode(string status, string message)
     {
+        if (message.Contains("input_context_blocked", StringComparison.OrdinalIgnoreCase)) return "input_context_blocked";
         if (message.Contains("uipi_blocked", StringComparison.OrdinalIgnoreCase)) return "uipi_blocked";
         if (message.Contains("move_not_applied", StringComparison.OrdinalIgnoreCase)) return "move_not_applied";
         if (message.Contains("user_active", StringComparison.OrdinalIgnoreCase)) return "user_active";

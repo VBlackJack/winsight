@@ -202,6 +202,10 @@ public sealed partial class ActionInvoker
                 return OperationResult.Failure(
                     $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the chord \"{chord}\" was sent.");
             }
+            if (PrepareInputContext() is { } contextBlocked)
+            {
+                return contextBlocked;
+            }
             try
             {
                 DispatchKeyboardChord(keys);
@@ -276,6 +280,10 @@ public sealed partial class ActionInvoker
                     focused);
             }
 
+            if (PrepareInputContext() is { } contextBlocked)
+            {
+                return contextBlocked;
+            }
             bool StillTargeted() => GetForegroundWindow() == focus.WindowHandle;
             TypeKeysResult sent = new(
                 paste ? TypeKeysModePaste : TypeKeysModeKeys,
@@ -361,6 +369,27 @@ public sealed partial class ActionInvoker
             : OperationResult.FailureWith(outcome.Error!, reported);
     }
 
+
+    private static OperationResult? PrepareInputContext()
+    {
+        InputContextSnapshot context = InputContext.Capture();
+        if (InputContext.EvaluateBlock(context) is { } blocked)
+        {
+            return OperationResult.FailureWith(
+                blocked.Message,
+                new
+                {
+                    code = blocked.Code,
+                    restrictions = blocked.Restrictions,
+                    inputContext = blocked.Context,
+                });
+        }
+        if (!context.DesktopMatchesInput)
+        {
+            InputContext.TryAttachToInputDesktop(context);
+        }
+        return null;
+    }
 
     private static OperationResult SendInputFailure(Win32Exception ex, IntegrityComparison integrity) =>
         OperationResult.FailureWith(
