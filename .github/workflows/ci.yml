@@ -42,7 +42,7 @@ jobs:
         run: dotnet test tests\Winsight.E2E -c Release --no-build --logger "trx" --results-directory TestResults\E2E
 
       - name: MCP smoke
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke-mcp.ps1 -ExpectedToolCount 61
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\smoke-mcp.ps1 -ExpectedToolCount 70
 
       - name: Verified control regression scenarios
         shell: pwsh
@@ -61,9 +61,11 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-setup.ps1
 
       - name: Upload installer
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: winsight-windows-setup
+          retention-days: 7
           path: |
             artifacts/setup/*.exe
             artifacts/setup/*.zip
@@ -79,10 +81,11 @@ jobs:
         run: dotnet list Winsight.slnx package --outdated
 
       - name: Upload test results and diagnostics
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: winsight-test-diagnostics
+          retention-days: 7
           if-no-files-found: ignore
           path: |
             TestResults/**

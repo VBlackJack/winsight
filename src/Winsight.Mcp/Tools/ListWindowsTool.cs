@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class ListWindowsTool
 {
-    [McpServerTool(Name = "list_windows")]
+    [McpServerTool(Name = "list_windows", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Enumerate top-level windows, in z-order (topmost first). Without processId, returns " +
                  "every named window on the desktop; use it to discover candidate target processes. " +
                  "With processId, returns that process's full window stack exhaustively, including " +

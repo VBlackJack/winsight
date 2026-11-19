@@ -28,7 +28,7 @@ public static class CaptureScreenshotTool
     private const string ScreenshotPrefix = "screenshot-";
     private const string MediaTypePng = "image/png";
 
-    [McpServerTool(Name = "capture_screenshot")]
+    [McpServerTool(Name = "capture_screenshot", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Capture a PNG screenshot of the target process's topmost visible window that is not a " +
                  "transient overlay (an open tooltip or menu is skipped), its main window when mainWindow=true, " +
                  "or the first " +

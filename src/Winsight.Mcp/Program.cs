@@ -47,7 +47,9 @@ public static class Program
         });
 
         builder.Services.AddSingleton<SessionTarget>();
-        builder.Services.AddSingleton<SceneStore>();
+        builder.Services.AddSingleton<UiaSceneDriver>();
+        builder.Services.AddSingleton<SceneServices>();
+        builder.Services.AddSingleton<SceneStore>(sp => new SceneStore(sp.GetRequiredService<SceneServices>()));
         builder.Services.AddSingleton<ApplicationProfiles>();
         builder.Services.AddSingleton<SessionMemory>();
         builder.Services.AddSingleton<WindowDiscovery>();
@@ -61,6 +63,7 @@ public static class Program
         builder.Services.AddSingleton<FocusedElementReader>();
         builder.Services.AddSingleton<WindowManager>();
         builder.Services.AddSingleton<ElementWaiter>();
+        builder.Services.AddSingleton<UiEventWatcher>();
         builder.Services.AddSingleton<ManagedStateReader>();
         builder.Services.AddSingleton<WindowCapture>();
         builder.Services.AddSingleton<StepRunner>();
@@ -83,8 +86,11 @@ public static class Program
         builder.Services
             .AddMcpServer()
             .WithStdioServerTransport()
-            .WithToolsFromAssembly();
+            .WithToolsFromAssembly()
+            .WithResourcesFromAssembly()
+            .WithPromptsFromAssembly();
         builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, ToolListAnnouncer>();
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, McpServerConfiguration>();
 
         await builder.Build().RunAsync();
     }

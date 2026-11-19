@@ -30,7 +30,12 @@ public sealed class UiaSceneDriver
 {
     private const int MaximumText = 512;
     private const int DragSteps = 12;
-    private readonly WindowDiscovery _discovery = new();
+    private readonly WindowDiscovery _discovery;
+
+    public UiaSceneDriver(WindowDiscovery? discovery = null)
+    {
+        _discovery = discovery ?? new WindowDiscovery();
+    }
 
     public SceneCapture Capture(int processId, string? title, int maximum)
     {
@@ -112,10 +117,21 @@ public sealed class UiaSceneDriver
         if (!node.Visible && action.Action != "scroll_into_view") return OperationResult.Failure("Target is offscreen; scroll_into_view then observe again.");
         if (action.Action == "drag_to" && additional.Count != 1) return OperationResult.Failure("drag_to requires one destination reference.");
         if (action.Action == "select_many" && extras.Any(e => !e.Patterns.SelectionItem.IsSupported)) return OperationResult.Failure("SelectionItem is required on every target.");
+        if (action.BackgroundOnly && action.Action == "activate" &&
+            !element.Patterns.Invoke.IsSupported && !element.Patterns.Toggle.IsSupported)
+        {
+            return OperationResult.Failure("backgroundOnly: target does not support UIA Invoke or Toggle pattern (would require pointer click).");
+        }
         if (action.Action is "drag_to" or "right_click" or "double_click")
         {
             if (!ValidatePoint(node, out string? error)) return OperationResult.Failure(error!);
             if (action.Action == "drag_to" && !ValidatePoint(additional[0], out error)) return OperationResult.Failure(error!);
+        }
+        FlaUI.Core.WindowsAPI.VirtualKeyShort[]? parsedChord = null;
+        if (action.Action == "key_chord")
+        {
+            if (!KeyboardChordParser.TryParse(action.Text, out parsedChord, out string? parseError)) return OperationResult.Failure(parseError!);
+            if (FocusedElementReader.WebView2EvidenceFor(automation, element) is { Count: > 0 } evidence) return OperationResult.Failure(ActionInvoker.WebView2InputRefusal("The target", evidence, canOverride: false));
         }
         beforeDispatch();
 
@@ -143,9 +159,8 @@ public sealed class UiaSceneDriver
             case "key_chord":
                 element.Focus();
                 if (!element.Properties.HasKeyboardFocus.ValueOrDefault) return OperationResult.Failure("Focus was not acquired.");
-                if (!KeyboardChordParser.TryParse(action.Text, out FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys, out string? parseError)) return OperationResult.Failure(parseError!);
-                if (FocusedElementReader.WebView2EvidenceFor(automation, element) is { Count: > 0 } evidence) return OperationResult.Failure(ActionInvoker.WebView2InputRefusal("The target", evidence, canOverride: false));
-                ActionInvoker.DispatchKeyboardChord(keys); break;
+                if (FocusedElementReader.WebView2EvidenceFor(automation, element) is { Count: > 0 } liveEvidence) return OperationResult.Failure(ActionInvoker.WebView2InputRefusal("The target", liveEvidence, canOverride: false));
+                ActionInvoker.DispatchKeyboardChord(parsedChord!); break;
             case "right_click": if (PointerDispatch.Click(Center(node), ClickStyle.RightClick) is { } rightRefused) return rightRefused; break;
             case "double_click": if (PointerDispatch.Click(Center(node), ClickStyle.DoubleClick) is { } doubleRefused) return doubleRefused; break;
             case "drag_to":
@@ -176,14 +191,21 @@ public sealed class UiaSceneDriver
         while (queue.Count > 0 && ++count <= UiaDefaults.MaxTraversalNodes)
         {
             AutomationElement current = queue.Dequeue();
-            if (string.Join(".", current.Properties.RuntimeId.ValueOrDefault ?? []) == expected.Identity)
+            try
             {
-                SceneElement actual = Read(current, expected.Window, expected.Ref);
-                return actual.Name == expected.Name && actual.Role == expected.Role && actual.Value == expected.Value &&
-                    actual.Bounds == expected.Bounds && actual.Selected == expected.Selected &&
-                    actual.ToggleState == expected.ToggleState && actual.StateHash == expected.StateHash && actual.Enabled ? current : null;
+                if (string.Join(".", current.Properties.RuntimeId.ValueOrDefault ?? []) == expected.Identity)
+                {
+                    SceneElement actual = Read(current, expected.Window, expected.Ref);
+                    return actual.Name == expected.Name && actual.Role == expected.Role && actual.Value == expected.Value &&
+                        actual.Bounds == expected.Bounds && actual.Selected == expected.Selected &&
+                        actual.ToggleState == expected.ToggleState && actual.StateHash == expected.StateHash && actual.Enabled ? current : null;
+                }
+                foreach (AutomationElement child in current.FindAllChildren()) queue.Enqueue(child);
             }
-            foreach (AutomationElement child in current.FindAllChildren()) queue.Enqueue(child);
+            catch (COMException)
+            {
+                // Transient element disappearance during traversal should not abort resolution.
+            }
         }
         return null;
     }

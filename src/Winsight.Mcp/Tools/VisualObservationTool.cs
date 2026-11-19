@@ -43,7 +43,7 @@ public static class VisualObservationTool
         "Worst 16x16 block SSIM below which two captures differ (0 to 1); catches small changes such as " +
         "one status word. Default: WINSIGHT_VISUAL_LOCAL_SSIM_THRESHOLD or 0.85.";
 
-    [McpServerTool(Name = "wait_for_visual_change")]
+    [McpServerTool(Name = "wait_for_visual_change", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Wait until the window, or a region of it, looks different, instead of sleeping. The " +
                  "reference is a capture taken when the call starts, or baselinePath. To wait for the effect " +
                  "of an action, prefer a run_steps 'wait_visual_change' step right after the action: the " +
@@ -93,7 +93,7 @@ public static class VisualObservationTool
         });
     }
 
-    [McpServerTool(Name = "wait_for_visual_stable")]
+    [McpServerTool(Name = "wait_for_visual_stable", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Wait until the window, or a region of it, stops changing (an animation, a redraw or a " +
                  "load has settled), instead of sleeping. Captures every pollMs and succeeds after " +
                  "stableComparisons consecutive comparisons show no change. Returns { condition, met, " +
@@ -130,7 +130,7 @@ public static class VisualObservationTool
         });
     }
 
-    [McpServerTool(Name = "read_text_visually")]
+    [McpServerTool(Name = "read_text_visually", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the text a window draws with the OCR engine built into Windows (offline, nothing " +
                  "sent anywhere), for UIs that expose no UI Automation text: a status line, a table cell, an " +
                  "error message. Returns { language, text, lines:[{ text, bounds, words:[{ text, bounds }] }], " +

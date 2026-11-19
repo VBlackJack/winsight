@@ -24,14 +24,17 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class LifecycleTool
 {
-    [McpServerTool(Name = "launch_app")]
+    [McpServerTool(Name = "launch_app", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Start an application and wait until its window is actually present before returning, " +
-                 "so you never race a still-initializing UI. Returns an OperationResult whose data " +
-                 "carries the new processId and a classified window descriptor (kind, bounds, etc.) " +
-                 "ready to drive, with no follow-up list_windows/poll needed. Fails if the process exits " +
-                 "during startup or no window appears within the timeout.")]
+                 "so you never race a still-initializing UI. Automatically binds the launched process as the " +
+                 "session target unless setAsTarget=false, so follow-up tools need no set_target call. " +
+                 "Returns an OperationResult whose data carries the new processId and a classified window " +
+                 "descriptor (kind, bounds, etc.) ready to drive, with no follow-up list_windows/poll needed. " +
+                 "Fails if the process exits during startup or no window appears within the timeout.")]
     public static string LaunchApp(
         AppLauncher launcher,
+        SessionTarget target,
+        ApplicationProfiles profiles,
         [Description("Absolute path to the executable to launch.")]
         string path,
         [Description("Optional command-line arguments passed to the process.")]
@@ -42,7 +45,9 @@ public static class LifecycleTool
                      "When omitted, the launcher waits for the process's main window.")]
         string? waitForWindowTitle = null,
         [Description("Max milliseconds to wait for the window. Default 15000; max 120000.")]
-        int timeoutMs = AppLauncher.DefaultLaunchTimeoutMs)
+        int timeoutMs = AppLauncher.DefaultLaunchTimeoutMs,
+        [Description("Automatically set the launched processId as the session default target (default true).")]
+        bool setAsTarget = true)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -56,11 +61,24 @@ public static class LifecycleTool
             }
             OperationResult result = launcher.Launch(
                 path, arguments, workingDirectory, waitForWindowTitle, timeoutMs);
+            if (result.Success && result.Data is LaunchResult launched)
+            {
+                if (setAsTarget)
+                {
+                    target.TrySet(launched.ProcessId, out _);
+                }
+
+                IReadOnlyList<string> matchingProfiles = profiles.FindMatchingNames(launched.ProcessId);
+                if (matchingProfiles.Count > 0)
+                {
+                    result = OperationResult.OkWith(launched with { MatchingProfiles = matchingProfiles });
+                }
+            }
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
 
-    [McpServerTool(Name = "close_app")]
+    [McpServerTool(Name = "close_app", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Close a process by id. By default requests a graceful shutdown (CloseMainWindow) and " +
                  "reports stillRunning if it does not exit within the grace window; set force=true to " +
                  "kill the process tree immediately. Returns an OperationResult; a process that is " +
@@ -84,6 +102,10 @@ public static class LifecycleTool
                 return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
             OperationResult result = launcher.Close(pid, force);
+            if (result.Success && target.ProcessId == pid)
+            {
+                target.Clear();
+            }
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

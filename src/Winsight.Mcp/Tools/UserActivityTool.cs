@@ -13,7 +13,9 @@
 // limitations under the License.
 
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Text.Json;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.UserActivity;
@@ -32,7 +34,7 @@ public static class UserActivityTool
         "Process whose foreground window title may be returned. Optional: falls back to the session " +
         "target. Titles of other processes are always withheld.";
 
-    [McpServerTool(Name = "get_user_activity")]
+    [McpServerTool(Name = "get_user_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Report whether a person is using this desktop, before taking the mouse or keyboard. " +
                  "Returns humanIdleMs (time since the last input not injected by any Winsight process in " +
                  "this session; null if none was seen), lastInputAgeMs and lastInputSource (human or " +
@@ -52,12 +54,12 @@ public static class UserActivityTool
                 JsonOptions.Default));
     }
 
-    [McpServerTool(Name = "wait_for_user_idle")]
+    [McpServerTool(Name = "wait_for_user_idle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Wait until nobody has touched the mouse or keyboard for idleMs (Winsight's own input " +
                  "excluded), or until timeoutMs elapses. Call it before a batch on a shared screen, or after " +
                  "a user_active or foreground_changed error. Returns { idle, waitedMs, idleMs, activity }; " +
                  "on timeout the call fails with timed_out and the same data. Never sends input.")]
-    public static string WaitForUserIdle(
+    public static Task<string> WaitForUserIdle(
         UserActivityMonitor monitor,
         SessionTarget target,
         [Description("Required quiet period in milliseconds (1 to 600000).")]
@@ -65,12 +67,48 @@ public static class UserActivityTool
         [Description("Maximum wait in milliseconds (0 to 600000). 0 checks once.")]
         int timeoutMs,
         [Description(ProcessIdDescription)]
-        int? processId = null)
+        int? processId = null,
+        IProgress<ProgressNotificationValue>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        return ToolSafety.SafeInvoke(() =>
-            JsonSerializer.Serialize(
-                monitor.WaitForIdle(idleMs, timeoutMs, revealTitleFor: RevealTitleFor(processId, target)),
-                JsonOptions.Default));
+        return ToolSafety.SafeInvokeAsync(async () =>
+        {
+            if (progress is null || timeoutMs <= 1000)
+            {
+                return JsonSerializer.Serialize(
+                    monitor.WaitForIdle(idleMs, timeoutMs, revealTitleFor: RevealTitleFor(processId, target)),
+                    JsonOptions.Default);
+            }
+
+            int[] reveal = RevealTitleFor(processId, target);
+            Stopwatch elapsed = Stopwatch.StartNew();
+            OperationResult last = OperationResult.Failure("timed_out");
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int remaining = Math.Max(0, timeoutMs - (int)elapsed.ElapsedMilliseconds);
+                int slice = Math.Min(1000, remaining);
+                last = monitor.WaitForIdle(idleMs, slice, revealTitleFor: reveal);
+                if (last.Success || remaining <= slice)
+                {
+                    progress.Report(new ProgressNotificationValue
+                    {
+                        Progress = Math.Min(timeoutMs, (float)elapsed.ElapsedMilliseconds),
+                        Total = timeoutMs,
+                        Message = last.Success ? "Desktop is idle." : "Wait for user idle timed out.",
+                    });
+                    return JsonSerializer.Serialize(last, JsonOptions.Default);
+                }
+
+                progress.Report(new ProgressNotificationValue
+                {
+                    Progress = (float)elapsed.ElapsedMilliseconds,
+                    Total = timeoutMs,
+                    Message = $"Waiting for user idle ({elapsed.ElapsedMilliseconds}/{timeoutMs} ms)...",
+                });
+                await Task.Yield();
+            }
+        });
     }
 
     private static int[] RevealTitleFor(int? processId, SessionTarget target) =>

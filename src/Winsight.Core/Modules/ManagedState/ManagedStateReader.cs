@@ -68,6 +68,11 @@ public sealed class ManagedStateReader
 
     private static object? ReadValue(ClrObject obj, ClrInstanceField field, string fieldName)
     {
+        if (field.ElementType == ClrElementType.String)
+        {
+            return obj.ReadStringField(fieldName);
+        }
+
         if (field.IsObjectReference)
         {
             ClrObject reference = obj.ReadObjectField(fieldName);
@@ -93,7 +98,6 @@ public sealed class ManagedStateReader
             ClrElementType.Float => obj.ReadField<float>(fieldName),
             ClrElementType.Double => obj.ReadField<double>(fieldName),
             ClrElementType.NativeInt => obj.ReadField<long>(fieldName),
-            ClrElementType.String => obj.ReadStringField(fieldName),
             _ => $"<unsupported element type: {field.ElementType}>",
         };
     }

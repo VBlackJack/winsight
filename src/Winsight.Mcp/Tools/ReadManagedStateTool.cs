@@ -24,7 +24,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class ReadManagedStateTool
 {
-    [McpServerTool(Name = "read_managed_state")]
+    [McpServerTool(Name = "read_managed_state", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Attach to a managed (.NET) process and read the value of a private or internal field " +
                  "of the first heap instance whose type matches the given fully-qualified type name. " +
                  "Use this to assert against ViewModel state, singletons, or any internal data the app " +

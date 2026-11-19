@@ -25,7 +25,7 @@ namespace Winsight.Mcp.Tools;
 [McpServerToolType]
 public static class TypeIntoWebViewTool
 {
-    [McpServerTool(Name = "type_into_webview")]
+    [McpServerTool(Name = "type_into_webview", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Type text into an authorized WebView2 page as real key events over the Chrome " +
                  "DevTools Protocol (Input.dispatchKeyEvent). Unlike UIA type_text, this reaches " +
                  "keydown-driven surfaces such as xterm.js terminals embedded in HwndHost. " +

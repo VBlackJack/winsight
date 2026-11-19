@@ -35,7 +35,7 @@ public static class CompareVisualBaselineTool
     private const string PngExtension = ".png";
     private const string MediaTypePng = "image/png";
 
-    [McpServerTool(Name = "compare_visual_baseline")]
+    [McpServerTool(Name = "compare_visual_baseline", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Capture the target process window, compare it to an approved PNG baseline, " +
                  "and return an OperationResult JSON wrapping a VisualDiffResult. Baselines are " +
                  "resolved under WINSIGHT_VISUAL_BASELINE_DIR; when unset, they live under " +

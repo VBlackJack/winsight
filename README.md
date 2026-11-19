@@ -32,7 +32,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 61 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 70 tools
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -211,7 +211,7 @@ hold a file lock and can block `dotnet build`.
 | Windsurf    | `~/.codeium/windsurf/mcp_config.json`                    |
 
 After registration, in Claude Code run `/mcp` to confirm the `winsight`
-server is connected and lists all 61 tools.
+server is connected and lists all 70 tools (set `WINSIGHT_TOOL_PROFILE=compact` for a focused 33-tool autonomous subset).
 After rebuilding Winsight, restart the client session: a session keeps the
 server process, and the tool list, it started with. `get_winsight_guide`
 reports the build a session runs, its exact tool list and, when launched

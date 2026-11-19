@@ -36,7 +36,7 @@ public static class InvokeActionTool
         "Milliseconds the pointer rests on the point before the press, so the target sees the move first " +
         "(0 to 2000, default 150).";
 
-    [McpServerTool(Name = "click_element")]
+    [McpServerTool(Name = "click_element", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Locate a UI element and click it. Locator criteria are combined with AND across all " +
                  "top-level windows of the process; if several elements match, the call fails and lists " +
                  "the candidates so you can add 'index' or narrow the locator. Off-screen elements are " +
@@ -94,7 +94,7 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "click_point")]
+    [McpServerTool(Name = "click_point", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Click at a coordinate, bypassing UI Automation element location. Use this to act on " +
                  "a point returned by find_element_visually, or any control UIA cannot address (custom " +
                  "Canvas, SkiaSharp, DirectX surfaces). By default x,y are window-relative (the same " +
@@ -185,7 +185,7 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "scroll_point")]
+    [McpServerTool(Name = "scroll_point", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Turn the mouse wheel at a coordinate, for lists and canvases that UI Automation cannot " +
                  "scroll (iced, winit, egui). Same coordinates and checks as click_point: window-relative by " +
                  "default, the point must reach a visible target window, focusWindow raises it first, and the " +
@@ -234,7 +234,7 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "hover_point")]
+    [McpServerTool(Name = "hover_point", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Rest the pointer on a coordinate without pressing, to reveal hover styles, tooltips or " +
                  "menus that a drawn UI only shows under the pointer. Same coordinates and checks as " +
                  "click_point; the pointer settles (settleMs), then stays for holdMs and is checked again " +
@@ -311,7 +311,7 @@ public static class InvokeActionTool
 
     private static string Serialize(OperationResult result) => JsonSerializer.Serialize(result, JsonOptions.Default);
 
-    [McpServerTool(Name = "type_text")]
+    [McpServerTool(Name = "type_text", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Locate a UI element and set its value (via the Value pattern) or type into it " +
                  "(via keyboard fallback). Same strict locator semantics as click_element. " +
                  "An element inside a WebView2 surface is refused (synthetic keyboard input there has " +
@@ -370,7 +370,7 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "send_key_chord")]
+    [McpServerTool(Name = "send_key_chord", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Focus a target top-level window, verify it became the foreground window, then send a " +
                  "keyboard chord such as Ctrl+Shift+N through SendInput, with hardware scan codes and the " +
                  "extended-key flag (PageUp, arrows, Home/End) so low-level hooks, WM_KEYDOWN and WPF all see " +
@@ -412,7 +412,7 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "select_item")]
+    [McpServerTool(Name = "select_item", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Select an item inside a located container: ComboBox, ListBox, or Tab (other " +
                  "containers, such as a TreeView, fall back to a descendant SelectionItem search). Name the " +
                  "item with exactly one of itemName (exact), itemNameContains (case-insensitive substring) or " +
@@ -474,7 +474,7 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "hover_element")]
+    [McpServerTool(Name = "hover_element", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Locate a UI element, move the mouse to its center, and capture a newly appearing " +
                  "nearby tooltip. Stale tooltips visible before the hover are ignored. The tooltip popup window " +
                  "is awaited for the whole timeout; data.tooltip.source is \"popup\" when its text comes from that " +

@@ -99,9 +99,13 @@ public sealed class VerifiedSceneScenarioTests
             string id = observed.RootElement.GetProperty("data").GetProperty("id").GetString()!;
             SceneStore.Entry scene = store.Get(id)!;
             SceneElement button = scene.Capture.Elements.Single(n => n.Locator.AutomationId == "IncrementButton");
-            using JsonDocument screenshot = JsonDocument.Parse(SceneScreenshotTool.Capture(store, id, button.Window.Handle));
+            ModelContextProtocol.Protocol.CallToolResult captureResult = SceneScreenshotTool.Capture(store, id, button.Window.Handle);
+            captureResult.IsError.Should().NotBeTrue();
+            string captureJson = captureResult.Content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().First().Text;
+            using JsonDocument screenshot = JsonDocument.Parse(captureJson);
             screenshot.RootElement.GetProperty("success").GetBoolean().Should().BeTrue(screenshot.RootElement.ToString());
             File.Exists(screenshot.RootElement.GetProperty("data").GetProperty("annotatedPath").GetString()).Should().BeTrue();
+            captureResult.Content.OfType<ModelContextProtocol.Protocol.ImageContentBlock>().Should().ContainSingle();
             FixedGrounder grounder = new(new GroundedElement(button.Bounds.Left - button.Window.Bounds.Left + button.Bounds.Width / 2,
                 button.Bounds.Top - button.Window.Bounds.Top + button.Bounds.Height / 2, 10, 10, 0.99, "Fixture coordinates", "fixture"));
             using JsonDocument located = JsonDocument.Parse(await SceneVisionTool.Locate(store, grounder, id, button.Window.Handle, "increment", TestContext.Current.CancellationToken));

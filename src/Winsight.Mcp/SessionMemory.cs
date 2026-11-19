@@ -35,6 +35,12 @@ public sealed record SessionFailure(
     string Message,
     string? SuggestedTool);
 
+public sealed record LoopWarning(
+    string ToolName,
+    string Code,
+    int ConsecutiveFailures,
+    string PivotSuggestion);
+
 public sealed record SessionMemorySnapshot(
     int? TargetProcessId,
     string? LastWindowTitle,
@@ -56,6 +62,7 @@ public sealed class SessionMemory
     private readonly object _gate = new();
     private readonly Dictionary<string, LocatorMemoryEntry> _locators = new(StringComparer.Ordinal);
     private readonly List<SessionFailure> _failures = new();
+    private readonly Dictionary<int, List<ProfileStep>> _verifiedSteps = new();
     private string? _lastWindowTitle;
     private DateTime? _lastObservationUtc;
 
@@ -100,7 +107,7 @@ public sealed class SessionMemory
         }
     }
 
-    public void RecordFailure(string toolName, string code, string message, string? suggestedTool)
+    public LoopWarning? RecordFailure(string toolName, string code, string message, string? suggestedTool)
     {
         lock (_gate)
         {
@@ -109,8 +116,37 @@ public sealed class SessionMemory
             {
                 _failures.RemoveRange(0, _failures.Count - MaxFailures);
             }
+
+            int streak = 0;
+            for (int i = _failures.Count - 1; i >= 0; i--)
+            {
+                SessionFailure item = _failures[i];
+                if (string.Equals(item.ToolName, toolName, StringComparison.Ordinal) &&
+                    string.Equals(item.Code, code, StringComparison.Ordinal))
+                {
+                    streak++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return streak >= 2
+                ? new LoopWarning(toolName, code, streak, SuggestPivot(code))
+                : null;
         }
     }
+
+    private static string SuggestPivot(string code) => code switch
+    {
+        "stale" => "Target changed repeatedly; call capture_scene to inspect visual layout or broaden the postcondition (any_change / visual_change).",
+        "dispatched_unconfirmed" => "Action dispatched without confirming expected state twice; call observe_scene or capture_scene to inspect actual UI state before acting again.",
+        "user_active" => "Human input interrupted repeatedly; call wait_for_user_idle before retrying.",
+        "locator_not_found" or "locator_ambiguous" => "Locator failed repeatedly; call repair_locator or observe_scene(includeOcr=true) + capture_scene.",
+        "blocked" => "Action was blocked repeatedly; inspect the returned message and call get_agent_state or observe_scene.",
+        _ => "Repeated failure detected; change strategy (capture_scene, click_point, key_chord, or observe_dom_scene) instead of repeating the same call.",
+    };
 
     public IReadOnlyList<LocatorMemoryMatch> Find(
         string query,
@@ -159,12 +195,41 @@ public sealed class SessionMemory
         }
     }
 
+    public void RecordVerifiedStep(int processId, ProfileStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        lock (_gate)
+        {
+            if (!_verifiedSteps.TryGetValue(processId, out List<ProfileStep>? steps))
+            {
+                steps = new List<ProfileStep>();
+                _verifiedSteps[processId] = steps;
+            }
+            steps.Add(step);
+            if (steps.Count > 20)
+            {
+                steps.RemoveRange(0, steps.Count - 20);
+            }
+        }
+    }
+
+    public IReadOnlyList<ProfileStep> GetVerifiedSteps(int processId)
+    {
+        lock (_gate)
+        {
+            return _verifiedSteps.TryGetValue(processId, out List<ProfileStep>? steps)
+                ? steps.ToArray()
+                : [];
+        }
+    }
+
     public void Clear()
     {
         lock (_gate)
         {
             _locators.Clear();
             _failures.Clear();
+            _verifiedSteps.Clear();
             _lastWindowTitle = null;
             _lastObservationUtc = null;
         }

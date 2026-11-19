@@ -27,7 +27,7 @@ public static class ElementStateTool
     private const string ProcessIdDescription =
         "Target process id. Optional; falls back to the session default set by set_target.";
 
-    [McpServerTool(Name = "get_element_state")]
+    [McpServerTool(Name = "get_element_state", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the observable state of a located UI element: name, value (Value pattern), " +
                  "toggle state, selection, enabled/visible/focus flags, and bounding rectangle. " +
                  "This is the lightweight UI-level oracle for assertions: use it instead of " +
@@ -69,7 +69,7 @@ public static class ElementStateTool
         });
     }
 
-    [McpServerTool(Name = "get_focused_element")]
+    [McpServerTool(Name = "get_focused_element", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Report where keyboard input would land right now: the element that owns keyboard focus " +
                  "(controlType, automationId, name, className, frameworkId, owning process), the Win32 focus " +
                  "window class, whether the focus belongs to the target process or a window it hosts, and " +
@@ -92,7 +92,7 @@ public static class ElementStateTool
         });
     }
 
-    [McpServerTool(Name = "wait_for_element")]
+    [McpServerTool(Name = "wait_for_element", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Poll until a condition holds for a locator: exists, not_exists, enabled, visible, " +
                  "value_equals, value_contains, stable_for, name_equals, name_contains, name_matches (regular " +
                  "expression), or child_count (the element has expectedCount direct children, optionally only " +

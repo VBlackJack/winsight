@@ -41,11 +41,22 @@ sous-jacent.
 
 ## Flux de travail orienté agent
 
-Les outils recommandés sont `observe_scene`, `act_verified`, `capture_scene`,
-`observe_dom_scene`, `locate_scene_target`, `save_app_profile` et
-`run_app_profile`. Leurs [contrats et exemples](verified-control.md) distinguent
+Les outils recommandés sont `observe_scene`, `act_verified`, `run_verified_steps`,
+`wait_any`, `capture_scene`, `watch_ui_events`, `audit_ui_accessibility`,
+`select_file_dialog`, `switch_target`, `observe_dom_scene`, `locate_scene_target`,
+`list_app_profiles`, `save_app_profile`, `save_verified_history_as_profile`,
+`run_app_profile` et `delete_app_profile`.
+Leurs [contrats et exemples](verified-control.md) distinguent
 l'envoi d'une action des résultats vérifiés. Les flux existants listés
 ci-dessous restent compatibles.
+
+Au démarrage, `Winsight.Mcp` envoie des `ServerInstructions` MCP qui résument
+cette boucle, déclare les annotations MCP (`ReadOnly`, `Destructive`, `Idempotent`,
+`OpenWorld`) sur chaque outil, et expose les ressources MCP en lecture seule
+(`winsight://guide`, `winsight://state`, `winsight://windows`,
+`winsight://scene/latest`) ainsi que les prompts MCP (`explore_app`,
+`verify_flow`, `diagnose_ui_bug`). Définir `WINSIGHT_TOOL_PROFILE=compact` pour
+exposer un jeu réduit de 33 outils autonomes au lieu des 70 outils complets.
 
 Ces outils de commodité d'origine restent disponibles. Les outils de plus bas
 niveau restent disponibles, mais les agents devraient commencer ici, car les

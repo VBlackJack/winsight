@@ -482,14 +482,24 @@ compte comme humaine.
 
 Un hôte `Microsoft.Extensions.Hosting` qui enregistre les modules du moteur
 comme singletons, puis les branche sur
-`AddMcpServer().WithStdioServerTransport()`. Les outils sont découverts par
-réflexion à partir de toute classe `[McpServerToolType]` de l'assembly.
+`AddMcpServer().WithStdioServerTransport()`, en enregistrant les outils
+(`WithToolsFromAssembly`), les ressources en lecture seule
+(`WinsightResources` : `winsight://guide`, `state`, `windows`, `scene/latest`)
+et les prompts réutilisables (`WinsightPrompts` : `explore_app`, `verify_flow`,
+`diagnose_ui_bug`). Chaque outil déclare explicitement ses annotations MCP
+(`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`), et
+`McpServerConfiguration` configure les `ServerInstructions` au démarrage ainsi
+que le filtrage optionnel `WINSIGHT_TOOL_PROFILE=compact`.
 
-Un singleton `SessionTarget` conserve le processus par défaut de la session:
-les outils à portée de processus acceptent un `processId` optionnel et se
-replient sur lui (`set_target` / `get_target` / `clear_target` le gèrent), si
-bien qu'un agent qui pilote une seule application n'a pas besoin de répéter
-l'id.
+Un singleton `SessionTarget` conserve le processus par défaut de la session et
+des alias nommés optionnels (`set_target` / `switch_target` / `get_target` /
+`clear_target`), permettant à un agent de piloter une ou plusieurs applications
+sans manipuler des PIDs bruts. Les outils de scène vérifiée partagent les
+singletons injectés via `SceneServices` (`UiaSceneDriver`, `VisualTextReader`,
+`WebView2Detector`, `ApplicationProfiles` et `SessionMemory` avec détection de
+boucles d'échec). `UiEventWatcher` expose des hooks d'événements UIA temps réel
+bornés et `UiAccessibilityAuditor` effectue des contrôles QA déterministes sur
+les scènes UIA capturées.
 
 `ToolListAnnouncer` envoie `notifications/tools/list_changed` une fois le
 client initialisé. `ServerBuildInfo` fournit à `get_winsight_guide` la version

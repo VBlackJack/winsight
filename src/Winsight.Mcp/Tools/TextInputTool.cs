@@ -33,7 +33,7 @@ public static class TextInputTool
     private const string ProcessIdDescription =
         "Target process id. Optional: falls back to the session default set by set_target.";
 
-    [McpServerTool(Name = "type_keys")]
+    [McpServerTool(Name = "type_keys", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Type text into the focused control of the target's window when there is no UI Automation " +
                  "element to type into (iced, winit, egui and other GPU-drawn UIs); use type_text when there " +
                  "is one. Raises the target window and verifies focus first, like send_key_chord. mode=keys " +
@@ -86,7 +86,7 @@ public static class TextInputTool
         });
     }
 
-    [McpServerTool(Name = "set_clipboard_text")]
+    [McpServerTool(Name = "set_clipboard_text", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Replace the clipboard with text, for example to prepare a paste. Needs " +
                  "WINSIGHT_ALLOW_CLIPBOARD (the clipboard may hold secrets). The text is kept out of clipboard " +
                  "history, the cloud clipboard and clipboard monitors. Returns { length }; the text is never " +
@@ -110,7 +110,7 @@ public static class TextInputTool
         });
     }
 
-    [McpServerTool(Name = "read_clipboard_text")]
+    [McpServerTool(Name = "read_clipboard_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the clipboard text, for example to check what a Copy button copied. Needs " +
                  "WINSIGHT_ALLOW_CLIPBOARD (the clipboard may hold secrets). Returns { text, length }; text is " +
                  "null when the clipboard holds no text. The text goes to the caller only: traces record its " +

@@ -26,12 +26,23 @@ public static class ClientConfiguration
     private const string ServerName = "winsight";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static string Transform(string input, string executable, bool toml, bool remove = false)
+    public static string Transform(
+        string input,
+        string executable,
+        bool toml,
+        bool remove = false,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
-        return toml ? TransformToml(input, executable, remove) : TransformJson(input, executable, remove);
+        return toml
+            ? TransformToml(input, executable, remove, environment)
+            : TransformJson(input, executable, remove, environment);
     }
 
-    private static string TransformJson(string input, string executable, bool remove)
+    private static string TransformJson(
+        string input,
+        string executable,
+        bool remove,
+        IReadOnlyDictionary<string, string>? environment)
     {
         JsonObject root = string.IsNullOrWhiteSpace(input) ? new() :
             JsonNode.Parse(input) as JsonObject ?? throw new InvalidDataException("Expected a JSON object.");
@@ -50,12 +61,29 @@ public static class ClientConfiguration
             servers.Remove(ServerName);
         }
         else if (remove) return input;
-        else servers[ServerName] = new JsonObject { ["command"] = executable, ["args"] = new JsonArray() };
+        else
+        {
+            JsonObject entry = new() { ["command"] = executable, ["args"] = new JsonArray() };
+            if (environment is { Count: > 0 })
+            {
+                JsonObject env = new();
+                foreach ((string key, string value) in environment.OrderBy(p => p.Key, StringComparer.Ordinal))
+                {
+                    env[key] = value;
+                }
+                entry["env"] = env;
+            }
+            servers[ServerName] = entry;
+        }
         if (root["mcpServers"] is null) root["mcpServers"] = servers;
         return root.ToJsonString(JsonOptions) + Environment.NewLine;
     }
 
-    private static string TransformToml(string input, string executable, bool remove)
+    private static string TransformToml(
+        string input,
+        string executable,
+        bool remove,
+        IReadOnlyDictionary<string, string>? environment)
     {
         TomlTable root = TomlSerializer.Deserialize<TomlTable>(input) ?? new();
         TomlTable servers = root.TryGetValue("mcp_servers", out object? value)
@@ -72,20 +100,38 @@ public static class ClientConfiguration
             servers.Remove(ServerName);
         }
         else if (remove) return input;
-        else servers[ServerName] = new TomlTable { ["command"] = executable, ["args"] = new TomlArray() };
+        else
+        {
+            TomlTable entry = new() { ["command"] = executable, ["args"] = new TomlArray() };
+            if (environment is { Count: > 0 })
+            {
+                TomlTable env = new();
+                foreach ((string key, string val) in environment.OrderBy(p => p.Key, StringComparer.Ordinal))
+                {
+                    env[key] = val;
+                }
+                entry["env"] = env;
+            }
+            servers[ServerName] = entry;
+        }
         root["mcp_servers"] = servers;
         return TomlSerializer.Serialize(root);
     }
 
     /// <summary>Prepare all edits before writing; preserve backups and roll back only unchanged writes.</summary>
-    public static void Apply(IReadOnlyList<string> paths, string executable, bool remove = false, string? manifestPath = null)
+    public static void Apply(
+        IReadOnlyList<string> paths,
+        string executable,
+        bool remove = false,
+        string? manifestPath = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         List<Edit> edits = new();
         foreach (string path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             byte[]? original = File.Exists(path) ? File.ReadAllBytes(path) : null;
             string input = original is null ? string.Empty : new UTF8Encoding(false, true).GetString(original).TrimStart('\uFEFF');
-            string output = Transform(input, executable, path.EndsWith(".toml", StringComparison.OrdinalIgnoreCase), remove);
+            string output = Transform(input, executable, path.EndsWith(".toml", StringComparison.OrdinalIgnoreCase), remove, environment);
             if (input != output) edits.Add(new Edit(path, original, Encoding.UTF8.GetBytes(output)));
         }
         if (manifestPath is not null && !remove)

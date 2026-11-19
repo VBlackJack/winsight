@@ -9,6 +9,37 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- MCP protocol autonomy features:
+  - `ServerInstructions` configured at initialization so AI clients receive the preferred control loop and recovery rules without burning a discovery call.
+  - Explicit MCP tool annotations (`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`) on all 68 tools so clients can auto-approve read-only perception tools.
+  - Read-only MCP resources (`winsight://guide`, `winsight://state`, `winsight://windows`, `winsight://scene/latest`) and reusable MCP prompts (`explore_app`, `verify_flow`, `diagnose_ui_bug`).
+  - `WINSIGHT_TOOL_PROFILE=compact` to expose a focused 31-tool autonomous subset while keeping `full` (68 tools) as the default.
+  - MCP `notifications/progress` ticks on `run_verified_steps`, `run_app_profile`, and `wait_for_user_idle`.
+  - `winsight-configure` accepts `--compact` and `--yield-ms <ms>` to persist `WINSIGHT_TOOL_PROFILE=compact` and `WINSIGHT_YIELD_TO_USER_MS` in client configs (JSON and TOML).
+- Autonomous control loop evolutions:
+  - `backgroundOnly=true` on `act_verified` and `run_verified_steps` restricts actions to background-safe UIA patterns (`Invoke`, `Toggle`, `SetValue`, `Select`, `Expand`, `Collapse`, `Scroll`) so agents can drive apps without stealing desktop focus or tripping `user_active`.
+  - Named multi-app targets: `set_target` accepts an optional `alias`, `switch_target(alias)` switches the active target without juggling PIDs, and `clear_target(alias)` removes a single alias.
+  - `watch_ui_events` subscribes to native UIA events (`window_opened`, `menu_opened`, `invoked`, `structure_*`) for a bounded duration to catch transient popups and menus.
+  - `audit_ui_accessibility` inspects a window's UIA tree for missing accessible names, missing `AutomationId`s, zero-size visible controls, non-focusable interactive elements, and overlapping bounding boxes.
+  - `capture_scene` returns the Set-of-Mark annotated PNG inline as an MCP `ImageContentBlock` by default (`includeImage=true`) and makes `windowHandle` optional.
+  - `observe_scene` adds `actionableOnly`, `filterText`, `includeOcr=true` (synthesizing clickable `tN` OCR targets dispatched by `act_verified`), automatic `surfaceHint` (WebView2 port or custom-drawn hint), and automatic `matchingProfiles` discovery.
+  - `act_verified` adds `observeAfter=true` (returning a fresh `nextObservation` and structural `diff` in the same call), exploratory postconditions (`value_contains`, `name_contains`, `any_change`, `visual_change`), and structured recovery `hint` payloads with consecutive-failure loop detection.
+  - `run_verified_steps` executes 1..20 semantic verified steps in one round trip with per-step observation/verification and automatic `recovery` on failure.
+  - `select_file_dialog` provides a fast-path for standard Windows Open/Save (`#32770`) file dialogs.
+  - `list_app_profiles` and `delete_app_profile` for discovering and managing saved profiles.
+  - `launch_app` automatically binds the launched process as the session default target (`setAsTarget=true`) and surfaces `matchingProfiles`; `close_app` clears the session target when closing it.
+
+### Fixed
+
+- `ManagedStateReader` now reads `System.String` fields before the generic `IsObjectReference` branch (previously returning `"System.String @ 0x..."`).
+- `act_verified` now enforces `UserActivityPolicy.CheckYield()` (`WINSIGHT_YIELD_TO_USER_MS`) before consuming an observation or dispatching input.
+- `click_and_wait` and `type_and_assert` no longer leak primary locator fields into a separate wait/assert target.
+- `DomSceneTool` dispatches asynchronously without blocking on `.GetAwaiter().GetResult()` under `DesktopInputLease`, and avoids repeating WMI/TCP endpoint verification on every 100 ms poll tick.
+- `ToolAccessPolicy` and `AppLauncher` properly dispose `Process` handles; verified scene tools share DI-managed singletons via `SceneServices`; `UiaSceneDriver` validates `key_chord` before consuming an observation and tolerates transient `COMException` during resolution.
+- `replay_steps` restricts `tracePath` to `.json` files inside the configured trace directory.
+
+### Earlier Unreleased Changes
+
 - French documentation: `README.fr.md` and `docs/fr/` mirror the README and
   every document under `docs/` except the release notes, each version linking
   to the other at the top. A test keeps the French files free of typographic

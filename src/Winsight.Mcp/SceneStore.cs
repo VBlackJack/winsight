@@ -17,12 +17,26 @@ using Winsight.Core.Models;
 namespace Winsight.Mcp;
 
 /// <summary>Bounded, expiring observations. Reservation prevents concurrent or repeated dispatch.</summary>
-public sealed class SceneStore(TimeProvider? clock = null)
+public sealed class SceneStore
 {
     private const int Capacity = 16;
-    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+    private readonly TimeProvider _clock;
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private Entry? _latest;
+
+    public SceneStore(SceneServices services, TimeProvider? clock = null)
+    {
+        Services = services ?? throw new ArgumentNullException(nameof(services));
+        _clock = clock ?? TimeProvider.System;
+    }
+
+    public SceneStore(TimeProvider? clock = null)
+        : this(SceneServices.Default, clock)
+    {
+    }
+
+    public SceneServices Services { get; }
 
     public sealed record Entry(string Id, int ProcessId, long ProcessStart, string? Title,
         DateTimeOffset Expires, SceneCapture Capture, int? CdpPort = null, string? CdpTarget = null);
@@ -35,8 +49,14 @@ public sealed class SceneStore(TimeProvider? clock = null)
             while (_entries.Count >= Capacity) _entries.Remove(_entries.MinBy(p => p.Value.Expires).Key);
             Entry entry = new(Guid.NewGuid().ToString("N"), pid, processStart, title, _clock.GetUtcNow().AddMinutes(2), capture, cdpPort, cdpTarget);
             _entries.Add(entry.Id, entry);
+            _latest = entry;
             return entry;
         }
+    }
+
+    public Entry? Latest()
+    {
+        lock (_gate) return _latest is not null && _latest.Expires > _clock.GetUtcNow() && _entries.ContainsKey(_latest.Id) ? _latest : null;
     }
 
     public Entry? Get(string id)
