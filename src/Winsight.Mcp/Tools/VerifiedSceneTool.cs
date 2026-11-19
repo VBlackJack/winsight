@@ -56,12 +56,17 @@ public static class VerifiedSceneTool
         string? filterText = null,
         bool includeOcr = false)
     {
+        SceneCaptureFilter filter = new(title, maximum, actionableOnly, filterText, includeOcr);
         using Process process = Process.GetProcessById(pid);
         long started = process.StartTime.ToUniversalTime().Ticks;
-        SceneCapture capture = store.Services.Driver.Capture(pid, title, maximum);
-        capture = EnrichCapture(store.Services, pid, title, capture, actionableOnly, filterText, includeOcr);
-        return store.Add(pid, started, title, capture);
+        SceneCapture raw = store.Services.Driver.Capture(pid, filter.WindowTitle, filter.MaxResults);
+        HashSet<string> unfilteredKeys = raw.Elements.Select(ElementKeyFor).ToHashSet(StringComparer.Ordinal);
+        SceneCapture capture = EnrichCapture(store.Services, pid, filter.WindowTitle, raw, filter.ActionableOnly, filter.FilterText, filter.IncludeOcr);
+        return store.Add(pid, started, filter.WindowTitle, capture, filter: filter, unfilteredElementKeys: unfilteredKeys);
     }
+
+    internal static SceneStore.Entry Capture(SceneStore store, int pid, SceneCaptureFilter filter) =>
+        Capture(store, pid, filter.WindowTitle, filter.MaxResults, filter.ActionableOnly, filter.FilterText, filter.IncludeOcr);
 
     internal static SceneCapture EnrichCapture(
         SceneServices services,
@@ -214,7 +219,7 @@ public static class VerifiedSceneTool
             if (!operation.Success)
             {
                 object? recovery = null;
-                if (!dispatched && request.Recover && node.Source == "uia") recovery = Capture(store, entry.ProcessId, entry.Title);
+                if (!dispatched && request.Recover && node.Source == "uia") recovery = Capture(store, entry.ProcessId, entry.EffectiveFilter);
                 string failStatus = dispatched ? "dispatched_unconfirmed" : "stale";
                 string failMessage = operation.Error ?? "Action failed.";
                 return Serialize(new VerifiedActionResult(failStatus, dispatched, false,
@@ -238,7 +243,7 @@ public static class VerifiedSceneTool
                     object? diff = null;
                     if (request.ObserveAfter && node.Source != "dom" && !process.HasExited)
                     {
-                        SceneStore.Entry fresh = Capture(store, entry.ProcessId, entry.Title);
+                        SceneStore.Entry fresh = Capture(store, entry.ProcessId, entry.EffectiveFilter);
                         nextObservation = fresh;
                         diff = ComputeDiff(entry.Capture, fresh.Capture);
                     }
@@ -295,8 +300,13 @@ public static class VerifiedSceneTool
         int pid = entry.ProcessId;
         if (expect.Kind == "any_change")
         {
-            SceneCapture current = services.Driver.Capture(pid, expect.WindowTitle ?? entry.Title, 200);
-            SceneDiff diff = ComputeDiff(entry.Capture, current);
+            SceneCaptureFilter filter = entry.EffectiveFilter;
+            string? windowTitle = expect.WindowTitle ?? filter.WindowTitle;
+            SceneCapture rawCurrent = services.Driver.Capture(pid, windowTitle, filter.MaxResults);
+            SceneCapture filteredCurrent = EnrichCapture(
+                services, pid, windowTitle, rawCurrent,
+                filter.ActionableOnly, filter.FilterText, filter.IncludeOcr);
+            SceneDiff diff = ComputeDiff(entry.Capture, filteredCurrent);
             return (diff.HasChanges, diff);
         }
         if (expect.Kind == "visual_change")
@@ -350,6 +360,25 @@ public static class VerifiedSceneTool
         return (expect.Kind == "exists" || value == expect.Expected, state);
     }
 
+    internal static (bool Passed, SceneDiff Diff) EvaluateAnyChange(
+        SceneServices services,
+        int pid,
+        SceneCapture beforeFiltered,
+        SceneCapture afterRaw,
+        SceneCaptureFilter filter)
+    {
+        SceneCapture afterFiltered = EnrichCapture(
+            services, pid, filter.WindowTitle, afterRaw,
+            filter.ActionableOnly, filter.FilterText, filter.IncludeOcr);
+        SceneDiff diff = ComputeDiff(beforeFiltered, afterFiltered);
+        return (diff.HasChanges, diff);
+    }
+
+    internal static string ElementKeyFor(SceneElement element) =>
+        !string.IsNullOrEmpty(element.Identity)
+            ? element.Identity
+            : $"{element.Window.Handle}:{element.Role}:{element.Locator.AutomationId ?? element.Name}";
+
     internal static SceneDiff ComputeDiff(SceneCapture before, SceneCapture after)
     {
         HashSet<long> beforeHandles = before.Windows.Select(w => w.WindowHandle).ToHashSet();
@@ -357,14 +386,11 @@ public static class VerifiedSceneTool
         string[] windowsAdded = after.Windows.Where(w => !beforeHandles.Contains(w.WindowHandle)).Select(w => w.Title).ToArray();
         string[] windowsRemoved = before.Windows.Where(w => !afterHandles.Contains(w.WindowHandle)).Select(w => w.Title).ToArray();
 
-        static string KeyFor(SceneElement e) =>
-            !string.IsNullOrEmpty(e.Identity) ? e.Identity : $"{e.Window.Handle}:{e.Role}:{e.Locator.AutomationId ?? e.Name}";
-
         Dictionary<string, SceneElement> beforeByKey = new(StringComparer.Ordinal);
-        foreach (SceneElement e in before.Elements) beforeByKey.TryAdd(KeyFor(e), e);
+        foreach (SceneElement e in before.Elements) beforeByKey.TryAdd(ElementKeyFor(e), e);
 
         Dictionary<string, SceneElement> afterByKey = new(StringComparer.Ordinal);
-        foreach (SceneElement e in after.Elements) afterByKey.TryAdd(KeyFor(e), e);
+        foreach (SceneElement e in after.Elements) afterByKey.TryAdd(ElementKeyFor(e), e);
 
         List<string> added = new();
         List<string> changed = new();

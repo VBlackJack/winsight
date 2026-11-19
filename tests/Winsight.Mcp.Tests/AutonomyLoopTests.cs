@@ -304,4 +304,56 @@ public sealed class AutonomyLoopTests
             Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, priorDryRun);
         }
     }
+
+    [Fact]
+    public void Filtered_observation_followed_by_noop_does_not_verify_any_change()
+    {
+        using Process self = Process.GetCurrentProcess();
+        WindowDescriptor win = new(self.Id, 100, "VMware Workstation", self.ProcessName, true, 0, 0, 1200, 800, WindowClassifier.KindMain, "VMUIFrame");
+        WindowIdentity winId = new(self.Id, 100, new WindowBounds(0, 0, 1200, 800));
+
+        List<SceneElement> rawBefore = new();
+        // 5 elements matching filterText="VM" and actionableOnly=true
+        for (int i = 1; i <= 5; i++)
+        {
+            rawBefore.Add(new SceneElement(
+                $"e{i}", "uia", "MenuItem", i == 1 ? "VM" : $"VM Action {i}", null,
+                true, true, false, null, new WindowBounds(10 * i, 30, 50, 20), ["activate"], winId,
+                new ElementLocator(Name: i == 1 ? "VM" : $"VM Action {i}", ControlType: "MenuItem"), $"vm-{i}"));
+        }
+        // 46 other elements (including File menu item)
+        rawBefore.Add(new SceneElement(
+            "e6", "uia", "MenuItem", "File", null,
+            true, true, false, null, new WindowBounds(5, 30, 40, 20), ["activate"], winId,
+            new ElementLocator(Name: "File", ControlType: "MenuItem"), "file-1"));
+        for (int i = 7; i <= 51; i++)
+        {
+            rawBefore.Add(new SceneElement(
+                $"e{i}", "uia", "Button", $"Toolbar {i}", null,
+                true, true, false, null, new WindowBounds(10 * i, 60, 40, 20), ["activate"], winId,
+                new ElementLocator(Name: $"Toolbar {i}", ControlType: "Button"), $"btn-{i}"));
+        }
+
+        SceneCaptureFilter filter = new(WindowTitle: "VMware Workstation", MaxResults: 40, ActionableOnly: true, FilterText: "VM", IncludeOcr: false);
+        SceneCapture beforeFiltered = VerifiedSceneTool.EnrichCapture(
+            SceneServices.Default, self.Id, filter.WindowTitle,
+            new SceneCapture([win], rawBefore, false, "uia"),
+            filter.ActionableOnly, filter.FilterText, filter.IncludeOcr);
+        beforeFiltered.Elements.Should().HaveCount(5);
+
+        // No-op action: only focus moved to the unrelated "File" menu item in the 51-element tree.
+        List<SceneElement> rawAfter = rawBefore
+            .Select(e => e.Identity == "file-1" ? e with { Focused = true } : e)
+            .ToList();
+        SceneCapture afterRaw = new([win], rawAfter, false, "uia");
+
+        (bool passed, VerifiedSceneTool.SceneDiff diff) = VerifiedSceneTool.EvaluateAnyChange(
+            SceneServices.Default, self.Id, beforeFiltered, afterRaw, filter);
+
+        passed.Should().BeFalse();
+        diff.HasChanges.Should().BeFalse();
+        diff.ElementsAdded.Should().BeEmpty();
+        diff.ElementsRemoved.Should().BeEmpty();
+        diff.ElementsChanged.Should().BeEmpty();
+    }
 }

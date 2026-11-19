@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Text.Json.Serialization;
 using Winsight.Core.Models;
 
 namespace Winsight.Mcp;
@@ -39,15 +40,33 @@ public sealed class SceneStore
     public SceneServices Services { get; }
 
     public sealed record Entry(string Id, int ProcessId, long ProcessStart, string? Title,
-        DateTimeOffset Expires, SceneCapture Capture, int? CdpPort = null, string? CdpTarget = null);
+        DateTimeOffset Expires, SceneCapture Capture, int? CdpPort = null, string? CdpTarget = null,
+        [property: JsonIgnore] SceneCaptureFilter? Filter = null,
+        [property: JsonIgnore] IReadOnlySet<string>? UnfilteredElementKeys = null)
+    {
+        [JsonIgnore]
+        public SceneCaptureFilter EffectiveFilter => Filter ?? new SceneCaptureFilter(WindowTitle: Title);
+    }
 
-    public Entry Add(int pid, long processStart, string? title, SceneCapture capture, int? cdpPort = null, string? cdpTarget = null)
+    public Entry Add(int pid, long processStart, string? title, SceneCapture capture,
+        int? cdpPort = null, string? cdpTarget = null,
+        SceneCaptureFilter? filter = null, IReadOnlySet<string>? unfilteredElementKeys = null)
     {
         lock (_gate)
         {
             foreach (string expired in _entries.Where(p => p.Value.Expires <= _clock.GetUtcNow()).Select(p => p.Key).ToArray()) _entries.Remove(expired);
             while (_entries.Count >= Capacity) _entries.Remove(_entries.MinBy(p => p.Value.Expires).Key);
-            Entry entry = new(Guid.NewGuid().ToString("N"), pid, processStart, title, _clock.GetUtcNow().AddMinutes(2), capture, cdpPort, cdpTarget);
+            Entry entry = new(
+                Guid.NewGuid().ToString("N"),
+                pid,
+                processStart,
+                title,
+                _clock.GetUtcNow().AddMinutes(2),
+                capture,
+                cdpPort,
+                cdpTarget,
+                filter ?? new SceneCaptureFilter(WindowTitle: title),
+                unfilteredElementKeys);
             _entries.Add(entry.Id, entry);
             _latest = entry;
             return entry;
