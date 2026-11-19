@@ -152,6 +152,66 @@ public sealed partial class ActionInvoker
         }
     }
 
+    /// <summary>
+    /// Read-only-safe diagnostic probe for a point inside an authorized target
+    /// window: tries all four Windows pointer movement methods in order,
+    /// measures GetCursorPos and GetPhysicalCursorPos immediately and after
+    /// 50 ms / 150 ms, restores the original cursor position after each
+    /// attempt, and reports ClipCursor, GetCursorInfo, mouse button states,
+    /// mouse acceleration, foreground process, and input context.
+    /// </summary>
+    public OperationResult DiagnosePointer(
+        int processId,
+        int x,
+        int y,
+        string? windowTitle = null,
+        bool windowRelative = true)
+    {
+        using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
+        lock (DesktopInputGate)
+        {
+            if (!TryResolveClickWindow(
+                    processId, x, y, windowTitle, windowRelative, allowOutOfWindow: false, expectedWindow: null,
+                    out WindowIdentity window, out string? resolveError))
+            {
+                return OperationResult.Failure(resolveError!);
+            }
+
+            int screenX;
+            int screenY;
+            if (windowRelative)
+            {
+                WindowBounds bounds = window.Bounds;
+                if (!WindowPointMapper.Contains(bounds.Width, bounds.Height, x, y))
+                {
+                    return OperationResult.Failure(
+                        $"Window-relative point ({x}, {y}) is outside the target window bounds " +
+                        $"{bounds.Width}x{bounds.Height}. Pass coordinates within the window, or use " +
+                        "screen-space coordinates.");
+                }
+                (screenX, screenY) = WindowPointMapper.ToScreen(bounds.Left, bounds.Top, x, y);
+            }
+            else
+            {
+                screenX = x;
+                screenY = y;
+                if (!WindowGeometry.TryResolveBoundsContainingPoint(
+                        processId,
+                        windowTitle,
+                        screenX,
+                        screenY,
+                        out _,
+                        out string? boundsError))
+                {
+                    return OperationResult.Failure(boundsError!);
+                }
+            }
+
+            PointerDiagnosticReport report = PointerDiagnostics.RunDiagnostic(new System.Drawing.Point(screenX, screenY));
+            return OperationResult.OkWith(report);
+        }
+    }
+
     private static OperationResult PointActionCore(
         int processId, int x, int y, string? windowTitle,
         bool windowRelative, bool allowOutOfWindow, WindowIdentity? expectedWindow,

@@ -281,6 +281,38 @@ public static class InvokeActionTool
         });
     }
 
+    [McpServerTool(Name = "diagnose_pointer", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read-only-safe pointer movement diagnostic for a point inside an authorized target window. " +
+                 "Tries four pointer move methods in order (SendInput ABSOLUTE|VIRTUALDESK, SendInput ABSOLUTE " +
+                 "primary monitor, SendInput relative, SetCursorPos), measures GetCursorPos and " +
+                 "GetPhysicalCursorPos immediately and after 50 ms and 150 ms, and restores the original " +
+                 "cursor position after each attempt without clicking. Also reports ClipCursor, GetCursorInfo " +
+                 "flags (showing/suppressed), mouse buttons down, SPI_GETMOUSE / SPI_GETMOUSESPEED, foreground " +
+                 "process, and input context.")]
+    public static string DiagnosePointer(
+        ActionInvoker invoker,
+        SessionTarget target,
+        [Description("X coordinate inside the target window. Window-relative by default; see coordinateSpace.")]
+        int x,
+        [Description("Y coordinate inside the target window. Window-relative by default; see coordinateSpace.")]
+        int y,
+        [Description("Restrict the target window to those whose title contains this text.")]
+        string? windowTitle = null,
+        [Description("Coordinate space: window (default) or screen.")]
+        string? coordinateSpace = null,
+        [Description(ProcessIdDescription)]
+        int? processId = null)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            if (!TryPointTarget(target, processId, coordinateSpace, out int pid, out bool windowRelative, out string? error))
+            {
+                return Serialize(OperationResult.Failure(error!));
+            }
+            return Serialize(invoker.DiagnosePointer(pid, x, y, windowTitle, windowRelative));
+        });
+    }
+
     private static bool TryPointTarget(
         SessionTarget target,
         int? processId,

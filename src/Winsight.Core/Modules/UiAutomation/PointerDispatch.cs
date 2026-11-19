@@ -14,19 +14,19 @@
 
 using System.Drawing;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using FlaUI.Core.Input;
 using Winsight.Core.Models;
 
 namespace Winsight.Core.Modules.UiAutomation;
 
-/// <summary>Diagnostics returned by a single synthetic pointer move via SendInput.</summary>
+/// <summary>Diagnostics returned by a single synthetic pointer move.</summary>
 internal readonly record struct PointerMoveResult(
     uint SendInputCount,
     int LastWin32Error,
     int NormalizedX,
     int NormalizedY,
-    VirtualDesktopBounds VirtualDesktop);
+    VirtualDesktopBounds VirtualDesktop,
+    string Method = PointerMoveMethods.SendInputVirtualDesk);
 
 /// <summary>The physical pointer operations a click is made of; replaced by a recorder in tests.</summary>
 internal interface IPointerDriver
@@ -34,6 +34,8 @@ internal interface IPointerDriver
     Point Position { get; }
 
     PointerMoveResult MoveTo(Point point);
+
+    PointerMoveResult MoveToWithMethod(Point point, string method) => MoveTo(point);
 
     void Wait(int milliseconds);
 
@@ -51,38 +53,14 @@ internal sealed class NativePointerDriver : IPointerDriver
 {
     public static readonly NativePointerDriver Instance = new();
 
-    private const uint InputMouse = 0;
-    private const uint MouseEventMove = 0x0001;
-    private const uint MouseEventVirtualDesk = 0x4000;
-    private const uint MouseEventAbsolute = 0x8000;
-
     public Point Position =>
-        NativeMethods.GetCursorPos(out NativePoint pt) ? new Point(pt.X, pt.Y) : Mouse.Position;
+        PointerDiagnostics.ReadCursorPos() is { } pt ? new Point(pt.X, pt.Y) : Mouse.Position;
 
-    public PointerMoveResult MoveTo(Point point)
-    {
-        VirtualDesktopBounds desktop = VirtualDesktopCoordinates.QueryCurrent();
-        NormalizedAbsolutePoint normalized = VirtualDesktopCoordinates.Normalize(point.X, point.Y, desktop);
-        NativeInput[] inputs =
-        {
-            new()
-            {
-                Type = InputMouse,
-                Data = new NativeInputUnion
-                {
-                    Mouse = new NativeMouseInput
-                    {
-                        Dx = normalized.Dx,
-                        Dy = normalized.Dy,
-                        Flags = MouseEventMove | MouseEventAbsolute | MouseEventVirtualDesk,
-                    },
-                },
-            },
-        };
-        uint sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
-        int lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
-        return new PointerMoveResult(sent, lastError, normalized.Dx, normalized.Dy, desktop);
-    }
+    public PointerMoveResult MoveTo(Point point) =>
+        PointerDiagnostics.MoveSendInputVirtualDesk(point);
+
+    public PointerMoveResult MoveToWithMethod(Point point, string method) =>
+        PointerDiagnostics.MoveWithMethod(point, Position, method);
 
     public void Wait(int milliseconds) => Thread.Sleep(milliseconds);
 
@@ -100,61 +78,6 @@ internal sealed class NativePointerDriver : IPointerDriver
         {
             Mouse.Scroll(notches);
         }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
-    {
-        public int X;
-        public int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeInput
-    {
-        public uint Type;
-        public NativeInputUnion Data;
-    }
-
-    [StructLayout(LayoutKind.Explicit)]
-    private struct NativeInputUnion
-    {
-        [FieldOffset(0)]
-        public NativeMouseInput Mouse;
-
-        [FieldOffset(0)]
-        public NativeKeyboardInput Keyboard;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeMouseInput
-    {
-        public int Dx;
-        public int Dy;
-        public uint MouseData;
-        public uint Flags;
-        public uint Time;
-        public IntPtr ExtraInfo;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeKeyboardInput
-    {
-        public ushort VirtualKey;
-        public ushort ScanCode;
-        public uint Flags;
-        public uint Time;
-        public IntPtr ExtraInfo;
-    }
-
-    private static class NativeMethods
-    {
-        [DllImport("user32.dll", SetLastError = true)]
-        public static extern uint SendInput(uint nInputs, NativeInput[] pInputs, int cbSize);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool GetCursorPos(out NativePoint point);
     }
 }
 
@@ -357,13 +280,32 @@ public static class PointerDispatch
                 inputContext = InputContext.Capture();
             }
         }
-        dispatch = InputContext.ToDispatchInfo(inputContext, desktopSwitch);
-
         int settle = settleMs ?? DefaultSettleMs;
         Point startPosition = pointer.Position;
+        List<string> attemptedMethods = new() { PointerMoveMethods.SendInputVirtualDesk };
         PointerMoveResult moveResult = pointer.MoveTo(point);
+        string usedMethod = string.IsNullOrEmpty(moveResult.Method)
+            ? PointerMoveMethods.SendInputVirtualDesk
+            : moveResult.Method;
+
+        if (!IsNear(point, startPosition) && IsNear(pointer.Position, startPosition))
+        {
+            foreach (string fallbackMethod in PointerMoveMethods.FallbackOrder)
+            {
+                attemptedMethods.Add(fallbackMethod);
+                PointerMoveResult fallbackResult = pointer.MoveToWithMethod(point, fallbackMethod);
+                if (!IsNear(pointer.Position, startPosition))
+                {
+                    moveResult = fallbackResult;
+                    usedMethod = fallbackMethod;
+                    break;
+                }
+            }
+        }
+
+        dispatch = InputContext.ToDispatchInfo(inputContext, desktopSwitch, usedMethod);
         pointer.Wait(settle);
-        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch) is { } moved)
+        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch, attemptedMethods) is { } moved)
         {
             return moved;
         }
@@ -378,7 +320,8 @@ public static class PointerDispatch
         PointerMoveResult? moveResult,
         IntegrityComparison? integrity,
         InputContextSnapshot? inputContext = null,
-        DesktopSwitchAttempt? desktopSwitch = null)
+        DesktopSwitchAttempt? desktopSwitch = null,
+        IReadOnlyList<string>? attemptedMethods = null)
     {
         Point actual = pointer.Position;
         if (IsNear(actual, target))
@@ -398,13 +341,16 @@ public static class PointerDispatch
             string sendInputDetail = moveResult is PointerMoveResult move
                 ? string.Create(
                     CultureInfo.InvariantCulture,
-                    $"SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
+                    $"method={move.Method}, SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
                 : "SendInput=unknown";
+            string methodsDetail = attemptedMethods is { Count: > 0 }
+                ? $"attemptedMethods=[{string.Join(",", attemptedMethods)}]"
+                : "attemptedMethods=[]";
             string contextDetail = InputContext.FormatSummary(effectiveContext, desktopSwitch);
 
             string message = string.Create(
                 CultureInfo.InvariantCulture,
-                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
+                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {methodsDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
 
             object data = new
             {
@@ -415,6 +361,8 @@ public static class PointerDispatch
                 expectedY = target.Y,
                 actualX = actual.X,
                 actualY = actual.Y,
+                moveMethod = moveResult?.Method,
+                attemptedMethods,
                 sendInputCount = moveResult?.SendInputCount,
                 lastWin32Error = moveResult?.LastWin32Error,
                 normalizedX = moveResult?.NormalizedX,

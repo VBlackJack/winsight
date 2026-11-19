@@ -30,7 +30,8 @@ public sealed record InputDispatchInfo(
     string? ThreadDesktop,
     bool DesktopSwitchAttempted,
     bool? DesktopSwitchSucceeded = null,
-    int? DesktopSwitchWin32Error = null);
+    int? DesktopSwitchWin32Error = null,
+    string? MoveMethod = null);
 
 /// <summary>
 /// Execution-context diagnostics for synthetic desktop input: session, window

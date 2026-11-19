@@ -345,12 +345,49 @@ public sealed class PointerDispatchTests
             dispatch.DesktopSwitchAttempted.Should().BeTrue();
             dispatch.DesktopSwitchSucceeded.Should().BeTrue();
             dispatch.DesktopSwitchWin32Error.Should().BeNull();
+            dispatch.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
         }
         finally
         {
             InputContext.OverrideCapture = null;
             InputContext.OverrideDesktopSwitch = null;
         }
+    }
+
+    [Fact]
+    public void Falls_back_to_first_working_method_when_primary_move_is_not_applied()
+    {
+        RecordingPointer pointer = new(new Point(100, 100))
+        {
+            ApplyMove = false,
+            WorkingFallbackMethod = PointerMoveMethods.SetCursorPos,
+        };
+
+        OperationResult? refusal = PointerDispatch.Click(
+            Target, ClickStyle.Primary, out InputDispatchInfo? dispatch, settleMs: 0, driver: pointer);
+
+        refusal.Should().BeNull();
+        dispatch.Should().NotBeNull();
+        dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SetCursorPos);
+        pointer.Calls.Should().Contain($"fallback {PointerMoveMethods.SendInputPrimaryAbsolute} 400,300")
+            .And.Contain($"fallback {PointerMoveMethods.SendInputRelative} 400,300")
+            .And.Contain($"fallback {PointerMoveMethods.SetCursorPos} 400,300")
+            .And.Contain("click Left");
+    }
+
+    [Fact]
+    public void Reports_all_attempted_methods_when_primary_and_all_fallbacks_fail()
+    {
+        RecordingPointer pointer = new(new Point(100, 100)) { ApplyMove = false };
+
+        OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: pointer);
+
+        refusal.Should().NotBeNull();
+        refusal!.Error.Should().StartWith($"{PointerDispatch.MoveNotAppliedCode}:")
+            .And.Contain(PointerMoveMethods.SendInputVirtualDesk)
+            .And.Contain(PointerMoveMethods.SendInputPrimaryAbsolute)
+            .And.Contain(PointerMoveMethods.SendInputRelative)
+            .And.Contain(PointerMoveMethods.SetCursorPos);
     }
 
     private sealed class RecordingPointer : IPointerDriver
@@ -367,6 +404,8 @@ public sealed class PointerDispatchTests
         public Size Drift { get; init; }
 
         public bool ApplyMove { get; init; } = true;
+
+        public string? WorkingFallbackMethod { get; init; }
 
         public Point? PostMovePosition { get; init; }
 
@@ -386,6 +425,16 @@ public sealed class PointerDispatchTests
             }
             Calls.Add($"move {point.X},{point.Y}");
             return MoveOutcome ?? new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 1920, 1080));
+        }
+
+        public PointerMoveResult MoveToWithMethod(Point point, string method)
+        {
+            if (string.Equals(method, WorkingFallbackMethod, StringComparison.Ordinal))
+            {
+                _position = point;
+            }
+            Calls.Add($"fallback {method} {point.X},{point.Y}");
+            return new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 1920, 1080), method);
         }
 
         public void Wait(int milliseconds) => Calls.Add($"wait {milliseconds}");

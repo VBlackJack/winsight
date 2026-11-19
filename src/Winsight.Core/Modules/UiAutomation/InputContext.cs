@@ -315,13 +315,15 @@ public static class InputContext
     /// <summary>Build a compact dispatch summary for successful pointer/keyboard responses.</summary>
     internal static InputDispatchInfo ToDispatchInfo(
         InputContextSnapshot context,
-        DesktopSwitchAttempt? switchAttempt) =>
+        DesktopSwitchAttempt? switchAttempt,
+        string? moveMethod = null) =>
         new(
             context.ThreadId != 0 ? context.ThreadId : NativeMethods.GetCurrentThreadId(),
             context.ThreadDesktop,
             DesktopSwitchAttempted: switchAttempt is { Attempted: true },
             DesktopSwitchSucceeded: switchAttempt is { Attempted: true } ? switchAttempt.Succeeded : null,
-            DesktopSwitchWin32Error: switchAttempt is { Attempted: true } ? switchAttempt.Win32Error : null);
+            DesktopSwitchWin32Error: switchAttempt is { Attempted: true } ? switchAttempt.Win32Error : null,
+            MoveMethod: moveMethod);
 
     /// <summary>One-line summary for embedding in move_not_applied error messages.</summary>
     internal static string FormatSummary(InputContextSnapshot context, DesktopSwitchAttempt? switchAttempt = null)
