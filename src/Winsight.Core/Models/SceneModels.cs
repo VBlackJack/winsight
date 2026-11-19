@@ -52,7 +52,8 @@ public sealed record VerifiedActionResult(
 public sealed record SceneCapture(
     IReadOnlyList<WindowDescriptor> Windows, IReadOnlyList<SceneElement> Elements,
     bool Truncated, string Source, string? DocumentIdentity = null,
-    string? SurfaceHint = null, IReadOnlyList<string>? MatchingProfiles = null);
+    string? SurfaceHint = null, IReadOnlyList<string>? MatchingProfiles = null,
+    string? IntegrityWarning = null);
 
 /// <summary>Filter parameters used to produce a <see cref="SceneCapture"/>.</summary>
 public sealed record SceneCaptureFilter(

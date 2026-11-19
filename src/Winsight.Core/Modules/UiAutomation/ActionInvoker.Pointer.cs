@@ -56,12 +56,16 @@ public sealed partial class ActionInvoker
         {
             return OperationResult.Failure(settleError);
         }
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             return PointActionCore(
                 processId, x, y, windowTitle, windowRelative, allowOutOfWindow, expectedWindow, focusWindow,
-                (point, revalidate) => PointerDispatch.Click(point, style, settleMs, revalidate));
+                (point, revalidate) => PointerDispatch.Click(point, style, settleMs, revalidate, integrity: integrity));
         }
     }
 
@@ -87,12 +91,16 @@ public sealed partial class ActionInvoker
         {
             return OperationResult.Failure(invalid);
         }
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             return PointActionCore(
                 processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null, focusWindow,
-                (point, revalidate) => PointerDispatch.Scroll(point, notches, horizontal, settleMs, revalidate));
+                (point, revalidate) => PointerDispatch.Scroll(point, notches, horizontal, settleMs, revalidate, integrity: integrity));
         }
     }
 
@@ -116,12 +124,16 @@ public sealed partial class ActionInvoker
         {
             return OperationResult.Failure(invalid);
         }
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
             return PointActionCore(
                 processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null, focusWindow,
-                (point, revalidate) => PointerDispatch.Hover(point, holdMs, settleMs, revalidate));
+                (point, revalidate) => PointerDispatch.Hover(point, holdMs, settleMs, revalidate, integrity: integrity));
         }
     }
 
@@ -262,6 +274,11 @@ public sealed partial class ActionInvoker
         if (invalid is not null)
         {
             return OperationResult.Failure(invalid);
+        }
+
+        if (CheckInputIntegrity(processId, out _) is { } blocked)
+        {
+            return blocked;
         }
 
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();

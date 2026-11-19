@@ -40,6 +40,10 @@ public sealed partial class ActionInvoker
         string? windowTitle = null,
         int? timeoutMs = null)
     {
+        if (CheckInputIntegrity(processId, out _) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {

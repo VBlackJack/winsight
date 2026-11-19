@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -63,6 +64,10 @@ public sealed partial class ActionInvoker
         ClickStyle style = ClickStyle.Primary,
         string? windowTitle = null)
     {
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
@@ -80,10 +85,10 @@ public sealed partial class ActionInvoker
             {
                 case ClickStyle.DoubleClick:
                 case ClickStyle.RightClick:
-                    return PointerDispatch.Click(ClickablePoint(element), style) ?? OperationResult.Ok();
+                    return PointerDispatch.Click(ClickablePoint(element), style, integrity: integrity) ?? OperationResult.Ok();
 
                 default:
-                    return InvokePrimaryAction(element);
+                    return InvokePrimaryAction(element, integrity);
             }
         }
     }
@@ -102,11 +107,14 @@ public sealed partial class ActionInvoker
         bool focusWindow = false,
         bool allowWebView2Input = false)
     {
+        ArgumentNullException.ThrowIfNull(text);
+        if (CheckInputIntegrity(processId, out _) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
-            ArgumentNullException.ThrowIfNull(text);
-
             using UIA3Automation automation = new();
             ElementSearchResult search = ElementFinder.FindSingle(automation, processId, locator, windowTitle);
             if (!search.Found)
@@ -159,6 +167,10 @@ public sealed partial class ActionInvoker
         string? windowTitle = null,
         bool allowWebView2Input = false)
     {
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
@@ -185,7 +197,19 @@ public sealed partial class ActionInvoker
                     WebView2InputRefusal("Keyboard focus", focused.WebView2Evidence),
                     focused);
             }
-            DispatchKeyboardChord(keys);
+            if (GetForegroundWindow() != focus.WindowHandle)
+            {
+                return OperationResult.Failure(
+                    $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the chord \"{chord}\" was sent.");
+            }
+            try
+            {
+                DispatchKeyboardChord(keys);
+            }
+            catch (Win32Exception ex)
+            {
+                return SendInputFailure(ex, integrity);
+            }
             return OperationResult.OkWith(new KeyChordResult(
                 chord,
                 focus.WindowTitle,
@@ -226,6 +250,11 @@ public sealed partial class ActionInvoker
                 $"restoreDelayMs must be between 0 and {MaxRestoreDelayMs} (got {restoreDelayMs})."));
         }
 
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
+        {
+            return blocked;
+        }
+
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
@@ -256,14 +285,26 @@ public sealed partial class ActionInvoker
                 focused);
             if (!paste)
             {
-                string? stopped = TextTyper.Send(TextTyper.Plan(text), StillTargeted, TextTyper.SendStroke);
-                return stopped is null ? OperationResult.OkWith(sent) : OperationResult.FailureWith(stopped, sent);
+                try
+                {
+                    string? stopped = TextTyper.Send(TextTyper.Plan(text), StillTargeted, TextTyper.SendStroke);
+                    return stopped is null ? OperationResult.OkWith(sent) : OperationResult.FailureWith(stopped, sent);
+                }
+                catch (Win32Exception ex)
+                {
+                    return SendInputFailure(ex, integrity);
+                }
             }
-            return PasteText(text, restoreDelayMs ?? DefaultRestoreDelayMs, StillTargeted, sent);
+            return PasteText(text, restoreDelayMs ?? DefaultRestoreDelayMs, StillTargeted, sent, integrity);
         }
     }
 
-    private static OperationResult PasteText(string text, int restoreDelayMs, Func<bool> stillTargeted, TypeKeysResult sent)
+    private static OperationResult PasteText(
+        string text,
+        int restoreDelayMs,
+        Func<bool> stillTargeted,
+        TypeKeysResult sent,
+        IntegrityComparison integrity)
     {
         ClipboardService clipboard = new();
         ClipboardSnapshot saved;
@@ -291,10 +332,17 @@ public sealed partial class ActionInvoker
         }
         else
         {
-            DispatchKeyboardChord([VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_V]);
-            // The application reads the clipboard when it handles the chord, not when it is sent.
-            Thread.Sleep(restoreDelayMs);
-            outcome = OperationResult.OkWith(sent);
+            try
+            {
+                DispatchKeyboardChord([VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_V]);
+                // The application reads the clipboard when it handles the chord, not when it is sent.
+                Thread.Sleep(restoreDelayMs);
+                outcome = OperationResult.OkWith(sent);
+            }
+            catch (Win32Exception ex)
+            {
+                outcome = SendInputFailure(ex, integrity);
+            }
         }
 
         string restored;
@@ -314,7 +362,43 @@ public sealed partial class ActionInvoker
     }
 
 
-    private static OperationResult InvokePrimaryAction(AutomationElement element)
+    private static OperationResult SendInputFailure(Win32Exception ex, IntegrityComparison integrity) =>
+        OperationResult.FailureWith(
+            ex.Message,
+            new
+            {
+                code = "send_input_failed",
+                win32Error = ex.NativeErrorCode,
+                currentIntegrity = integrity.Current.Name,
+                currentRid = integrity.Current.Rid,
+                targetIntegrity = integrity.Target.Name,
+                targetRid = integrity.Target.Rid,
+                uipiBlocked = integrity.IsUipiBlocked,
+            });
+
+    internal static OperationResult? CheckInputIntegrity(int processId, out IntegrityComparison comparison)
+    {
+        comparison = ProcessIntegrity.CheckTarget(processId);
+        if (!comparison.IsUipiBlocked)
+        {
+            return null;
+        }
+
+        return OperationResult.FailureWith(
+            comparison.Warning!,
+            new
+            {
+                code = ProcessIntegrity.UipiBlockedCode,
+                currentIntegrity = comparison.Current.Name,
+                currentRid = comparison.Current.Rid,
+                targetIntegrity = comparison.Target.Name,
+                targetRid = comparison.Target.Rid,
+                targetAccessDenied = comparison.Target.AccessDenied,
+                targetWin32Error = comparison.Target.Win32Error,
+            });
+    }
+
+    private static OperationResult InvokePrimaryAction(AutomationElement element, IntegrityComparison integrity)
     {
         FlaUI.Core.Patterns.IInvokePattern? invokePattern = element.Patterns.Invoke.PatternOrDefault;
         if (invokePattern is not null)
@@ -330,7 +414,7 @@ public sealed partial class ActionInvoker
             return OperationResult.Ok();
         }
 
-        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary) ?? OperationResult.Ok();
+        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary, integrity: integrity) ?? OperationResult.Ok();
     }
 
     internal static string WebView2InputRefusal(

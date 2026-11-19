@@ -56,6 +56,8 @@ internal static class AgentFailure
         string code = ClassifyCode(status, message);
         (string suggestedTool, string guidance) = code switch
         {
+            "uipi_blocked" => ("set_target", "Target process runs at a higher integrity level than Winsight. Windows UIPI silently drops synthetic input; restart Winsight at the same integrity level."),
+            "move_not_applied" => ("observe_scene", "The synthetic pointer move did not move the cursor (not caused by user input). Inspect SendInput error, integrity levels, and virtual desktop coordinates in the failure data."),
             "user_active" => ("wait_for_user_idle", "A person is using the desktop. Wait for idle, then call observe_scene."),
             "foreground_changed" => ("wait_for_user_idle", "Foreground moved away from target. Wait for idle, then re-observe."),
             "stale" => ("observe_scene", "Observation or element state changed before dispatch. Use recovery observation or call observe_scene."),
@@ -77,6 +79,8 @@ internal static class AgentFailure
 
     private static string ClassifyCode(string status, string message)
     {
+        if (message.Contains("uipi_blocked", StringComparison.OrdinalIgnoreCase)) return "uipi_blocked";
+        if (message.Contains("move_not_applied", StringComparison.OrdinalIgnoreCase)) return "move_not_applied";
         if (message.Contains("user_active", StringComparison.OrdinalIgnoreCase)) return "user_active";
         if (message.Contains("foreground_changed", StringComparison.OrdinalIgnoreCase)) return "foreground_changed";
         if (message.Contains("No processId", StringComparison.OrdinalIgnoreCase)) return "missing_target";

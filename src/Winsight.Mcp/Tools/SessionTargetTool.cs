@@ -47,8 +47,17 @@ public static class SessionTargetTool
             }
 
             int windowCount = discovery.List(processId).Count;
+            IntegrityComparison integrity = ProcessIntegrity.CheckTarget(processId);
             return JsonSerializer.Serialize(
-                OperationResult.OkWith(new { processId, alias, windowCount, aliases = target.Aliases }),
+                OperationResult.OkWith(new
+                {
+                    processId,
+                    alias,
+                    windowCount,
+                    aliases = target.Aliases,
+                    integrity = FormatIntegrityData(integrity),
+                    integrityWarning = integrity.Warning,
+                }),
                 JsonOptions.Default);
         });
     }
@@ -69,8 +78,17 @@ public static class SessionTargetTool
             }
 
             int windowCount = discovery.List(processId).Count;
+            IntegrityComparison integrity = ProcessIntegrity.CheckTarget(processId);
             return JsonSerializer.Serialize(
-                OperationResult.OkWith(new { alias, processId, windowCount, aliases = target.Aliases }),
+                OperationResult.OkWith(new
+                {
+                    alias,
+                    processId,
+                    windowCount,
+                    aliases = target.Aliases,
+                    integrity = FormatIntegrityData(integrity),
+                    integrityWarning = integrity.Warning,
+                }),
                 JsonOptions.Default);
         });
     }
@@ -98,4 +116,14 @@ public static class SessionTargetTool
             return JsonSerializer.Serialize(OperationResult.Ok(), JsonOptions.Default);
         });
     }
+
+    private static object FormatIntegrityData(IntegrityComparison integrity) =>
+        new
+        {
+            current = integrity.Current.Name,
+            currentRid = integrity.Current.Rid,
+            target = integrity.Target.Name,
+            targetRid = integrity.Target.Rid,
+            uipiBlocked = integrity.IsUipiBlocked,
+        };
 }

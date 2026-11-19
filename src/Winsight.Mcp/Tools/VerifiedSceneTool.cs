@@ -159,6 +159,7 @@ public static class VerifiedSceneTool
         }
 
         IReadOnlyList<string> matching = services.Profiles.FindMatchingNames(pid);
+        IntegrityComparison integrity = ProcessIntegrity.CheckTarget(pid);
         return capture with
         {
             Elements = elements,
@@ -166,6 +167,7 @@ public static class VerifiedSceneTool
             Source = source,
             SurfaceHint = surfaceHint,
             MatchingProfiles = matching.Count > 0 ? matching : null,
+            IntegrityWarning = integrity.Warning,
         };
     }
 
@@ -212,6 +214,10 @@ public static class VerifiedSceneTool
                 }
             }
             if (request.DryRun || ToolAccessPolicy.IsDryRunEnabled) return Result("preview", false, false, "Validated request; no input dispatched. Live state is revalidated on execution.");
+            if (node.Source != "dom" && ProcessIntegrity.CheckTarget(entry.ProcessId) is { IsUipiBlocked: true } integrity)
+            {
+                return ResultWithHint(store.Services.Memory, "blocked", false, false, integrity.Warning!);
+            }
             if (!request.BackgroundOnly && UserActivityPolicy.CheckYield() is { } userActive) return ResultWithHint(store.Services.Memory, "blocked", false, false, userActive);
             cancellationToken.ThrowIfCancellationRequested();
 

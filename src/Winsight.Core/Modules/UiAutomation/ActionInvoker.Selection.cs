@@ -56,6 +56,10 @@ public sealed partial class ActionInvoker
         string? windowTitle = null)
     {
         ArgumentNullException.ThrowIfNull(matcher);
+        if (CheckInputIntegrity(processId, out _) is { } blocked)
+        {
+            return blocked;
+        }
         using DesktopInputLease desktopLease = DesktopInputLease.Acquire();
         lock (DesktopInputGate)
         {
