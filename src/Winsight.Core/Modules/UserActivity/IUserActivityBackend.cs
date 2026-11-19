@@ -38,6 +38,10 @@ internal interface IUserActivityBackend
 
     bool? ReadSessionLocked();
 
+    CursorPoint? ReadCursorPosition();
+
+    HookInputState ReadHookState();
+
     void Sleep(int milliseconds);
 
     Task DelayAsync(int milliseconds, CancellationToken cancellationToken);

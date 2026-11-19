@@ -29,6 +29,15 @@ public sealed class UserActivityMonitor
 {
     public const string SourceHuman = "human";
     public const string SourceWinsight = "winsight";
+    public const string SourceOtherInjected = "other_injected";
+
+    public const string KindMouse = "mouse";
+    public const string KindKeyboard = "keyboard";
+    public const string KindOther = "other";
+    public const string KindUnknown = "unknown";
+
+    /// <summary>Maximum number of recent distinct input timestamps retained for diagnostics.</summary>
+    public const int RecentInputSampleCapacity = 8;
 
     /// <summary>Bounds for <see cref="WaitForIdle"/>, in milliseconds.</summary>
     public const int MaxIdleMs = 600_000;
@@ -58,6 +67,9 @@ public sealed class UserActivityMonitor
         Marshal.OffsetOf<WtsInfoExLevel1>(nameof(WtsInfoExLevel1.SessionFlags)).ToInt32();
 
     private readonly IUserActivityBackend _backend;
+    private readonly Lock _historyGate = new();
+    private readonly List<RecordedInputTick> _recentInputs = new(RecentInputSampleCapacity);
+    private CursorPoint? _lastCursor;
 
     public UserActivityMonitor()
         : this(NativeUserActivityBackend.Instance)
@@ -75,17 +87,20 @@ public sealed class UserActivityMonitor
     /// </summary>
     public UserActivitySnapshot Read(IReadOnlyCollection<int>? revealTitleFor = null)
     {
-        (uint now, uint lastInput, InputAttribution attribution) = Sample(_backend);
-        long? humanIdle = HumanIdleMs(now, attribution);
+        SampleResult sample = Sample(_backend);
+        CursorPoint? cursor = _backend.ReadCursorPosition();
+        UserActivityDiagnostics diagnostics = RecordDiagnostics(sample, cursor);
+        long? humanIdle = sample.HumanIdleMs;
         int? yieldMs = UserActivityPolicy.YieldToUserMs;
         return new UserActivitySnapshot(
-            InputAttributor.AgeMs(now, lastInput),
-            attribution.LastInputIsWinsight ? SourceWinsight : SourceHuman,
+            InputAttributor.AgeMs(sample.Now, sample.LastInput),
+            sample.Source,
             humanIdle,
             _backend.ReadForeground(revealTitleFor),
             _backend.ReadSessionLocked(),
             yieldMs,
-            UserActivityPolicy.IsActive(humanIdle, yieldMs));
+            UserActivityPolicy.IsActive(humanIdle, yieldMs),
+            diagnostics);
     }
 
     /// <summary>
@@ -93,26 +108,177 @@ public sealed class UserActivityMonitor
     /// refreshes the session-wide record, so an injection about to start does
     /// not hide the human input that preceded it.
     /// </summary>
-    internal static long? ReadHumanIdleMs()
-    {
-        (uint now, _, InputAttribution attribution) = Sample(NativeUserActivityBackend.Instance);
-        return HumanIdleMs(now, attribution);
-    }
+    internal static long? ReadHumanIdleMs() =>
+        Sample(NativeUserActivityBackend.Instance).HumanIdleMs;
 
-    private static (uint Now, uint LastInput, InputAttribution Attribution) Sample(IUserActivityBackend backend)
+    private static SampleResult Sample(IUserActivityBackend backend)
     {
         uint now = backend.TickNow();
         uint lastInput = backend.LastInputTick(now);
-        InputAttribution attribution = InputAttributor.Attribute(now, lastInput, backend.ReadLedger());
-        if (!attribution.LastInputIsWinsight)
+        LedgerState ledger = backend.ReadLedger();
+        InputAttribution attribution = InputAttributor.Attribute(now, lastInput, ledger);
+        HookInputState hook = backend.ReadHookState();
+
+        string source;
+        string inputKind;
+        bool? injectedByOther;
+        uint? humanTick;
+
+        if (hook.Active)
         {
-            backend.RecordHuman(lastInput);
+            bool hookMatchesLastInput = hook.HasEvent &&
+                Math.Abs((long)InputAttributor.AgeMs(now, lastInput) - InputAttributor.AgeMs(now, hook.LastEventTick)) <=
+                InputAttributor.InjectionMarginMs;
+
+            if (attribution.LastInputIsWinsight)
+            {
+                source = SourceWinsight;
+                inputKind = hookMatchesLastInput ? hook.LastInputKind : KindUnknown;
+                injectedByOther = false;
+                humanTick = ResolveHardwareHumanTick(now, hook, ledger);
+            }
+            else if (hookMatchesLastInput && hook.LastEventInjected)
+            {
+                // Input was flagged LLMHF_INJECTED / LLKHF_INJECTED and did not come from Winsight.
+                source = SourceOtherInjected;
+                inputKind = hook.LastInputKind;
+                injectedByOther = true;
+                humanTick = ResolveHardwareHumanTick(now, hook, ledger);
+            }
+            else if (hookMatchesLastInput)
+            {
+                source = SourceHuman;
+                inputKind = hook.LastInputKind;
+                injectedByOther = false;
+                humanTick = lastInput;
+                backend.RecordHuman(lastInput);
+            }
+            else
+            {
+                // GetLastInputInfo advanced without a matching mouse/keyboard LL hook event
+                // (for example a gamepad, pen, touch or other HID device).
+                source = SourceHuman;
+                inputKind = KindOther;
+                injectedByOther = false;
+                humanTick = lastInput;
+                backend.RecordHuman(lastInput);
+            }
         }
-        return (now, lastInput, attribution);
+        else
+        {
+            injectedByOther = null;
+            inputKind = KindUnknown;
+            if (!attribution.LastInputIsWinsight)
+            {
+                source = SourceHuman;
+                humanTick = lastInput;
+                backend.RecordHuman(lastInput);
+            }
+            else
+            {
+                source = SourceWinsight;
+                humanTick = attribution.HumanTick;
+            }
+        }
+
+        long? humanIdleMs = humanTick is uint tick ? InputAttributor.AgeMs(now, tick) : null;
+        return new SampleResult(now, lastInput, source, inputKind, hook.Active, injectedByOther, humanIdleMs);
     }
 
-    private static long? HumanIdleMs(uint now, InputAttribution attribution) =>
-        attribution.HumanTick is uint human ? InputAttributor.AgeMs(now, human) : null;
+    private static uint? ResolveHardwareHumanTick(uint now, HookInputState hook, LedgerState ledger)
+    {
+        if (hook.HasHardwareEvent && ledger.HasHuman)
+        {
+            return InputAttributor.AgeMs(now, hook.LastHardwareTick) <= InputAttributor.AgeMs(now, ledger.HumanTick)
+                ? hook.LastHardwareTick
+                : ledger.HumanTick;
+        }
+        if (hook.HasHardwareEvent)
+        {
+            return hook.LastHardwareTick;
+        }
+        return ledger.HasHuman ? ledger.HumanTick : null;
+    }
+
+    private UserActivityDiagnostics RecordDiagnostics(SampleResult sample, CursorPoint? cursor)
+    {
+        lock (_historyGate)
+        {
+            bool cursorMoved = _lastCursor is not null && cursor is not null && _lastCursor != cursor;
+            if (cursor is not null)
+            {
+                _lastCursor = cursor;
+            }
+
+            string resolvedKind = sample.InputKind == KindUnknown && cursorMoved
+                ? KindMouse
+                : sample.InputKind;
+
+            if (_recentInputs.Count == 0 || _recentInputs[^1].Tick != sample.LastInput)
+            {
+                long? deltaMs = _recentInputs.Count > 0
+                    ? InputAttributor.AgeMs(sample.LastInput, _recentInputs[^1].Tick)
+                    : null;
+                if (_recentInputs.Count >= RecentInputSampleCapacity)
+                {
+                    _recentInputs.RemoveAt(0);
+                }
+                _recentInputs.Add(new RecordedInputTick(
+                    sample.LastInput,
+                    deltaMs,
+                    sample.Source,
+                    resolvedKind,
+                    cursorMoved,
+                    sample.InjectedByOther));
+            }
+            else if (cursorMoved && !_recentInputs[^1].CursorMoved)
+            {
+                RecordedInputTick latest = _recentInputs[^1];
+                _recentInputs[^1] = latest with
+                {
+                    CursorMoved = true,
+                    InputKind = latest.InputKind == KindUnknown ? KindMouse : latest.InputKind,
+                };
+            }
+
+            List<InputSample> snapshot = new(_recentInputs.Count);
+            foreach (RecordedInputTick entry in _recentInputs)
+            {
+                snapshot.Add(new InputSample(
+                    InputAttributor.AgeMs(sample.Now, entry.Tick),
+                    entry.DeltaFromPreviousMs,
+                    entry.Source,
+                    entry.InputKind,
+                    entry.CursorMoved,
+                    entry.Injected));
+            }
+
+            return new UserActivityDiagnostics(
+                resolvedKind,
+                cursorMoved,
+                cursor,
+                sample.HookActive,
+                sample.InjectedByOther,
+                snapshot);
+        }
+    }
+
+    private readonly record struct SampleResult(
+        uint Now,
+        uint LastInput,
+        string Source,
+        string InputKind,
+        bool HookActive,
+        bool? InjectedByOther,
+        long? HumanIdleMs);
+
+    private readonly record struct RecordedInputTick(
+        uint Tick,
+        long? DeltaFromPreviousMs,
+        string Source,
+        string InputKind,
+        bool CursorMoved,
+        bool? Injected);
 
     /// <summary>
     /// Wait until no human input happened for <paramref name="idleMs"/>, or
@@ -246,6 +412,10 @@ public sealed class UserActivityMonitor
 
         public bool? ReadSessionLocked() => UserActivityMonitor.ReadSessionLocked();
 
+        public CursorPoint? ReadCursorPosition() => UserActivityMonitor.ReadCursorPosition();
+
+        public HookInputState ReadHookState() => LowLevelInputHook.ReadShared();
+
         public void Sleep(int milliseconds) => Thread.Sleep(milliseconds);
 
         public Task DelayAsync(int milliseconds, CancellationToken cancellationToken) =>
@@ -257,6 +427,9 @@ public sealed class UserActivityMonitor
         LastInputInfo info = new() { Size = (uint)Marshal.SizeOf<LastInputInfo>() };
         return NativeMethods.GetLastInputInfo(ref info) ? info.Time : now;
     }
+
+    private static CursorPoint? ReadCursorPosition() =>
+        NativeMethods.GetCursorPos(out PointStruct pt) ? new CursorPoint(pt.X, pt.Y) : null;
 
     private static ForegroundWindowInfo? ReadForeground(IReadOnlyCollection<int>? revealTitleFor)
     {
@@ -382,6 +555,13 @@ public sealed class UserActivityMonitor
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct PointStruct
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct LastInputInfo
     {
         public uint Size;
@@ -411,6 +591,10 @@ public sealed class UserActivityMonitor
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetLastInputInfo(ref LastInputInfo info);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetCursorPos(out PointStruct point);
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();

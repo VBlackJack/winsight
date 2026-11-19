@@ -310,6 +310,132 @@ public sealed class UserActivityTests
         }
     }
 
+    [Fact]
+    public void Diagnostics_tracks_cursor_movement_and_bounded_recent_input_deltas()
+    {
+        FakeUserActivityBackend clock = new(startTick: Now, lastInputTick: Now)
+        {
+            Cursor = new CursorPoint(100, 200),
+        };
+        UserActivityMonitor monitor = new(clock);
+
+        // First read: initial observation, no prior cursor to compare against.
+        UserActivitySnapshot first = monitor.Read();
+        first.Diagnostics.Should().NotBeNull();
+        first.Diagnostics!.CursorMoved.Should().BeFalse();
+        first.Diagnostics.CursorPosition.Should().Be(new CursorPoint(100, 200));
+        first.Diagnostics.InputHookActive.Should().BeFalse();
+        first.Diagnostics.LastInputInjectedByOther.Should().BeNull();
+        first.Diagnostics.RecentInputs.Should().HaveCount(1);
+        first.Diagnostics.RecentInputs[0].DeltaFromPreviousMs.Should().BeNull();
+
+        // Advance clock by 500 ms with a phantom input tick and stationary cursor.
+        clock.Sleep(500);
+        clock.RecordExternalInput();
+        UserActivitySnapshot phantom = monitor.Read();
+        phantom.Diagnostics!.CursorMoved.Should().BeFalse();
+        phantom.Diagnostics.InputKind.Should().Be(UserActivityMonitor.KindUnknown);
+        phantom.Diagnostics.RecentInputs.Should().HaveCount(2);
+        phantom.Diagnostics.RecentInputs[1].DeltaFromPreviousMs.Should().Be(500);
+
+        // Advance clock by 300 ms and move cursor -> classified as mouse.
+        clock.Sleep(300);
+        clock.Cursor = new CursorPoint(150, 210);
+        clock.RecordExternalInput();
+        UserActivitySnapshot moved = monitor.Read();
+        moved.Diagnostics!.CursorMoved.Should().BeTrue();
+        moved.Diagnostics.InputKind.Should().Be(UserActivityMonitor.KindMouse);
+        moved.Diagnostics.RecentInputs.Should().HaveCount(3);
+        moved.Diagnostics.RecentInputs[2].CursorMoved.Should().BeTrue();
+        moved.Diagnostics.RecentInputs[2].DeltaFromPreviousMs.Should().Be(300);
+
+        // Exceed ring capacity (8) and confirm bounded retention.
+        for (int i = 0; i < UserActivityMonitor.RecentInputSampleCapacity + 4; i++)
+        {
+            clock.Sleep(250);
+            clock.RecordExternalInput();
+            monitor.Read();
+        }
+        monitor.Read().Diagnostics!.RecentInputs.Should().HaveCount(UserActivityMonitor.RecentInputSampleCapacity);
+    }
+
+    [Fact]
+    public void Active_input_hook_separates_foreign_injected_input_from_real_hardware()
+    {
+        FakeUserActivityBackend clock = new(startTick: Now, lastInputTick: Now - 10_000)
+        {
+            HookState = new HookInputState(
+                Active: true,
+                HasEvent: true,
+                LastEventTick: Now - 10_000,
+                LastInputKind: UserActivityMonitor.KindKeyboard,
+                LastEventInjected: false,
+                HasHardwareEvent: true,
+                LastHardwareTick: Now - 10_000,
+                LastHardwareKind: UserActivityMonitor.KindKeyboard),
+        };
+        UserActivityMonitor monitor = new(clock);
+
+        UserActivitySnapshot hardware = monitor.Read();
+        hardware.LastInputSource.Should().Be(UserActivityMonitor.SourceHuman);
+        hardware.HumanIdleMs.Should().Be(10_000);
+        hardware.Diagnostics!.InputKind.Should().Be(UserActivityMonitor.KindKeyboard);
+        hardware.Diagnostics.InputHookActive.Should().BeTrue();
+        hardware.Diagnostics.LastInputInjectedByOther.Should().BeFalse();
+
+        // Another process injects mouse input 200 ms later (LLMHF_INJECTED).
+        clock.Sleep(200);
+        clock.RecordExternalInput();
+        clock.HookState = clock.HookState with
+        {
+            HasEvent = true,
+            LastEventTick = clock.TickNow(),
+            LastInputKind = UserActivityMonitor.KindMouse,
+            LastEventInjected = true,
+        };
+
+        UserActivitySnapshot injected = monitor.Read();
+        injected.LastInputSource.Should().Be(UserActivityMonitor.SourceOtherInjected);
+        injected.Diagnostics!.LastInputInjectedByOther.Should().BeTrue();
+        injected.Diagnostics.InputKind.Should().Be(UserActivityMonitor.KindMouse);
+        // HumanIdleMs remains tied to the last real hardware event, not the foreign injection.
+        injected.HumanIdleMs.Should().Be(10_200);
+    }
+
+    [Fact]
+    public void Active_input_hook_classifies_unhooked_hid_input_as_other()
+    {
+        FakeUserActivityBackend clock = new(startTick: Now, lastInputTick: Now)
+        {
+            HookState = new HookInputState(
+                Active: true,
+                HasEvent: true,
+                LastEventTick: Now - 5_000,
+                LastInputKind: UserActivityMonitor.KindMouse,
+                LastEventInjected: false,
+                HasHardwareEvent: true,
+                LastHardwareTick: Now - 5_000,
+                LastHardwareKind: UserActivityMonitor.KindMouse),
+        };
+        UserActivityMonitor monitor = new(clock);
+
+        UserActivitySnapshot snap = monitor.Read();
+        snap.LastInputSource.Should().Be(UserActivityMonitor.SourceHuman);
+        snap.Diagnostics!.InputKind.Should().Be(UserActivityMonitor.KindOther);
+        snap.Diagnostics.LastInputInjectedByOther.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0u, false, false)]
+    [InlineData(LowLevelInputHook.LlmhfInjected, true, false)]
+    [InlineData(LowLevelInputHook.LlmhfLowerIlInjected, true, true)]
+    [InlineData(LowLevelInputHook.LlkhfInjected, false, true)]
+    public void LowLevelInputHook_detects_injected_flags(uint flags, bool expectedMouse, bool expectedKeyboard)
+    {
+        LowLevelInputHook.IsMouseInjected(flags).Should().Be(expectedMouse);
+        LowLevelInputHook.IsKeyboardInjected(flags).Should().Be(expectedKeyboard);
+    }
+
     internal sealed class FakeUserActivityBackend : IUserActivityBackend
     {
         private uint _tick;
@@ -325,6 +451,10 @@ public sealed class UserActivityTests
         }
 
         public bool? SessionLocked { get; set; }
+
+        public CursorPoint? Cursor { get; set; }
+
+        public HookInputState HookState { get; set; }
 
         public int SleepCalls { get; private set; }
 
@@ -345,6 +475,10 @@ public sealed class UserActivityTests
         public ForegroundWindowInfo? ReadForeground(IReadOnlyCollection<int>? revealTitleFor) => null;
 
         public bool? ReadSessionLocked() => SessionLocked;
+
+        public CursorPoint? ReadCursorPosition() => Cursor;
+
+        public HookInputState ReadHookState() => HookState;
 
         public void Sleep(int milliseconds)
         {

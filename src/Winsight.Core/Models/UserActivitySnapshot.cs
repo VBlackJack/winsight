@@ -26,12 +26,41 @@ public sealed record ForegroundWindowInfo(
     string? Title,
     bool TitleWithheld);
 
+/// <summary>Screen coordinates of the desktop pointer.</summary>
+public sealed record CursorPoint(int X, int Y);
+
+/// <summary>One observed distinct input timestamp recorded by <c>get_user_activity</c>.</summary>
+public sealed record InputSample(
+    long AgeMs,
+    long? DeltaFromPreviousMs,
+    string Source,
+    string InputKind,
+    bool CursorMoved,
+    bool? Injected);
+
+/// <summary>
+/// Diagnostic details for investigating real vs phantom desktop input:
+/// broad input kind (<c>mouse</c>, <c>keyboard</c>, <c>other</c>, or
+/// <c>unknown</c>), whether the cursor actually moved, whether the opt-in
+/// low-level input hook is active, whether the last input was injected by
+/// another process (when the hook is active), and a bounded list of recent
+/// input timestamp transitions.
+/// </summary>
+public sealed record UserActivityDiagnostics(
+    string InputKind,
+    bool CursorMoved,
+    CursorPoint? CursorPosition,
+    bool InputHookActive,
+    bool? LastInputInjectedByOther,
+    IReadOnlyList<InputSample> RecentInputs);
+
 /// <summary>
 /// Who is using the shared desktop. <see cref="HumanIdleMs"/> is the time since
 /// the last input not attributed to Winsight (null when none was ever seen);
 /// <see cref="LastInputSource"/> says whether the most recent input of any kind
-/// was <c>human</c> or <c>winsight</c>. <see cref="SessionLocked"/> is null when
-/// Windows does not report it.
+/// was <c>human</c>, <c>winsight</c>, or <c>other_injected</c> (when the opt-in
+/// input hook distinguishes injected input). <see cref="SessionLocked"/> is null
+/// when Windows does not report it.
 /// </summary>
 public sealed record UserActivitySnapshot(
     long LastInputAgeMs,
@@ -40,7 +69,8 @@ public sealed record UserActivitySnapshot(
     ForegroundWindowInfo? Foreground,
     bool? SessionLocked,
     int? YieldToUserMs,
-    bool UserActive);
+    bool UserActive,
+    UserActivityDiagnostics? Diagnostics = null);
 
 /// <summary>Outcome of waiting for the human to stop using the desktop.</summary>
 public sealed record UserIdleWaitResult(
