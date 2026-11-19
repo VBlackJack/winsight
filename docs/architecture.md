@@ -418,14 +418,23 @@ it, and input injected by another tool counts as human.
 ### Winsight.Mcp
 
 A `Microsoft.Extensions.Hosting` host that registers the engine modules as
-singletons, then plugs them into `AddMcpServer().WithStdioServerTransport()`.
-Tools are discovered by reflection from any `[McpServerToolType]` class in
-the assembly.
+singletons, then plugs them into `AddMcpServer().WithStdioServerTransport()`,
+registering tools (`WithToolsFromAssembly`), read-only resources
+(`WinsightResources`: `winsight://guide`, `state`, `windows`, `scene/latest`),
+and reusable prompts (`WinsightPrompts`: `explore_app`, `verify_flow`,
+`diagnose_ui_bug`). Every tool declares explicit MCP annotations (`ReadOnly`,
+`Destructive`, `Idempotent`, `OpenWorld`), and `McpServerConfiguration` sets
+startup `ServerInstructions` plus optional `WINSIGHT_TOOL_PROFILE=compact`
+filtering.
 
-A singleton `SessionTarget` holds the session default process: process-scoped
-tools take an optional `processId` and fall back to it (`set_target` /
-`get_target` / `clear_target` manage it), so an agent driving one app need not
-repeat the id.
+A singleton `SessionTarget` holds the session default process and optional
+named aliases (`set_target` / `switch_target` / `get_target` / `clear_target`),
+so an agent driving one or multiple apps need not repeat raw process ids.
+Verified scene tools share DI-managed singletons through `SceneServices`
+(including `UiaSceneDriver`, `VisualTextReader`, `WebView2Detector`,
+`ApplicationProfiles` and `SessionMemory` with consecutive-failure loop
+detection). `UiEventWatcher` provides bounded real-time UIA event hooks and
+`UiAccessibilityAuditor` runs deterministic QA checks on captured UIA scenes.
 
 `ToolListAnnouncer` sends `notifications/tools/list_changed` once the client
 has initialized. `ServerBuildInfo` gives `get_winsight_guide` the build this
