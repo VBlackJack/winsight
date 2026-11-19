@@ -403,4 +403,74 @@ public sealed class AutonomyLoopTests
         sourceTruncated.Elements.Should().HaveCount(5);
         sourceTruncated.Truncated.Should().BeTrue();
     }
+
+    [Fact]
+    public void MenuItem_activate_any_change_ignores_unrelated_changes_and_verifies_window_popup_or_expand()
+    {
+        WindowDescriptor mainWin = new(1, 100, "VMware Workstation", "vmware", true, 0, 0, 1200, 800, WindowClassifier.KindMain, "VMUIFrame");
+        WindowIdentity winId = new(1, 100, new WindowBounds(0, 0, 1200, 800));
+
+        SceneElement vmMenu = new("e1", "uia", "MenuItem", "VM", null, true, true, false, null,
+            new WindowBounds(100, 30, 50, 20), ["activate"], winId, new ElementLocator(Name: "VM", ControlType: "MenuItem"), "menu-vm",
+            ExpandCollapseState: "Collapsed");
+        SceneElement fileMenu = new("e2", "uia", "MenuItem", "File", null, true, true, false, null,
+            new WindowBounds(10, 30, 40, 20), ["activate"], winId, new ElementLocator(Name: "File", ControlType: "MenuItem"), "menu-file");
+        SceneElement statusBar = new("e3", "uia", "Text", "Ready", null, true, true, false, null,
+            new WindowBounds(0, 780, 300, 20), [], winId, new ElementLocator(Name: "Ready", ControlType: "Text"), "status-1");
+
+        // Filtered source observation contained only "VM", while unfiltered baseline recorded all 3 keys.
+        SceneCapture beforeFiltered = new([mainWin], [vmMenu], false, "uia");
+        HashSet<string> unfilteredKeys = [VerifiedSceneTool.ElementKeyFor(vmMenu), VerifiedSceneTool.ElementKeyFor(fileMenu), VerifiedSceneTool.ElementKeyFor(statusBar)];
+
+        // Case 1: UIA Invoke moved focus to File and an unrelated status text changed, but no menu opened.
+        SceneCapture afterUnrelated = new([mainWin],
+            [vmMenu, fileMenu with { Focused = true }, statusBar with { Name = "Updated 21:45" }], false, "uia");
+        (bool passedUnrelated, VerifiedSceneTool.SceneDiff diffUnrelated) = VerifiedSceneTool.EvaluateMenuItemAnyChange(
+            beforeFiltered, afterUnrelated, vmMenu, unfilteredKeys);
+        passedUnrelated.Should().BeFalse();
+        diffUnrelated.HasChanges.Should().BeFalse();
+
+        // Case 2: A popup window opened (#32768 menu).
+        WindowDescriptor popupWin = new(1, 200, "", "vmware", true, 100, 50, 180, 260, WindowClassifier.KindPopup, "#32768");
+        SceneCapture afterWindow = new([mainWin, popupWin], [vmMenu, fileMenu, statusBar], false, "uia");
+        (bool passedWindow, VerifiedSceneTool.SceneDiff diffWindow) = VerifiedSceneTool.EvaluateMenuItemAnyChange(
+            beforeFiltered, afterWindow, vmMenu, unfilteredKeys);
+        passedWindow.Should().BeTrue();
+        diffWindow.WindowsAdded.Should().HaveCount(1);
+
+        // Case 3: New popup MenuItem elements appeared (even though "Power" would not match filterText="VM").
+        SceneElement powerItem = new("e4", "uia", "MenuItem", "Power", null, true, true, false, null,
+            new WindowBounds(105, 55, 160, 22), ["activate"], winId, new ElementLocator(Name: "Power", ControlType: "MenuItem"), "menu-power");
+        SceneCapture afterPopupItems = new([mainWin], [vmMenu, fileMenu, statusBar, powerItem], false, "uia");
+        (bool passedPopup, VerifiedSceneTool.SceneDiff diffPopup) = VerifiedSceneTool.EvaluateMenuItemAnyChange(
+            beforeFiltered, afterPopupItems, vmMenu, unfilteredKeys);
+        passedPopup.Should().BeTrue();
+        diffPopup.ElementsAdded.Should().ContainSingle(x => x.Contains("Power"));
+
+        // Case 4: Target MenuItem transitioned to Expanded.
+        SceneCapture afterExpanded = new([mainWin], [vmMenu with { ExpandCollapseState = "Expanded" }, fileMenu, statusBar], false, "uia");
+        (bool passedExpanded, VerifiedSceneTool.SceneDiff diffExpanded) = VerifiedSceneTool.EvaluateMenuItemAnyChange(
+            beforeFiltered, afterExpanded, vmMenu, unfilteredKeys);
+        passedExpanded.Should().BeTrue();
+        diffExpanded.ElementsChanged.Should().ContainSingle(x => x.Contains("Expanded"));
+    }
+
+    [Fact]
+    public void MenuItem_unconfirmed_hint_suggests_click_point_at_element_bounds_center()
+    {
+        WindowIdentity winId = new(1, 100, new WindowBounds(0, 0, 1200, 800));
+        SceneElement vmMenu = new("e1", "uia", "MenuItem", "VM", null, true, true, false, null,
+            new WindowBounds(100, 30, 50, 20), ["activate"], winId, new ElementLocator(Name: "VM", ControlType: "MenuItem"), "menu-vm");
+
+        object hint = VerifiedSceneTool.BuildMenuItemUnconfirmedHint(vmMenu);
+        using JsonDocument doc = JsonDocument.Parse(VerifiedSceneTool.Serialize(hint));
+        JsonElement root = doc.RootElement;
+        root.GetProperty("code").GetString().Should().Be("dispatched_unconfirmed");
+        root.GetProperty("suggestedTool").GetString().Should().Be("click_point");
+        root.GetProperty("suggestedArgs").GetProperty("x").GetInt32().Should().Be(125);
+        root.GetProperty("suggestedArgs").GetProperty("y").GetInt32().Should().Be(40);
+        root.GetProperty("suggestedArgs").GetProperty("coordinateSpace").GetString().Should().Be("screen");
+        root.GetProperty("suggestedArgs").GetProperty("focusWindow").GetBoolean().Should().BeTrue();
+        root.GetProperty("guidance").GetString().Should().Contain("click_point").And.Contain("wui.unibar");
+    }
 }

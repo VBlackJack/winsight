@@ -96,7 +96,8 @@ public sealed class UiaSceneDriver
             new WindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height), actions, window, locator,
             string.Join(".", element.Properties.RuntimeId.ValueOrDefault ?? []),
             ToggleState: element.Patterns.Toggle.PatternOrDefault?.ToggleState.ValueOrDefault.ToString(),
-            StateHash: Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name + "\0" + value))));
+            StateHash: Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name + "\0" + value))),
+            ExpandCollapseState: element.Patterns.ExpandCollapse.PatternOrDefault?.ExpandCollapseState.ValueOrDefault.ToString());
     }
 
     /// <summary>Validation and dispatch share the desktop lease. The callback precedes any mutation.</summary>

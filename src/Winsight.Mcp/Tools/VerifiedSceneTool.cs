@@ -248,7 +248,7 @@ public static class VerifiedSceneTool
                 if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != entry.ProcessStart) break;
                 (bool passed, object? observed) = node.Source == "dom"
                     ? await DomSceneTool.Check(entry, request.Expect, cancellationToken).ConfigureAwait(false)
-                    : Check(store.Services, entry, request.Expect, beforeVisual);
+                    : Check(store.Services, entry, request.Expect, beforeVisual, node, request.Action);
                 evidence = observed;
                 if (passed)
                 {
@@ -267,6 +267,15 @@ public static class VerifiedSceneTool
                 }
                 await Task.Delay(Math.Min(100, request.TimeoutMs), cancellationToken).ConfigureAwait(false);
             } while (timer.ElapsedMilliseconds < request.TimeoutMs);
+            if (IsMenuItemActivation(node, request.Action))
+            {
+                const string menuUnconfirmedMessage =
+                    "MenuItem activation produced no new window, popup menu, or expanded state within the timeout. " +
+                    "Win32 custom menubars (such as wui.unibar) often ignore UIA Invoke; retry with click_point on the element bounds.";
+                return Serialize(new VerifiedActionResult("dispatched_unconfirmed", true, false,
+                    menuUnconfirmedMessage, entry.Id, evidence,
+                    Hint: BuildMenuItemUnconfirmedHint(node, store.Services.Memory)));
+            }
             const string unconfirmedMessage = "Postcondition not established. Observe current state before deciding another action; do not repeat blindly.";
             return Serialize(new VerifiedActionResult("dispatched_unconfirmed", true, false,
                 unconfirmedMessage, entry.Id, evidence,
@@ -309,13 +318,24 @@ public static class VerifiedSceneTool
         return null;
     }
 
-    internal static (bool Passed, object? Evidence) Check(SceneServices services, SceneStore.Entry entry, SceneExpectation expect, CapturedFrame? beforeVisual = null)
+    internal static (bool Passed, object? Evidence) Check(
+        SceneServices services,
+        SceneStore.Entry entry,
+        SceneExpectation expect,
+        CapturedFrame? beforeVisual = null,
+        SceneElement? targetNode = null,
+        string? action = null)
     {
         int pid = entry.ProcessId;
         if (expect.Kind == "any_change")
         {
             SceneCaptureFilter filter = entry.EffectiveFilter;
             string? windowTitle = expect.WindowTitle ?? filter.WindowTitle;
+            if (IsMenuItemActivation(targetNode, action))
+            {
+                SceneCapture rawAfterMenu = services.Driver.Capture(pid, windowTitle, UiaDefaults.MaxTraversalNodes);
+                return EvaluateMenuItemAnyChange(entry.Capture, rawAfterMenu, targetNode!, entry.UnfilteredElementKeys);
+            }
             SceneCapture rawCurrent = services.Driver.Capture(pid, windowTitle, CaptureLimitFor(filter));
             SceneCapture filteredCurrent = EnrichCapture(
                 services, pid, windowTitle, rawCurrent,
@@ -374,6 +394,80 @@ public static class VerifiedSceneTool
         return (expect.Kind == "exists" || value == expect.Expected, state);
     }
 
+    internal static bool IsMenuItemActivation(SceneElement? node, string? action) =>
+        string.Equals(action, "activate", StringComparison.Ordinal) &&
+        string.Equals(node?.Role, "MenuItem", StringComparison.Ordinal);
+
+    internal static (bool Passed, SceneDiff Diff) EvaluateMenuItemAnyChange(
+        SceneCapture before,
+        SceneCapture afterRaw,
+        SceneElement targetNode,
+        IReadOnlySet<string>? beforeUnfilteredKeys = null)
+    {
+        HashSet<long> beforeHandles = before.Windows.Select(w => w.WindowHandle).ToHashSet();
+        string[] windowsAdded = afterRaw.Windows
+            .Where(w => !beforeHandles.Contains(w.WindowHandle))
+            .Select(w => w.Title)
+            .ToArray();
+
+        IReadOnlySet<string> baselineKeys = beforeUnfilteredKeys
+            ?? before.Elements.Select(ElementKeyFor).ToHashSet(StringComparer.Ordinal);
+
+        List<string> popupElementsAdded = new();
+        List<string> expandedChanges = new();
+        string targetKey = ElementKeyFor(targetNode);
+        bool targetWasExpanded = IsExpandedState(targetNode.ExpandCollapseState);
+
+        foreach (SceneElement current in afterRaw.Elements)
+        {
+            string key = ElementKeyFor(current);
+            if (!baselineKeys.Contains(key) && current.Role is "Menu" or "MenuItem" or "MenuBar")
+            {
+                popupElementsAdded.Add($"{current.Ref}:{current.Role} \"{current.Name}\"");
+            }
+            if (string.Equals(key, targetKey, StringComparison.Ordinal) &&
+                !targetWasExpanded &&
+                IsExpandedState(current.ExpandCollapseState))
+            {
+                expandedChanges.Add($"{current.Ref}:{current.Role} \"{current.Name}\" ({current.ExpandCollapseState})");
+            }
+        }
+
+        SceneDiff diff = new(windowsAdded, [], popupElementsAdded, [], expandedChanges);
+        return (diff.HasChanges, diff);
+    }
+
+    internal static object BuildMenuItemUnconfirmedHint(SceneElement node, SessionMemory? memory = null)
+    {
+        int centerX = node.Bounds.Left + node.Bounds.Width / 2;
+        int centerY = node.Bounds.Top + node.Bounds.Height / 2;
+        const string guidance =
+            "UIA Invoke on a MenuItem produced no window, popup menu, or expanded state " +
+            "(common on Win32 custom menubars such as wui.unibar). Retry with click_point " +
+            "on the element bounds, or call observe_scene first.";
+        LoopWarning? loop = memory?.RecordFailure(
+            "act_verified", "dispatched_unconfirmed", guidance, "click_point");
+        return new
+        {
+            code = "dispatched_unconfirmed",
+            suggestedTool = "click_point",
+            suggestedArgs = new
+            {
+                x = centerX,
+                y = centerY,
+                coordinateSpace = "screen",
+                focusWindow = true,
+            },
+            elementBounds = node.Bounds,
+            guidance,
+            loopWarning = loop,
+        };
+    }
+
+    private static bool IsExpandedState(string? state) =>
+        string.Equals(state, "Expanded", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(state, "PartiallyExpanded", StringComparison.OrdinalIgnoreCase);
+
     internal static (bool Passed, SceneDiff Diff) EvaluateAnyChange(
         SceneServices services,
         int pid,
@@ -416,7 +510,8 @@ public static class VerifiedSceneTool
             }
             else if (prior.Name != current.Name || prior.Value != current.Value ||
                      prior.Enabled != current.Enabled || prior.Visible != current.Visible ||
-                     prior.Selected != current.Selected || prior.ToggleState != current.ToggleState)
+                     prior.Selected != current.Selected || prior.ToggleState != current.ToggleState ||
+                     prior.ExpandCollapseState != current.ExpandCollapseState)
             {
                 changed.Add($"{current.Ref}:{current.Role} \"{current.Name}\"");
             }

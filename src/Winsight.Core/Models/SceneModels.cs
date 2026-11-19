@@ -27,7 +27,8 @@ public sealed record SceneElement(
     [property: JsonIgnore] string? BackendId = null,
     double? Confidence = null,
     string? ToggleState = null,
-    [property: JsonIgnore] string? StateHash = null);
+    [property: JsonIgnore] string? StateHash = null,
+    string? ExpandCollapseState = null);
 
 /// <summary>Expectation is evaluated against the same authorized process as the action.</summary>
 public sealed record SceneExpectation(
