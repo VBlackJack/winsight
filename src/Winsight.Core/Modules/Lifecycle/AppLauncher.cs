@@ -77,16 +77,18 @@ public sealed class AppLauncher
             startInfo.Arguments = arguments;
         }
 
-        Process process;
+        Process startedProcess;
         try
         {
-            process = Process.Start(startInfo)
+            startedProcess = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Process.Start returned null.");
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return OperationResult.Failure($"Failed to start \"{path}\": {ex.Message}");
         }
+
+        using Process process = startedProcess;
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         while (stopwatch.ElapsedMilliseconds <= timeoutMs)

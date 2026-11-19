@@ -33,10 +33,16 @@ public static class SceneScreenshotTool
             SceneStore.Entry? entry = store.Get(observation);
             if (entry is null) return VerifiedSceneTool.Serialize(OperationResult.Failure("Observation expired or consumed."));
             if (!ToolAccessPolicy.TryAuthorizeProcess(entry.ProcessId, out string error)) return VerifiedSceneTool.Serialize(OperationResult.Failure(error));
-            WindowDescriptor window = entry.Capture.Windows.Single(w => w.WindowHandle == windowHandle);
+            WindowDescriptor? window = entry.Capture.Windows.FirstOrDefault(w => w.WindowHandle == windowHandle);
+            if (window is null)
+            {
+                string available = string.Join(", ", entry.Capture.Windows.Select(w => $"{w.WindowHandle} (\"{w.Title}\")"));
+                return VerifiedSceneTool.Serialize(OperationResult.Failure(
+                    $"Window handle {windowHandle} was not in observation {observation}. Available: [{available}]."));
+            }
             WindowIdentity expected = new(entry.ProcessId, windowHandle, new WindowBounds(window.X, window.Y, window.Width, window.Height));
             if (!WindowGeometry.TryValidate(expected, out string? geometryError)) return VerifiedSceneTool.Serialize(OperationResult.Failure(geometryError!));
-            ScreenshotResult captured = new WindowCapture().Capture(entry.ProcessId, ScreenshotOutput.BuildTimestampedPath("scene-"), window.Title);
+            ScreenshotResult captured = store.Services.Capture.Capture(entry.ProcessId, ScreenshotOutput.BuildTimestampedPath("scene-"), window.Title);
             if (captured.Window != expected || !WindowGeometry.TryValidate(expected, out _)) return VerifiedSceneTool.Serialize(OperationResult.Failure("Window changed during capture."));
             string annotatedPath = ScreenshotOutput.BuildTimestampedPath("scene-labels-");
             using Bitmap bitmap = new(captured.Path);

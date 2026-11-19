@@ -32,6 +32,28 @@ internal static class TraceRecorder
 
     public static string? CurrentDirectory => BestEffort(() => ResolveDirectory(create: false));
 
+    public static bool IsAllowedReplayPath(string path, out string fullPath, out string error)
+    {
+        fullPath = Path.GetFullPath(path);
+        if (!string.Equals(Path.GetExtension(fullPath), ".json", StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Replay file must be a .json file inside the trace directory: {fullPath}";
+            return false;
+        }
+
+        string allowedRoot = ResolveDirectory(create: false) ?? ResolveDefaultDirectory(create: false);
+        string normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(allowedRoot))
+            + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Replay file must reside inside the configured trace directory ({allowedRoot}).";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
+
     public static void RecordToolResult(
         string toolName,
         TimeSpan elapsed,

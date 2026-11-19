@@ -43,18 +43,13 @@ internal static class ToolAccessPolicy
         }
 
         string[] allowedNames = SplitList(Environment.GetEnvironmentVariable(AllowedProcessNamesVariable));
-        Process? process = null;
-        if (allowedIds.Length > 0 || allowedNames.Length > 0)
+        using Process? process = (allowedIds.Length > 0 || allowedNames.Length > 0)
+            ? TryGetProcessById(processId)
+            : null;
+        if ((allowedIds.Length > 0 || allowedNames.Length > 0) && process is null)
         {
-            try
-            {
-                process = Process.GetProcessById(processId);
-            }
-            catch (ArgumentException)
-            {
-                error = $"Process {processId} is not running.";
-                return false;
-            }
+            error = $"Process {processId} is not running.";
+            return false;
         }
 
         if (allowedNames.Length > 0)
@@ -69,6 +64,18 @@ internal static class ToolAccessPolicy
         }
 
         return true;
+    }
+
+    private static Process? TryGetProcessById(int processId)
+    {
+        try
+        {
+            return Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     public static OperationResult? DryRunMutation(string action, object? preview)

@@ -362,14 +362,10 @@ public static class AgentExperienceTool
             }
             ElementLocator clickLocator = LocatorFactory.From(
                 automationId, name, null, controlType, nameContains, index, null);
-            ElementLocator waitLocator = LocatorFactory.From(
-                waitAutomationId ?? automationId,
-                waitName ?? name,
-                null,
-                waitControlType ?? controlType,
-                nameContains,
-                index,
-                null);
+            bool hasSeparateWaitTarget = waitAutomationId is not null || waitName is not null || waitControlType is not null;
+            ElementLocator waitLocator = hasSeparateWaitTarget
+                ? LocatorFactory.From(waitAutomationId, waitName, null, waitControlType, null, null, null)
+                : clickLocator;
             if (!WaitConditionParser.TryParse(condition, out WaitCondition parsed))
             {
                 return JsonSerializer.Serialize(
@@ -449,14 +445,10 @@ public static class AgentExperienceTool
             }
             ElementLocator typeLocator = LocatorFactory.From(
                 automationId, name, null, controlType, nameContains, null, null);
-            ElementLocator assertLocator = LocatorFactory.From(
-                assertAutomationId ?? automationId,
-                assertName ?? name,
-                null,
-                controlType,
-                nameContains,
-                null,
-                null);
+            bool hasSeparateAssertTarget = assertAutomationId is not null || assertName is not null;
+            ElementLocator assertLocator = hasSeparateAssertTarget
+                ? LocatorFactory.From(assertAutomationId, assertName, null, null, null, null, null)
+                : typeLocator;
             if (text is null)
             {
                 return JsonSerializer.Serialize(

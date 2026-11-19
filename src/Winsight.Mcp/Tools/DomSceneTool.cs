@@ -38,7 +38,7 @@ public static class DomSceneTool
         {
             if (!target.TryResolve(processId, out int pid, out string error)) return VerifiedSceneTool.Serialize(OperationResult.Failure(error));
             if (maxResults is < 1 or > 1000) return VerifiedSceneTool.Serialize(OperationResult.Failure("maxResults must be 1..1000."));
-            OperationResult? denied = CdpEndpointPolicy.DenyUnauthorizedPort(new WebView2Detector(), pid, port);
+            OperationResult? denied = CdpEndpointPolicy.DenyUnauthorizedPort(store.Services.WebView2, pid, port);
             if (denied is not null) return VerifiedSceneTool.Serialize(denied);
             using Process process = Process.GetProcessById(pid);
             long start = process.StartTime.ToUniversalTime().Ticks;
@@ -76,17 +76,22 @@ public static class DomSceneTool
                     item.GetProperty("actions").EnumerateArray().Select(a => a.GetString()!).ToArray(),
                     new WindowIdentity(pid, 0, new WindowBounds(0, 0, 0, 0)), new ElementLocator(), nonce, BackendId: reference));
             }
-            SceneCapture capture = new(new WindowDiscovery().List(pid), nodes, json.RootElement.GetProperty("truncated").GetBoolean(), "dom", nonce);
+            SceneCapture capture = new(store.Services.Windows.List(pid), nodes, json.RootElement.GetProperty("truncated").GetBoolean(), "dom", nonce);
             return VerifiedSceneTool.Serialize(OperationResult.OkWith(store.Add(pid, start, null, capture, port, targetId)));
         });
 
-    internal static OperationResult Dispatch(SceneStore.Entry entry, SceneElement node, SceneAction action, Action beforeDispatch, CancellationToken token)
+    internal static async Task<OperationResult> DispatchAsync(
+        WebView2Detector detector,
+        SceneStore.Entry entry,
+        SceneElement node,
+        SceneAction action,
+        Action beforeDispatch,
+        CancellationToken token)
     {
-        OperationResult? denied = CdpEndpointPolicy.DenyUnauthorizedPort(new WebView2Detector(), entry.ProcessId, entry.CdpPort!.Value);
+        OperationResult? denied = CdpEndpointPolicy.DenyUnauthorizedPort(detector, entry.ProcessId, entry.CdpPort!.Value);
         if (denied is not null) return denied;
-        using DesktopInputLease lease = DesktopInputLease.Acquire();
-        CdpEvaluationResult preflight = Evaluate(entry,
-            "(()=>{document.querySelectorAll(" + JsonSerializer.Serialize(action.Expect.CssSelector) + ");return true;})()", token).GetAwaiter().GetResult();
+        CdpEvaluationResult preflight = await Evaluate(entry,
+            "(()=>{document.querySelectorAll(" + JsonSerializer.Serialize(action.Expect.CssSelector) + ");return true;})()", token).ConfigureAwait(false);
         if (!preflight.Success) return OperationResult.Failure("Invalid DOM expectation selector: " + preflight.ExceptionMessage);
         string script = $$"""
             (() => {
@@ -110,7 +115,7 @@ public static class DomSceneTool
             })()
             """;
         beforeDispatch();
-        CdpEvaluationResult result = Evaluate(entry, script, token).GetAwaiter().GetResult();
+        CdpEvaluationResult result = await Evaluate(entry, script, token).ConfigureAwait(false);
         if (!result.Success || result.ValueJson is null) return OperationResult.Failure(result.ExceptionMessage ?? "DOM dispatch unconfirmed.");
         using JsonDocument document = JsonDocument.Parse(result.ValueJson);
         return document.RootElement.GetProperty("success").GetBoolean() ? OperationResult.Ok() : OperationResult.Failure(document.RootElement.GetProperty("error").GetString()!);
@@ -118,8 +123,6 @@ public static class DomSceneTool
 
     internal static async Task<(bool Passed, object? Evidence)> Check(SceneStore.Entry entry, SceneExpectation expect, CancellationToken token)
     {
-        OperationResult? denied = CdpEndpointPolicy.DenyUnauthorizedPort(new WebView2Detector(), entry.ProcessId, entry.CdpPort!.Value);
-        if (denied is not null) return (false, denied);
         string script = $$"""
             (()=>{
               const all=document.querySelectorAll({{JsonSerializer.Serialize(expect.CssSelector)}}), e=all[0];

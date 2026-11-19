@@ -19,6 +19,7 @@ using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.ManagedState;
 using Winsight.Core.Modules.UiAutomation;
+using Winsight.Core.Modules.UserActivity;
 using Winsight.Mcp.Serialization;
 
 namespace Winsight.Mcp.Tools;
@@ -41,7 +42,7 @@ public static class VerifiedSceneTool
     {
         using Process process = Process.GetProcessById(pid);
         long started = process.StartTime.ToUniversalTime().Ticks;
-        SceneCapture capture = new UiaSceneDriver().Capture(pid, title, maximum);
+        SceneCapture capture = store.Services.Driver.Capture(pid, title, maximum);
         return store.Add(pid, started, title, capture);
     }
 
@@ -75,6 +76,7 @@ public static class VerifiedSceneTool
             if (!node.Actions.Contains(request.Action, StringComparer.Ordinal)) return Result("blocked", false, false, "Action unavailable for target.");
             if ((node.Source == "dom") != (request.Expect.CssSelector is not null)) return Result("blocked", false, false, "DOM actions require a CSS expectation; UIA actions require a native expectation.");
             if (request.DryRun || ToolAccessPolicy.IsDryRunEnabled) return Result("preview", false, false, "Validated request; no input dispatched. Live state is revalidated on execution.");
+            if (UserActivityPolicy.CheckYield() is { } userActive) return Result("blocked", false, false, userActive);
             cancellationToken.ThrowIfCancellationRequested();
             void BeforeDispatch()
             {
@@ -83,9 +85,9 @@ public static class VerifiedSceneTool
                 dispatched = true;
             }
             OperationResult operation = node.Source == "dom"
-                ? DomSceneTool.Dispatch(entry, node, request, BeforeDispatch, cancellationToken)
-                : node.Source == "vision" ? SceneVisionTool.Dispatch(entry, node, request, BeforeDispatch)
-                : new UiaSceneDriver().Act(node, request, additional, BeforeDispatch);
+                ? await DomSceneTool.DispatchAsync(store.Services.WebView2, entry, node, request, BeforeDispatch, cancellationToken).ConfigureAwait(false)
+                : node.Source == "vision" ? SceneVisionTool.Dispatch(store.Services, entry, node, request, BeforeDispatch)
+                : store.Services.Driver.Act(node, request, additional, BeforeDispatch);
             if (!operation.Success)
             {
                 object? recovery = null;
@@ -101,7 +103,7 @@ public static class VerifiedSceneTool
                 if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != entry.ProcessStart) break;
                 (bool passed, object? observed) = node.Source == "dom"
                     ? await DomSceneTool.Check(entry, request.Expect, cancellationToken).ConfigureAwait(false)
-                    : Check(entry.ProcessId, request.Expect);
+                    : Check(store.Services, entry.ProcessId, request.Expect);
                 evidence = observed;
                 if (passed) return Serialize(new VerifiedActionResult("verified", true, true, "Expected state observed after dispatch.", entry.Id, evidence));
                 await Task.Delay(Math.Min(100, request.TimeoutMs), cancellationToken).ConfigureAwait(false);
@@ -145,28 +147,28 @@ public static class VerifiedSceneTool
         return null;
     }
 
-    internal static (bool Passed, object? Evidence) Check(int pid, SceneExpectation expect)
+    internal static (bool Passed, object? Evidence) Check(SceneServices services, int pid, SceneExpectation expect)
     {
         if (expect.Kind is "window_open" or "window_closed")
         {
-            IReadOnlyList<WindowDescriptor> windows = new WindowDiscovery().List(pid);
+            IReadOnlyList<WindowDescriptor> windows = services.Windows.List(pid);
             bool found = windows.Any(w => string.Equals(w.Title, expect.WindowTitle, StringComparison.Ordinal));
             return (expect.Kind == "window_open" ? found : !found, windows);
         }
         if (expect.Kind == "managed")
         {
-            OperationResult managed = new ManagedStateReader().Read(pid, expect.TypeName!, expect.FieldName!, requireUnique: true);
+            OperationResult managed = services.ManagedState.Read(pid, expect.TypeName!, expect.FieldName!, requireUnique: true);
             string? observed = managed.Data is bool boolean ? boolean.ToString().ToLowerInvariant()
                 : Convert.ToString(managed.Data, System.Globalization.CultureInfo.InvariantCulture);
             return (managed.Success && observed == expect.Expected, managed);
         }
         if (expect.Kind == "absent")
         {
-            SceneCapture scene = new UiaSceneDriver().Capture(pid, expect.WindowTitle, 1000);
+            SceneCapture scene = services.Driver.Capture(pid, expect.WindowTitle, 1000);
             bool found = scene.Elements.Any(e => Matches(e, expect.Locator!));
             return (!scene.Truncated && scene.Windows.Count > 0 && !found, new { scene.Truncated, found });
         }
-        OperationResult read = new ElementStateReader().Read(pid, expect.Locator!, expect.WindowTitle);
+        OperationResult read = services.ElementState.Read(pid, expect.Locator!, expect.WindowTitle);
         if (!read.Success || read.Data is not ElementState state) return (false, read);
         string? value = expect.Kind switch
         {

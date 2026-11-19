@@ -36,7 +36,7 @@ public static class SceneVisionTool
             if (!ToolAccessPolicy.TryAuthorizeProcess(entry.ProcessId, out string error)) return VerifiedSceneTool.Serialize(OperationResult.Failure(error));
             WindowDescriptor descriptor = entry.Capture.Windows.Single(w => w.WindowHandle == windowHandle);
             WindowIdentity expected = new(entry.ProcessId, windowHandle, new WindowBounds(descriptor.X, descriptor.Y, descriptor.Width, descriptor.Height));
-            ScreenshotResult screenshot = new WindowCapture().Capture(entry.ProcessId, ScreenshotOutput.BuildTimestampedPath("scene-vision-"), descriptor.Title);
+            ScreenshotResult screenshot = store.Services.Capture.Capture(entry.ProcessId, ScreenshotOutput.BuildTimestampedPath("scene-vision-"), descriptor.Title);
             if (screenshot.Window != expected) return VerifiedSceneTool.Serialize(OperationResult.Failure("Window changed; observe again."));
             string hash = Hash(screenshot.Path);
             GroundedElement grounded = await grounder.FindAsync(screenshot.Path, query, cancellationToken).ConfigureAwait(false);
@@ -52,15 +52,15 @@ public static class SceneVisionTool
             return VerifiedSceneTool.Serialize(OperationResult.OkWith(store.Add(entry.ProcessId, entry.ProcessStart, descriptor.Title, capture)));
         });
 
-    internal static OperationResult Dispatch(SceneStore.Entry entry, SceneElement node, SceneAction request, Action beforeDispatch)
+    internal static OperationResult Dispatch(SceneServices services, SceneStore.Entry entry, SceneElement node, SceneAction request, Action beforeDispatch)
     {
         using DesktopInputLease lease = DesktopInputLease.Acquire();
         if (!WindowGeometry.TryValidate(node.Window, out string? error)) return OperationResult.Failure(error!);
-        ScreenshotResult current = new WindowCapture().Capture(entry.ProcessId, ScreenshotOutput.BuildTimestampedPath("scene-recheck-"), entry.Title);
+        ScreenshotResult current = services.Capture.Capture(entry.ProcessId, ScreenshotOutput.BuildTimestampedPath("scene-recheck-"), entry.Title);
         if (current.Window != node.Window || Hash(current.Path) != node.StateHash) return OperationResult.Failure("stale: visual content changed; locate again.");
         beforeDispatch();
         ClickStyle style = request.Action switch { "right_click" => ClickStyle.RightClick, "double_click" => ClickStyle.DoubleClick, _ => ClickStyle.Primary };
-        return new ActionInvoker().ClickPoint(entry.ProcessId, node.Bounds.Left, node.Bounds.Top, style,
+        return services.Invoker.ClickPoint(entry.ProcessId, node.Bounds.Left, node.Bounds.Top, style,
             windowRelative: false, expectedWindow: node.Window);
     }
 

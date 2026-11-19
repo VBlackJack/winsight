@@ -188,7 +188,18 @@ public static class RunStepsTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            string fullPath = Path.GetFullPath(tracePath);
+            if (string.IsNullOrWhiteSpace(tracePath))
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure("tracePath is required."),
+                    JsonOptions.Default);
+            }
+            if (!TraceRecorder.IsAllowedReplayPath(tracePath, out string fullPath, out string pathError))
+            {
+                return JsonSerializer.Serialize(
+                    OperationResult.Failure(pathError),
+                    JsonOptions.Default);
+            }
             if (!File.Exists(fullPath))
             {
                 return JsonSerializer.Serialize(

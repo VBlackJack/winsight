@@ -47,7 +47,9 @@ public static class Program
         });
 
         builder.Services.AddSingleton<SessionTarget>();
-        builder.Services.AddSingleton<SceneStore>();
+        builder.Services.AddSingleton<UiaSceneDriver>();
+        builder.Services.AddSingleton<SceneServices>();
+        builder.Services.AddSingleton<SceneStore>(sp => new SceneStore(sp.GetRequiredService<SceneServices>()));
         builder.Services.AddSingleton<ApplicationProfiles>();
         builder.Services.AddSingleton<SessionMemory>();
         builder.Services.AddSingleton<WindowDiscovery>();
