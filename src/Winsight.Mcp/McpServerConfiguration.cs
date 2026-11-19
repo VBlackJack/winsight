@@ -39,7 +39,7 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
         "For GPU/custom-drawn UIs without UIA, use observe_scene(includeOcr=true), click_point, type_keys, read_text_visually, and wait_for_visual_change/wait_for_visual_stable. " +
         "For authorized WebView2, use detect_webview2_endpoints + list_cdp_targets + observe_dom_scene.\n" +
         "5. Recovery: on stale, use the returned recovery observation or call observe_scene. " +
-        "NEVER blindly retry dispatched_unconfirmed: observe first. On user_active or foreground_changed, call wait_for_user_idle then observe again.\n" +
+        "NEVER blindly retry dispatched_unconfirmed: observe first. On user_active or foreground_changed, call wait_for_user_idle with a real timeout (e.g. idleMs=3000, timeoutMs=30000), then observe_scene again before acting.\n" +
         "6. Reuse: check list_app_profiles / run_app_profile for version-pinned workflows. Live context is also available via winsight://guide, winsight://state, winsight://windows, and winsight://scene/latest resources.";
 
     internal static readonly HashSet<string> CompactToolNames = new(StringComparer.Ordinal)

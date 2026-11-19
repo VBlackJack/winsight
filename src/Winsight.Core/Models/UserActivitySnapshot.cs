@@ -70,7 +70,8 @@ public sealed record UserActivitySnapshot(
     bool? SessionLocked,
     int? YieldToUserMs,
     bool UserActive,
-    UserActivityDiagnostics? Diagnostics = null);
+    UserActivityDiagnostics? Diagnostics = null,
+    bool YieldOverridden = false);
 
 /// <summary>Outcome of waiting for the human to stop using the desktop.</summary>
 public sealed record UserIdleWaitResult(

@@ -25,34 +25,70 @@ namespace Winsight.Core.Modules.UserActivity;
 public static class UserActivityPolicy
 {
     public const string YieldToUserVariable = "WINSIGHT_YIELD_TO_USER_MS";
+    public const string YieldOverrideVariable = "WINSIGHT_YIELD_OVERRIDE";
+    public const string InputHookVariable = LowLevelInputHook.InputHookVariable;
     public const string UserActiveCode = "user_active";
 
     public static int? YieldToUserMs => Parse(Environment.GetEnvironmentVariable(YieldToUserVariable));
+
+    public static bool IsInputHookEnabled => LowLevelInputHook.IsEnabledByEnvironment;
+
+    /// <summary>
+    /// Host-configured per-session override enabled exclusively by the human
+    /// through the server environment (<see cref="YieldOverrideVariable"/>).
+    /// Never exposed as a tool argument.
+    /// </summary>
+    public static bool IsYieldOverridden =>
+        ParseBool(Environment.GetEnvironmentVariable(YieldOverrideVariable));
 
     internal static int? Parse(string? raw) =>
         int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) && value > 0
             ? value
             : null;
 
+    internal static bool ParseBool(string? raw) =>
+        string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>True when a human input is more recent than the yield threshold.</summary>
     public static bool IsActive(long? humanIdleMs, int? yieldToUserMs) =>
         yieldToUserMs is int threshold && humanIdleMs is long idle && idle < threshold;
 
     /// <summary>The refusal for a screen-changing action, or null when it may proceed.</summary>
-    public static string? CheckYield() => CheckYield(YieldToUserMs, UserActivityMonitor.ReadHumanIdleMs);
+    public static string? CheckYield() =>
+        CheckYield(YieldToUserMs, UserActivityMonitor.ReadHumanIdleMs, IsYieldOverridden, Console.Error.WriteLine);
 
-    internal static string? CheckYield(int? yieldToUserMs, Func<long?> readHumanIdleMs)
+    internal static string? CheckYield(int? yieldToUserMs, Func<long?> readHumanIdleMs) =>
+        CheckYield(yieldToUserMs, readHumanIdleMs, IsYieldOverridden, Console.Error.WriteLine);
+
+    internal static string? CheckYield(
+        int? yieldToUserMs,
+        Func<long?> readHumanIdleMs,
+        bool yieldOverridden,
+        Action<string>? logOverride = null)
     {
         if (yieldToUserMs is not int threshold)
         {
             return null;
         }
         long? idle = readHumanIdleMs();
-        return IsActive(idle, threshold)
-            ? string.Create(
+        if (!IsActive(idle, threshold))
+        {
+            return null;
+        }
+        if (yieldOverridden)
+        {
+            logOverride?.Invoke(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{UserActiveCode}: human input {idle} ms ago, under {YieldToUserVariable}={threshold}. " +
-                $"Someone is using this desktop: call wait_for_user_idle, then observe again before acting.")
-            : null;
+                $"[winsight] yield_override: bypassed {UserActiveCode} (humanIdleMs={idle}, " +
+                $"{YieldToUserVariable}={threshold}) because {YieldOverrideVariable} is enabled by host configuration."));
+            return null;
+        }
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{UserActiveCode}: human input {idle} ms ago, under {YieldToUserVariable}={threshold}. " +
+            $"Someone is using this desktop: call wait_for_user_idle with a real timeout, then observe_scene again before acting.");
     }
 }

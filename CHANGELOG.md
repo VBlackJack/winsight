@@ -7,6 +7,18 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `get_user_activity` now returns a `diagnostics` payload (`inputKind`, `cursorMoved`, `cursorPosition`, `inputHookActive`, `lastInputInjectedByOther`, and a bounded `recentInputs` sample list with inter-event deltas) to help diagnose phantom desktop input.
+- Opt-in low-level input hook (`WINSIGHT_INPUT_HOOK=1`, off by default) using `LLMHF_INJECTED` / `LLKHF_INJECTED` flags to distinguish real hardware mouse/keyboard input from input injected by other processes (`lastInputSource: "other_injected"`).
+- Host-configured, logged per-session yield override (`WINSIGHT_YIELD_OVERRIDE=1`), enabled exclusively through server environment configuration (never via a tool argument) and surfaced in `get_user_activity` (`yieldOverridden`) and `get_agent_state` (`guardrails.yieldOverrideEnabled`).
+- Documented the `wait_for_user_idle` -> `observe_scene` -> act recovery loop in `get_winsight_guide` (`yieldRecoveryLoop`), `AgentRecipeCatalog`, tool descriptions, and server instructions.
+
+### Fixed
+
+- `wait_for_user_idle` no longer slices waits into 1000 ms chunks that returned only the final slice's `waitedMs` and timeout message; a single end-to-end async wait loop now honors the full `timeoutMs`, reports total `waitedMs`, emits progress notifications, and validates bounds.
+- `get_user_activity` and `wait_for_user_idle` no longer report `sessionLocked=true` on unlocked 64-bit Windows sessions (`WTSINFOEXW.Data.WTSInfoExLevel1.SessionFlags` is now read at its aligned offset 16 instead of offset 12, with an `OpenInputDesktop` / `UOI_NAME` fallback when WTS returns unknown).
+
 ## [0.2.0] - 2026-11-19
 
 ### Added

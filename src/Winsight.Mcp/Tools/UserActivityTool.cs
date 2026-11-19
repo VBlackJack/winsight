@@ -35,12 +35,13 @@ public static class UserActivityTool
 
     [McpServerTool(Name = "get_user_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Report whether a person is using this desktop, before taking the mouse or keyboard. " +
-                 "Returns humanIdleMs (time since the last input not injected by any Winsight process in " +
-                 "this session; null if none was seen), lastInputAgeMs and lastInputSource (human or " +
-                 "winsight), the foreground window (handle, processId, processName; its title only when it " +
-                 "belongs to the target process), sessionLocked, the WINSIGHT_YIELD_TO_USER_MS threshold and " +
-                 "userActive (true when a human input is more recent than that threshold). Input injected by " +
-                 "other tools counts as human. Read-only.")]
+                 "Returns humanIdleMs (time since the last input not attributed to Winsight; null if none " +
+                 "was seen), lastInputAgeMs, lastInputSource (human, winsight, or other_injected when " +
+                 "WINSIGHT_INPUT_HOOK=1 is enabled), foreground (handle, processId, processName; title only " +
+                 "for the target process), sessionLocked, yieldToUserMs, userActive, yieldOverridden (true " +
+                 "only when the human enabled WINSIGHT_YIELD_OVERRIDE=1 in host config), and diagnostics " +
+                 "(inputKind, cursorMoved, cursorPosition, inputHookActive, lastInputInjectedByOther, " +
+                 "recentInputs). Read-only.")]
     public static string GetUserActivity(
         UserActivityMonitor monitor,
         SessionTarget target,
@@ -55,9 +56,11 @@ public static class UserActivityTool
 
     [McpServerTool(Name = "wait_for_user_idle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Wait until nobody has touched the mouse or keyboard for idleMs (Winsight's own input " +
-                 "excluded), or until timeoutMs elapses. Call it before a batch on a shared screen, or after " +
-                 "a user_active or foreground_changed error. Returns { idle, waitedMs, idleMs, activity }; " +
-                 "on timeout the call fails with timed_out and the same data. Never sends input.")]
+                 "excluded), or until the full timeoutMs elapses. Use a real timeout (for example " +
+                 "idleMs=3000, timeoutMs=30000) before a batch on a shared screen or after user_active / " +
+                 "foreground_changed, then call observe_scene again before acting. Returns " +
+                 "{ idle, waitedMs, idleMs, activity }; on timeout fails with timed_out and the same data. " +
+                 "Never sends input.")]
     public static Task<string> WaitForUserIdle(
         UserActivityMonitor monitor,
         SessionTarget target,

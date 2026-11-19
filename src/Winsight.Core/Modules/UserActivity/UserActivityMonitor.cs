@@ -100,7 +100,8 @@ public sealed class UserActivityMonitor
             _backend.ReadSessionLocked(),
             yieldMs,
             UserActivityPolicy.IsActive(humanIdle, yieldMs),
-            diagnostics);
+            diagnostics,
+            UserActivityPolicy.IsYieldOverridden);
     }
 
     /// <summary>

@@ -109,13 +109,13 @@ internal static class AgentRecipeCatalog
             "Act on a screen a person is also using without taking it from them.",
             "Use before any mouse or keyboard action when someone else may be at the machine.",
             [
-                "get_user_activity: read humanIdleMs, foreground and sessionLocked",
-                "wait_for_user_idle with idleMs before a batch",
-                "run_steps keeps stopOnForegroundChange=true",
-                "on user_active or foreground_changed: wait_for_user_idle, observe, rerun the remaining steps",
+                "get_user_activity: read humanIdleMs, foreground, sessionLocked, and diagnostics (cursorMoved, recentInputs, inputKind)",
+                "wait_for_user_idle with a real timeout (for example idleMs=3000, timeoutMs=30000)",
+                "observe_scene to refresh expiring eN targets after waiting, then act_verified (or backgroundOnly=true when UIA patterns suffice)",
+                "on user_active or foreground_changed: wait_for_user_idle with a real timeout, observe_scene, rerun the remaining steps",
             ],
             "The batch completes with foregroundChanged=false and no user_active refusal.",
-            "Ask the person for a quiet moment; set WINSIGHT_YIELD_TO_USER_MS to make every action yield."),
+            "Ask the person for a quiet moment. If phantom input keeps resetting humanIdleMs, inspect get_user_activity diagnostics; only the human can set WINSIGHT_INPUT_HOOK=1 or WINSIGHT_YIELD_OVERRIDE=1 in host config."),
 
         new(
             "immediate_mode_ui",

@@ -152,7 +152,40 @@ public sealed class UserActivityTests
     [InlineData(null)]
     public void Idle_long_enough_or_unknown_lets_the_action_proceed(long? humanIdleMs)
     {
-        UserActivityPolicy.CheckYield(2_000, () => humanIdleMs).Should().BeNull();
+        UserActivityPolicy.CheckYield(2_000, () => humanIdleMs, yieldOverridden: false).Should().BeNull();
+    }
+
+    [Fact]
+    public void Yield_override_allows_active_action_and_logs_bypass()
+    {
+        List<string> logs = new();
+
+        string? refusal = UserActivityPolicy.CheckYield(
+            yieldToUserMs: 2_000,
+            readHumanIdleMs: () => 250,
+            yieldOverridden: true,
+            logOverride: logs.Add);
+
+        refusal.Should().BeNull();
+        logs.Should().ContainSingle()
+            .Which.Should().Contain("yield_override")
+            .And.Contain("humanIdleMs=250")
+            .And.Contain($"{UserActivityPolicy.YieldToUserVariable}=2000")
+            .And.Contain(UserActivityPolicy.YieldOverrideVariable);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("0", false)]
+    [InlineData("false", false)]
+    [InlineData("1", true)]
+    [InlineData("true", true)]
+    [InlineData("YES", true)]
+    [InlineData("on", true)]
+    public void Yield_override_boolean_parser_accepts_truthy_values_only(string? raw, bool expected)
+    {
+        UserActivityPolicy.ParseBool(raw).Should().Be(expected);
     }
 
     [Fact]

@@ -129,4 +129,42 @@ public sealed class McpAutonomyProtocolTests
         WinsightPrompts.VerifyFlow("Increment counter").Should().Contain("act_verified").And.Contain("save_app_profile");
         WinsightPrompts.DiagnoseUiBug("Crash on save").Should().Contain("captureExceptions=true").And.Contain("read_managed_state");
     }
+
+    [Fact]
+    public void Guide_documents_yield_recovery_loop_and_no_tool_exposes_yield_override_argument()
+    {
+        string guideJson = WinsightResources.GetGuide();
+        using (JsonDocument doc = JsonDocument.Parse(guideJson))
+        {
+            JsonElement data = doc.RootElement.GetProperty("data");
+            JsonElement loop = data.GetProperty("yieldRecoveryLoop");
+            string joined = string.Join("\n", loop.EnumerateArray().Select(item => item.GetString()));
+            joined.Should().Contain("wait_for_user_idle")
+                .And.Contain("observe_scene")
+                .And.Contain("WINSIGHT_YIELD_OVERRIDE")
+                .And.Contain("WINSIGHT_INPUT_HOOK");
+        }
+
+        string stateJson = WinsightResources.GetState(new SessionTarget(), new SessionMemory());
+        using (JsonDocument doc = JsonDocument.Parse(stateJson))
+        {
+            JsonElement guardrails = doc.RootElement.GetProperty("data").GetProperty("guardrails");
+            guardrails.TryGetProperty("yieldOverrideEnabled", out _).Should().BeTrue();
+            guardrails.TryGetProperty("inputHookEnabled", out _).Should().BeTrue();
+        }
+
+        List<string> forbiddenParams = typeof(Program).Assembly.GetTypes()
+            .Where(t => t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null)
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+            .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() is not null)
+            .SelectMany(m => m.GetParameters().Select(p => $"{m.Name}.{p.Name}"))
+            .Where(name =>
+                name.Contains("yieldOverride", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("bypassYield", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("ignoreUserActive", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        forbiddenParams.Should().BeEmpty(
+            because: "yield override must be enabled only by the human through host environment configuration");
+    }
 }

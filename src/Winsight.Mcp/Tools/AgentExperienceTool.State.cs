@@ -19,12 +19,20 @@ using Winsight.Core.Models;
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.Orchestration;
 using Winsight.Core.Modules.UiAutomation;
+using Winsight.Core.Modules.UserActivity;
 using Winsight.Mcp.Serialization;
 
 namespace Winsight.Mcp.Tools;
 
 public static partial class AgentExperienceTool
 {
+    private static readonly string[] YieldRecoveryLoop =
+    [
+        "1. Call wait_for_user_idle with a real timeout (for example idleMs=3000, timeoutMs=30000) and wait for idle=true.",
+        "2. Call observe_scene to refresh expiring eN element references and confirm the window state did not change.",
+        "3. Act with act_verified (or pass backgroundOnly=true when UIA patterns suffice without touching mouse/keyboard).",
+        "4. If timed_out repeats while nobody is touching the machine, inspect get_user_activity diagnostics (cursorMoved, recentInputs, inputKind). Only the human can enable WINSIGHT_INPUT_HOOK=1 (separates hardware from foreign injected input) or WINSIGHT_YIELD_OVERRIDE=1 (logged host-only per-session override) in server environment configuration.",
+    ];
     [McpServerTool(Name = "get_session_memory", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return Winsight's session memory: recent observed locators and recent repairable failures.")]
     public static string GetSessionMemory(SessionTarget target, SessionMemory memory)
@@ -66,6 +74,9 @@ public static partial class AgentExperienceTool
                     allowedProcessIdsConfigured = IsConfigured(ToolAccessPolicy.AllowedProcessIdsVariable),
                     allowedProcessNamesConfigured = IsConfigured(ToolAccessPolicy.AllowedProcessNamesVariable),
                     allowedExecutablesConfigured = IsConfigured(ToolAccessPolicy.AllowedExecutablePathsVariable),
+                    yieldToUserMs = UserActivityPolicy.YieldToUserMs,
+                    yieldOverrideEnabled = UserActivityPolicy.IsYieldOverridden,
+                    inputHookEnabled = UserActivityPolicy.IsInputHookEnabled,
                     traceEnabled = TraceRecorder.IsEnabled,
                     traceDirectory = TraceRecorder.CurrentDirectory,
                 },
@@ -92,6 +103,7 @@ public static partial class AgentExperienceTool
                     server = ServerBuildInfo.Describe(
                         server?.ServerOptions.ToolCollection?.Select(tool => tool.ProtocolTool.Name) ?? []),
                     defaultLoop = DefaultLoop,
+                    yieldRecoveryLoop = YieldRecoveryLoop,
                     preferredTools = new
                     {
                         perceive = "observe_scene",
@@ -112,8 +124,8 @@ public static partial class AgentExperienceTool
                         locator_ambiguous = "use candidates[0].locatorArgs or add index",
                         locator_not_found = "call repair_locator with the failed label/id",
                         policy_denied = "change WINSIGHT_ALLOWED_* or choose another process",
-                        user_active = "a person is using the desktop: wait_for_user_idle, then observe again",
-                        foreground_changed = "the batch stopped untouched: wait_for_user_idle, observe, rerun the rest",
+                        user_active = "call wait_for_user_idle with a real timeout (e.g. idleMs=3000, timeoutMs=30000), then observe_scene, then act; check get_user_activity diagnostics if phantom input persists",
+                        foreground_changed = "the batch stopped untouched: wait_for_user_idle, observe_scene, rerun the rest",
                         cursor_moved = "something moved the pointer during the settle: get_user_activity, then retry",
                         clipboard_disabled = "set WINSIGHT_ALLOW_CLIPBOARD=1 in the server environment, or use type_keys mode=keys",
                         ocr_unavailable = "pass language with one of the installed OCR languages listed in the error",
