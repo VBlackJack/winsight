@@ -356,4 +356,51 @@ public sealed class AutonomyLoopTests
         diff.ElementsRemoved.Should().BeEmpty();
         diff.ElementsChanged.Should().BeEmpty();
     }
+
+    [Fact]
+    public void Filtered_observe_scene_sets_truncated_only_when_results_are_actually_cut()
+    {
+        using Process self = Process.GetCurrentProcess();
+        WindowDescriptor win = new(self.Id, 100, "VMware Workstation", self.ProcessName, true, 0, 0, 1200, 800);
+        WindowIdentity winId = new(self.Id, 100, new WindowBounds(0, 0, 1200, 800));
+
+        List<SceneElement> rawElements = new();
+        for (int i = 1; i <= 51; i++)
+        {
+            string name = i <= 5 ? $"VM Item {i}" : $"Other Item {i}";
+            rawElements.Add(new SceneElement(
+                $"e{i}", "uia", "Button", name, null,
+                true, true, false, null, new WindowBounds(10, 10 * i, 80, 20), ["activate"], winId,
+                new ElementLocator(Name: name, ControlType: "Button"), $"id-{i}"));
+        }
+
+        // Filtered capture traverses up to MaxTraversalNodes so maxResults=40 does not cut before filtering.
+        SceneCaptureFilter filtered = new(MaxResults: 40, ActionableOnly: true, FilterText: "VM");
+        VerifiedSceneTool.CaptureLimitFor(filtered).Should().Be(UiaDefaults.MaxTraversalNodes);
+        VerifiedSceneTool.CaptureLimitFor(new SceneCaptureFilter(MaxResults: 40)).Should().Be(40);
+
+        // 5 matching elements out of maxResults=40 => not truncated.
+        SceneCapture underCap = VerifiedSceneTool.EnrichCapture(
+            SceneServices.Default, self.Id, null,
+            new SceneCapture([win], rawElements, false, "uia"),
+            actionableOnly: true, filterText: "VM", maxResults: 40);
+        underCap.Elements.Should().HaveCount(5);
+        underCap.Truncated.Should().BeFalse();
+
+        // 5 matching elements with maxResults=3 => cut to 3 and truncated=true.
+        SceneCapture overCap = VerifiedSceneTool.EnrichCapture(
+            SceneServices.Default, self.Id, null,
+            new SceneCapture([win], rawElements, false, "uia"),
+            actionableOnly: true, filterText: "VM", maxResults: 3);
+        overCap.Elements.Should().HaveCount(3);
+        overCap.Truncated.Should().BeTrue();
+
+        // If the underlying UIA traversal itself was truncated, truncated stays true.
+        SceneCapture sourceTruncated = VerifiedSceneTool.EnrichCapture(
+            SceneServices.Default, self.Id, null,
+            new SceneCapture([win], rawElements, true, "uia"),
+            actionableOnly: true, filterText: "VM", maxResults: 40);
+        sourceTruncated.Elements.Should().HaveCount(5);
+        sourceTruncated.Truncated.Should().BeTrue();
+    }
 }
