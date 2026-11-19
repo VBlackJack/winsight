@@ -199,25 +199,31 @@ entrée.
 
 | Champ | Signification |
 | ----- | ------------- |
-| `humanIdleMs` | Millisecondes depuis la dernière entrée non injectée par Winsight; null si aucune n'a été vue |
-| `lastInputAgeMs` / `lastInputSource` | Âge de l'entrée la plus récente, de tout type, et si elle provenait de `human` ou de `winsight` |
+| `humanIdleMs` | Millisecondes depuis la dernière entrée non attribuée à Winsight (et hors `other_injected` avec `WINSIGHT_INPUT_HOOK=1`); null si aucune n'a été vue |
+| `lastInputAgeMs` / `lastInputSource` | Âge de l'entrée la plus récente, de tout type, et source: `human`, `winsight` ou `other_injected` (avec `WINSIGHT_INPUT_HOOK=1`) |
 | `foreground` | `handle`, `processId`, `processName`; `title` seulement quand la fenêtre appartient au processus cible (`titleWithheld` l'indique) |
-| `sessionLocked` | true, false, ou null quand Windows ne le signale pas |
+| `sessionLocked` | true, false, ou null quand Windows ne le signale pas (lit `SessionFlags` dans `WTSINFOEXW` à l'offset 16 avec repli `OpenInputDesktop`) |
 | `yieldToUserMs` / `userActive` | Le seuil `WINSIGHT_YIELD_TO_USER_MS`, et si une entrée humaine est plus récente que lui |
+| `yieldOverridden` | true uniquement quand l'utilisateur a activé `WINSIGHT_YIELD_OVERRIDE=1` dans l'environnement serveur (journalisé à chaque contournement, jamais paramétrable par outil) |
+| `diagnostics` | `inputKind` (`mouse`, `keyboard`, `other`, `unknown`), `cursorMoved`, `cursorPosition`, `inputHookActive`, `lastInputInjectedByOther`, et jusqu'à 8 `recentInputs` avec `ageMs` et `deltaFromPreviousMs` |
 
-Winsight ne peut pas savoir qui a produit une entrée sans hook de bas niveau, ce
-que les produits de sécurité des postes signalent; il attribue donc les entrées
-selon le temps. Chaque processus Winsight de la session Windows enregistre la
-fenêtre temporelle de chaque injection dans un registre partagé; une entrée
-située dans cette fenêtre (plus 50 ms) appartient à Winsight, tout le reste est
-humain. Conséquences: une entrée faite par une personne pendant une injection
-Winsight est masquée par celle-ci, et une entrée injectée par un autre outil
-compte comme humaine.
+Par défaut, Winsight attribue les entrées selon le temps sans installer de hook
+global de bas niveau (que les produits de sécurité des postes peuvent signaler).
+Chaque processus Winsight de la session Windows enregistre la fenêtre temporelle
+de chaque injection dans un registre partagé; une entrée située dans cette
+fenêtre (plus 50 ms) appartient à Winsight, tout le reste est humain. Si des
+entrées fantômes réinitialisent `humanIdleMs`, consultez `diagnostics`
+(`cursorMoved`, `recentInputs`, `inputKind`), ou activez `WINSIGHT_INPUT_HOOK=1`
+dans l'environnement serveur pour activer le hook optionnel `WH_MOUSE_LL` /
+`WH_KEYBOARD_LL` (vérifie `LLMHF_INJECTED` / `LLKHF_INJECTED` sans enregistrer
+les touches ni le texte) afin de classer les injections externes en
+`other_injected` et de les ignorer dans le garde-fou de courtoisie.
 
 ## `wait_for_user_idle`
 
 Attend que personne n'ait utilisé la souris ou le clavier pendant `idleMs`, en
-excluant les entrées de Winsight lui-même. Lecture seule.
+excluant les entrées de Winsight lui-même, ou jusqu'à expiration complète de
+`timeoutMs`. Lecture seule.
 
 | Nom         | Type | Obligatoire | Description |
 | ----------- | ---- | ------ | ----------- |
@@ -226,8 +232,10 @@ excluant les entrées de Winsight lui-même. Lecture seule.
 | `processId` | int? | non    | Comme pour `get_user_activity` |
 
 **Renvoie**: `{ idle, waitedMs, idleMs, activity }`, où `activity` est un
-instantané de `get_user_activity`. En cas d'expiration, l'appel échoue avec
-`timed_out` et les mêmes données.
+instantané de `get_user_activity` et `waitedMs` la durée totale d'attente. En
+cas d'expiration, l'appel échoue avec `timed_out` et les mêmes données. Après
+un refus `user_active`, appelez `wait_for_user_idle` avec un vrai délai (par
+exemple `idleMs=3000, timeoutMs=30000`), puis `observe_scene`, puis agissez.
 
 ## `launch_app`
 

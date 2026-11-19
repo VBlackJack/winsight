@@ -27,14 +27,23 @@ use `select_item` or a `run_steps` `select` step with an explicit `itemName`.
 The screen may be in use by a person or by another agent session.
 
 1. `get_user_activity` before taking the mouse or keyboard; `humanIdleMs` is the
-   time since the last human input, Winsight's own input excluded.
-2. `wait_for_user_idle` with the quiet period you need before a batch.
+   time since the last human input, Winsight's own input excluded, and
+   `diagnostics` reports `inputKind`, `cursorMoved`, and `recentInputs`.
+2. `wait_for_user_idle` with a real timeout (for example `idleMs=3000`,
+   `timeoutMs=30000`) before a batch or after `user_active`, then
+   `observe_scene` before acting.
 3. Keep `run_steps stopOnForegroundChange=true` (the default): a batch stops with
    `foreground_changed` before touching the screen again when someone takes the
    foreground.
 4. Set `WINSIGHT_YIELD_TO_USER_MS` (for example `5000`) in the server
    environment to make every screen-changing tool fail with `user_active` while
    a person is active.
+5. If phantom input keeps resetting `humanIdleMs`, set `WINSIGHT_INPUT_HOOK=1`
+   in the server environment to distinguish real hardware input from
+   `other_injected` input via `LLMHF_INJECTED` / `LLKHF_INJECTED`. For an
+   explicit logged per-session bypass, only the human can set
+   `WINSIGHT_YIELD_OVERRIDE=1` in host configuration (never via a tool
+   argument).
 
 For GPU-drawn UIs without an automation tree (iced, winit, egui), click with
 `click_point focusWindow=true`. The pointer rests on the point before the press

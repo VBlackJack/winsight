@@ -188,23 +188,29 @@ Report whether a person is using this desktop. Read-only: it sends no input.
 
 | Field | Meaning |
 | ----- | ------- |
-| `humanIdleMs` | Milliseconds since the last input not injected by Winsight; null when none was seen |
-| `lastInputAgeMs` / `lastInputSource` | Age of the most recent input of any kind, and whether it was `human` or `winsight` |
+| `humanIdleMs` | Milliseconds since the last input not attributed to Winsight (and not `other_injected` when `WINSIGHT_INPUT_HOOK=1`); null when none was seen |
+| `lastInputAgeMs` / `lastInputSource` | Age of the most recent input of any kind, and whether it was `human`, `winsight`, or `other_injected` (when `WINSIGHT_INPUT_HOOK=1`) |
 | `foreground` | `handle`, `processId`, `processName`; `title` only when the window belongs to the target process (`titleWithheld` says so) |
-| `sessionLocked` | true, false, or null when Windows does not report it |
+| `sessionLocked` | true, false, or null when Windows does not report it (reads `WTSINFOEXW` `SessionFlags` at offset 16 with an `OpenInputDesktop` fallback) |
 | `yieldToUserMs` / `userActive` | The `WINSIGHT_YIELD_TO_USER_MS` threshold, and whether a human input is more recent than it |
+| `yieldOverridden` | true only when the human enabled `WINSIGHT_YIELD_OVERRIDE=1` in the server environment (logged per bypass, never a tool parameter) |
+| `diagnostics` | `inputKind` (`mouse`, `keyboard`, `other`, `unknown`), `cursorMoved`, `cursorPosition`, `inputHookActive`, `lastInputInjectedByOther`, and up to 8 `recentInputs` with `ageMs` and `deltaFromPreviousMs` |
 
-Winsight cannot see who produced an input without a low-level hook, which
-endpoint products flag, so it attributes input by time. Every Winsight process
-in the Windows session records the window of each injection in a shared
+By default Winsight attributes input by time without installing a global
+low-level hook (which endpoint security products may flag). Every Winsight
+process in the Windows session records the window of each injection in a shared
 ledger; input inside that window (plus 50 ms) is Winsight's, anything else is
-human. Consequences: a person's input made during a Winsight injection is
-masked by it, and input injected by another tool counts as human.
+human. If phantom input keeps resetting `humanIdleMs`, inspect `diagnostics`
+(`cursorMoved`, `recentInputs`, `inputKind`), or set `WINSIGHT_INPUT_HOOK=1` in
+the server environment to enable the opt-in `WH_MOUSE_LL` / `WH_KEYBOARD_LL`
+hook (checks `LLMHF_INJECTED` / `LLKHF_INJECTED` without recording key codes or
+text) so foreign injected input is classified as `other_injected` and ignored by
+the yield guard.
 
 ## `wait_for_user_idle`
 
 Wait until nobody has used the mouse or keyboard for `idleMs`, Winsight's own
-input excluded. Read-only.
+input excluded, or until the full `timeoutMs` elapses. Read-only.
 
 | Name        | Type | Required | Description |
 | ----------- | ---- | -------- | ----------- |
@@ -213,8 +219,10 @@ input excluded. Read-only.
 | `processId` | int? | no       | As for `get_user_activity` |
 
 **Returns** - `{ idle, waitedMs, idleMs, activity }`, where `activity` is a
-`get_user_activity` snapshot. On timeout the call fails with `timed_out` and the
-same data.
+`get_user_activity` snapshot and `waitedMs` is the full end-to-end wait
+duration. On timeout the call fails with `timed_out` and the same data. After a
+`user_active` refusal, call `wait_for_user_idle` with a real timeout (for
+example `idleMs=3000, timeoutMs=30000`), then `observe_scene`, then act.
 
 ## `launch_app`
 
