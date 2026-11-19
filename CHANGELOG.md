@@ -7,6 +7,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-19
+
+### Fixed
+
+- `act_verified` with `expect.kind=any_change` (as well as `observeAfter=true` and recovery captures) now reuses the source observation's exact filters (`windowTitle`, `maxResults`, `actionableOnly`, `filterText`, `includeOcr`), eliminating false positives when a filtered observation is followed by a no-op action.
+- `observe_scene` now applies `filterText` and `actionableOnly` before capping to `maxResults`, so `truncated` is `true` only when matching results were actually cut by `maxResults` or UIA traversal hit its node limit.
+- `act_verified` with `action=activate` on a `MenuItem` and `expect.kind=any_change` now requires actual menu activation evidence (new window/popup, new `Menu`/`MenuItem`/`MenuBar` elements, or `Expanded`/`PartiallyExpanded` state) and returns `dispatched_unconfirmed` with a `click_point` bounds-center hint when Win32 custom menubars (such as VMware `wui.unibar`) ignore UIA `Invoke`.
+
 ## [0.2.1] - 2026-11-19
 
 ### Added
