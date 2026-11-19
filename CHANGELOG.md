@@ -7,16 +7,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
 ### Added
 
 - MCP protocol autonomy features:
   - `ServerInstructions` configured at initialization so AI clients receive the preferred control loop and recovery rules without burning a discovery call.
-  - Explicit MCP tool annotations (`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`) on all 68 tools so clients can auto-approve read-only perception tools.
+  - Explicit MCP tool annotations (`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`) on all 70 tools so clients can auto-approve read-only perception tools.
   - Read-only MCP resources (`winsight://guide`, `winsight://state`, `winsight://windows`, `winsight://scene/latest`) and reusable MCP prompts (`explore_app`, `verify_flow`, `diagnose_ui_bug`).
-  - `WINSIGHT_TOOL_PROFILE=compact` to expose a focused 31-tool autonomous subset while keeping `full` (68 tools) as the default.
-  - MCP `notifications/progress` ticks on `run_verified_steps`, `run_app_profile`, and `wait_for_user_idle`.
+  - `WINSIGHT_TOOL_PROFILE=compact` to expose a focused 33-tool autonomous subset while keeping `full` (70 tools) as the default.
+  - MCP `notifications/progress` ticks on `run_verified_steps`, `run_app_profile`, `wait_any`, and `wait_for_user_idle`.
   - `winsight-configure` accepts `--compact` and `--yield-ms <ms>` to persist `WINSIGHT_TOOL_PROFILE=compact` and `WINSIGHT_YIELD_TO_USER_MS` in client configs (JSON and TOML).
 - Autonomous control loop evolutions:
+  - `wait_any` races 1..10 competing conditions (`element_exists`, `element_not_exists`, `value_contains`, `window_open`, `window_closed`, `ocr_contains`, `visual_change`) and returns as soon as the first branch matches.
+  - `save_verified_history_as_profile` promotes recorded strict `act_verified` steps from the current session into a version-pinned application profile in one call.
+  - `capture_scene` supports targeted element zoom/cropping (`targetRef` and `paddingPx`) alongside inline Set-of-Mark PNG output and optional `windowHandle`.
   - `backgroundOnly=true` on `act_verified` and `run_verified_steps` restricts actions to background-safe UIA patterns (`Invoke`, `Toggle`, `SetValue`, `Select`, `Expand`, `Collapse`, `Scroll`) so agents can drive apps without stealing desktop focus or tripping `user_active`.
   - Named multi-app targets: `set_target` accepts an optional `alias`, `switch_target(alias)` switches the active target without juggling PIDs, and `clear_target(alias)` removes a single alias.
   - `watch_ui_events` subscribes to native UIA events (`window_opened`, `menu_opened`, `invoked`, `structure_*`) for a bounded duration to catch transient popups and menus.
