@@ -142,4 +142,66 @@ public sealed class NextGenAutonomyTests
         toml.Should().Contain("WINSIGHT_TOOL_PROFILE = \"compact\"");
         toml.Should().Contain("WINSIGHT_YIELD_TO_USER_MS = \"3000\"");
     }
+
+    [Fact]
+    public void Save_verified_history_as_profile_promotes_recorded_steps()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"winsight-hist-{Guid.NewGuid():N}");
+        try
+        {
+            ApplicationProfiles profiles = new(tempDir);
+            SessionMemory memory = new();
+            using Process self = Process.GetCurrentProcess();
+            memory.RecordVerifiedStep(self.Id, new ProfileStep(
+                new ElementLocator(AutomationId: "OkBtn"),
+                "activate",
+                new SceneExpectation("name", "Done", new ElementLocator(AutomationId: "Status"))));
+
+            string json = ApplicationProfileTool.SaveVerifiedHistory(profiles, new SessionTarget(), memory, "recorded-flow", self.Id);
+            using JsonDocument doc = JsonDocument.Parse(json);
+            doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
+            profiles.List().Should().ContainSingle(p => p.Name == "recorded-flow" && p.StepCount == 1);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Wait_any_validates_branches_and_matches_window_closed_immediately()
+    {
+        WaitAnyTool.ValidateBranch(new WaitAnyBranch("unknown")).Should().NotBeNull();
+        WaitAnyTool.ValidateBranch(new WaitAnyBranch("window_open")).Should().NotBeNull();
+        WaitAnyTool.ValidateBranch(new WaitAnyBranch("ocr_contains", ExpectedText: "Done")).Should().BeNull();
+
+        using Process self = Process.GetCurrentProcess();
+        string json = await WaitAnyTool.WaitAny(
+            new SceneStore(),
+            new SessionTarget(),
+            [
+                new WaitAnyBranch("window_open", Label: "never", WindowTitle: "__nonexistent_title_xyz__"),
+                new WaitAnyBranch("window_closed", Label: "already-gone", WindowTitle: "__nonexistent_title_xyz__"),
+            ],
+            timeoutMs: 1000,
+            processId: self.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        using JsonDocument doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("data").GetProperty("matchedIndex").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("data").GetProperty("label").GetString().Should().Be("already-gone");
+    }
+
+    [Fact]
+    public void Capture_scene_crop_rectangle_clamps_to_image_bounds()
+    {
+        WindowDescriptor window = new(1, 10, "App", "App", true, 100, 100, 400, 300);
+        System.Drawing.Rectangle rect = SceneScreenshotTool.ComputeCropRectangle(
+            new WindowBounds(105, 105, 40, 20), window, 400, 300, paddingPx: 24);
+        rect.X.Should().Be(0);
+        rect.Y.Should().Be(0);
+        rect.Right.Should().Be(69);
+        rect.Bottom.Should().Be(49);
+    }
 }

@@ -183,6 +183,13 @@ only to the completed run; it does not guarantee all future runs.
 - **Real-time UIA events & QA audit (`watch_ui_events`, `audit_ui_accessibility`)**:
   capture transient popups/menus via UIA event hooks and score any window's UIA
   tree for accessibility and testability issues.
+- **Composite wait (`wait_any`)**: race 1..10 competing conditions (`element_exists`,
+  `element_not_exists`, `value_contains`, `window_open`, `window_closed`,
+  `ocr_contains`, `visual_change`) and return as soon as the first branch matches.
+- **Targeted zoom & history promotion**: pass `targetRef` + `paddingPx` to
+  `capture_scene` to crop sharply around a control on HiDPI/4K screens, and call
+  `save_verified_history_as_profile(name)` to promote the session's verified strict
+  `act_verified` steps into a version-pinned profile in one call.
 
 ## Evaluation
 

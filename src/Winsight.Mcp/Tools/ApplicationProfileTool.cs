@@ -100,6 +100,30 @@ public static class ApplicationProfileTool
     public static string List(ApplicationProfiles profiles) => ToolSafety.SafeInvoke(() =>
         VerifiedSceneTool.Serialize(OperationResult.OkWith(profiles.List())));
 
+    [McpServerTool(Name = "save_verified_history_as_profile", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Promote the verified strict act_verified steps recorded during this session for the target process into a version-pinned application profile in one call. " +
+                 "Text inputs are automatically parameterized as text_N (never stored in plain text). Set dryRun=true to preview the generated steps before saving.")]
+    public static string SaveVerifiedHistory(
+        ApplicationProfiles profiles,
+        SessionTarget target,
+        SessionMemory memory,
+        [Description("Profile name (1..64 ASCII letters, digits, underscores or hyphens).")]
+        string name,
+        [Description("Target process id. Optional; falls back to set_target.")]
+        int? processId = null,
+        [Description("Preview the generated profile without writing to disk.")]
+        bool dryRun = false) => ToolSafety.SafeInvoke(() =>
+        {
+            if (!target.TryResolve(processId, out int pid, out string error)) return VerifiedSceneTool.Serialize(OperationResult.Failure(error));
+            IReadOnlyList<ProfileStep> recorded = memory.GetVerifiedSteps(pid);
+            if (recorded.Count == 0)
+            {
+                return VerifiedSceneTool.Serialize(OperationResult.Failure(
+                    $"No verified strict UIA steps have been recorded for process {pid} in this session."));
+            }
+            return Save(profiles, target, name, recorded.ToArray(), pid, dryRun);
+        });
+
     [McpServerTool(Name = "delete_app_profile", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Delete a saved application profile by name. Returns deleted=true when a file was removed or deleted=false if it did not exist.")]
     public static string Delete(ApplicationProfiles profiles, string name) => ToolSafety.SafeInvoke(() =>

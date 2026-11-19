@@ -56,6 +56,7 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
         "audit_ui_accessibility",
         "act_verified",
         "run_verified_steps",
+        "wait_any",
         "select_file_dialog",
         "run_steps",
         "click_point",
@@ -73,6 +74,7 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
         "get_winsight_guide",
         "list_app_profiles",
         "save_app_profile",
+        "save_verified_history_as_profile",
         "run_app_profile",
         "delete_app_profile",
     };

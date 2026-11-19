@@ -233,6 +233,7 @@ public static class VerifiedSceneTool
                 evidence = observed;
                 if (passed)
                 {
+                    TryRecordVerifiedStep(store.Services.Memory, entry, node, request);
                     object? nextObservation = null;
                     object? diff = null;
                     if (request.ObserveAfter && node.Source != "dom" && !process.HasExited)
@@ -419,6 +420,19 @@ public static class VerifiedSceneTool
             _ => ClickStyle.Primary,
         };
         return services.Invoker.ClickPoint(entry.ProcessId, centerX, centerY, style, windowRelative: false, expectedWindow: node.Window);
+    }
+
+    private static void TryRecordVerifiedStep(SessionMemory memory, SceneStore.Entry entry, SceneElement node, SceneAction request)
+    {
+        if (node.Source != "uia") return;
+        if (request.Expect.Kind is "any_change" or "visual_change") return;
+        if (string.IsNullOrEmpty(node.Locator.AutomationId) && string.IsNullOrEmpty(node.Locator.Name)) return;
+        if (request.Action is not ("activate" or "set_value" or "select" or "select_item" or "expand" or "collapse" or "scroll_into_view" or "focus" or "right_click" or "double_click")) return;
+
+        int nextIndex = memory.GetVerifiedSteps(entry.ProcessId).Count + 1;
+        string? textParam = request.Action == "set_value" ? $"text_{nextIndex}" : null;
+        ProfileStep step = new(node.Locator, request.Action, request.Expect, TextParameter: textParam, ItemName: request.ItemName, WindowTitle: entry.Title);
+        memory.RecordVerifiedStep(entry.ProcessId, step);
     }
 
     private static string ResultWithHint(SessionMemory memory, string status, bool dispatched, bool verified, string message)

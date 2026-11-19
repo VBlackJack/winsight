@@ -210,6 +210,14 @@ ne garantit pas toutes les exécutions futures.
 - **Événements UIA temps réel et audit QA (`watch_ui_events`, `audit_ui_accessibility`)** :
   capter les popups/menus éphémères par hooks UIA et auditer l'arbre UIA d'une
   fenêtre (accessibilité et testabilité).
+- **Attente multi-branches (`wait_any`)** : surveiller 1..10 conditions
+  concurrentes (`element_exists`, `element_not_exists`, `value_contains`,
+  `window_open`, `window_closed`, `ocr_contains`, `visual_change`) et retourner
+  dès la première branche satisfaite.
+- **Zoom ciblé et promotion en profil** : passer `targetRef` + `paddingPx` à
+  `capture_scene` pour recadrer un contrôle sur écran HiDPI/4K, et appeler
+  `save_verified_history_as_profile(name)` pour transformer en un appel les
+  étapes `act_verified` strictes réussies de la session en profil épinglé.
 
 ## Évaluation
 

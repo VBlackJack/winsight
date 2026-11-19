@@ -62,6 +62,7 @@ public sealed class SessionMemory
     private readonly object _gate = new();
     private readonly Dictionary<string, LocatorMemoryEntry> _locators = new(StringComparer.Ordinal);
     private readonly List<SessionFailure> _failures = new();
+    private readonly Dictionary<int, List<ProfileStep>> _verifiedSteps = new();
     private string? _lastWindowTitle;
     private DateTime? _lastObservationUtc;
 
@@ -194,12 +195,41 @@ public sealed class SessionMemory
         }
     }
 
+    public void RecordVerifiedStep(int processId, ProfileStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        lock (_gate)
+        {
+            if (!_verifiedSteps.TryGetValue(processId, out List<ProfileStep>? steps))
+            {
+                steps = new List<ProfileStep>();
+                _verifiedSteps[processId] = steps;
+            }
+            steps.Add(step);
+            if (steps.Count > 20)
+            {
+                steps.RemoveRange(0, steps.Count - 20);
+            }
+        }
+    }
+
+    public IReadOnlyList<ProfileStep> GetVerifiedSteps(int processId)
+    {
+        lock (_gate)
+        {
+            return _verifiedSteps.TryGetValue(processId, out List<ProfileStep>? steps)
+                ? steps.ToArray()
+                : [];
+        }
+    }
+
     public void Clear()
     {
         lock (_gate)
         {
             _locators.Clear();
             _failures.Clear();
+            _verifiedSteps.Clear();
             _lastWindowTitle = null;
             _lastObservationUtc = null;
         }
