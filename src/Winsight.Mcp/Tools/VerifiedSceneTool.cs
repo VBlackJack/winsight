@@ -179,8 +179,21 @@ public static class VerifiedSceneTool
             }
             if (!node.Actions.Contains(request.Action, StringComparer.Ordinal)) return Result("blocked", false, false, "Action unavailable for target.");
             if ((node.Source == "dom") != (request.Expect.CssSelector is not null)) return Result("blocked", false, false, "DOM actions require a CSS expectation; UIA actions require a native expectation.");
+            if (request.BackgroundOnly)
+            {
+                if (node.Source is "vision" or "ocr")
+                {
+                    return ResultWithHint(store.Services.Memory, "blocked", false, false,
+                        "backgroundOnly does not permit vision or OCR pointer actions (they require foreground desktop input).");
+                }
+                if (request.Action is "focus" or "key_chord" or "right_click" or "double_click" or "drag_to")
+                {
+                    return ResultWithHint(store.Services.Memory, "blocked", false, false,
+                        $"backgroundOnly does not permit '{request.Action}' because it requires foreground focus or pointer input.");
+                }
+            }
             if (request.DryRun || ToolAccessPolicy.IsDryRunEnabled) return Result("preview", false, false, "Validated request; no input dispatched. Live state is revalidated on execution.");
-            if (UserActivityPolicy.CheckYield() is { } userActive) return ResultWithHint(store.Services.Memory, "blocked", false, false, userActive);
+            if (!request.BackgroundOnly && UserActivityPolicy.CheckYield() is { } userActive) return ResultWithHint(store.Services.Memory, "blocked", false, false, userActive);
             cancellationToken.ThrowIfCancellationRequested();
 
             using CapturedFrame? beforeVisual = request.Expect.Kind == "visual_change" && node.Source != "dom"

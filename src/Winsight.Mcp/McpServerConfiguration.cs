@@ -29,11 +29,11 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
 
     internal const string Instructions =
         "Winsight drives and inspects Windows desktop applications. Follow this autonomous loop:\n" +
-        "1. Target: call launch_app (auto-sets session target) or list_windows + set_target.\n" +
+        "1. Target: call launch_app (auto-sets session target) or list_windows + set_target (use alias + switch_target for multi-app workflows).\n" +
         "2. Perceive: call observe_scene for expiring eN target references, window/modal state, and supported actions. " +
-        "Call capture_scene(observation) when visual layout helps (returns an inline Set-of-Mark annotated PNG).\n" +
+        "Call capture_scene(observation) when visual layout helps (returns an inline Set-of-Mark annotated PNG), watch_ui_events for transient popups/menus, or audit_ui_accessibility for QA checks.\n" +
         "3. Act & verify: prefer act_verified with an explicit expect postcondition (strict predicates: exists, absent, value, name, selected, toggle, focused, visible, selected_item, window_open, window_closed, managed; exploratory predicates: value_contains, name_contains, any_change, visual_change). " +
-        "Set observeAfter=true to receive a fresh observation and structural diff in the same call.\n" +
+        "Set observeAfter=true to receive a fresh observation and structural diff in the same call, or backgroundOnly=true to run UIA-pattern actions without stealing desktop focus/mouse.\n" +
         "4. Batch & custom surfaces: use run_verified_steps for multi-step verified forms/wizards (emits progress notifications) or run_steps for scripts (captureExceptions=true for causal CLR exceptions). " +
         "Use select_file_dialog for Windows Open/Save dialogs (#32770). " +
         "For GPU/custom-drawn UIs without UIA, use observe_scene(includeOcr=true), click_point, type_keys, read_text_visually, and wait_for_visual_change/wait_for_visual_stable. " +
@@ -48,9 +48,12 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
         "close_app",
         "list_windows",
         "set_target",
+        "switch_target",
         "get_target",
         "observe_scene",
         "capture_scene",
+        "watch_ui_events",
+        "audit_ui_accessibility",
         "act_verified",
         "run_verified_steps",
         "select_file_dialog",

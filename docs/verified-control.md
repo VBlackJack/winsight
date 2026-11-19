@@ -173,6 +173,16 @@ only to the completed run; it does not guarantee all future runs.
   progress between steps.
 - **Standard file dialog fast-path (`select_file_dialog`)**: targets open Windows
   `#32770` Open/Save dialogs, enters the path, clicks confirm and verifies closure.
+- **Background-safe execution (`backgroundOnly=true`)**: on `act_verified` and
+  `run_verified_steps`, restricts execution to UIA patterns that never steal
+  focus or pointer input (`Invoke`, `Toggle`, `SetValue`, `Select`, `Expand`,
+  `Collapse`, `Scroll`) and bypasses `user_active` yield checks.
+- **Named multi-app targets (`set_target` + `switch_target`)**: bind short
+  aliases to multiple processes in a session and switch between them without
+  passing raw PIDs.
+- **Real-time UIA events & QA audit (`watch_ui_events`, `audit_ui_accessibility`)**:
+  capture transient popups/menus via UIA event hooks and score any window's UIA
+  tree for accessibility and testability issues.
 
 ## Evaluation
 

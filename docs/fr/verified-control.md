@@ -200,6 +200,16 @@ ne garantit pas toutes les exécutions futures.
 - **Raccourci boîtes de dialogue fichiers (`select_file_dialog`)** : cible les
   boîtes Windows `#32770` (Ouvrir/Enregistrer), saisit le chemin, valide et
   vérifie la fermeture.
+- **Exécution en arrière-plan (`backgroundOnly=true`)** : sur `act_verified` et
+  `run_verified_steps`, restreint l'exécution aux patterns UIA sans vol de focus
+  ni souris (`Invoke`, `Toggle`, `SetValue`, `Select`, `Expand`, `Collapse`,
+  `Scroll`) et contourne la garde `user_active`.
+- **Cibles nommées multi-apps (`set_target` + `switch_target`)** : associer des
+  alias courts à plusieurs processus dans une session et basculer sans manipuler
+  de PIDs bruts.
+- **Événements UIA temps réel et audit QA (`watch_ui_events`, `audit_ui_accessibility`)** :
+  capter les popups/menus éphémères par hooks UIA et auditer l'arbre UIA d'une
+  fenêtre (accessibilité et testabilité).
 
 ## Évaluation
 

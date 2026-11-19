@@ -11,11 +11,16 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - MCP protocol autonomy features:
   - `ServerInstructions` configured at initialization so AI clients receive the preferred control loop and recovery rules without burning a discovery call.
-  - Explicit MCP tool annotations (`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`) on all 65 tools so clients can auto-approve read-only perception tools.
+  - Explicit MCP tool annotations (`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`) on all 68 tools so clients can auto-approve read-only perception tools.
   - Read-only MCP resources (`winsight://guide`, `winsight://state`, `winsight://windows`, `winsight://scene/latest`) and reusable MCP prompts (`explore_app`, `verify_flow`, `diagnose_ui_bug`).
-  - `WINSIGHT_TOOL_PROFILE=compact` to expose a focused 28-tool autonomous subset while keeping `full` (65 tools) as the default.
+  - `WINSIGHT_TOOL_PROFILE=compact` to expose a focused 31-tool autonomous subset while keeping `full` (68 tools) as the default.
   - MCP `notifications/progress` ticks on `run_verified_steps`, `run_app_profile`, and `wait_for_user_idle`.
+  - `winsight-configure` accepts `--compact` and `--yield-ms <ms>` to persist `WINSIGHT_TOOL_PROFILE=compact` and `WINSIGHT_YIELD_TO_USER_MS` in client configs (JSON and TOML).
 - Autonomous control loop evolutions:
+  - `backgroundOnly=true` on `act_verified` and `run_verified_steps` restricts actions to background-safe UIA patterns (`Invoke`, `Toggle`, `SetValue`, `Select`, `Expand`, `Collapse`, `Scroll`) so agents can drive apps without stealing desktop focus or tripping `user_active`.
+  - Named multi-app targets: `set_target` accepts an optional `alias`, `switch_target(alias)` switches the active target without juggling PIDs, and `clear_target(alias)` removes a single alias.
+  - `watch_ui_events` subscribes to native UIA events (`window_opened`, `menu_opened`, `invoked`, `structure_*`) for a bounded duration to catch transient popups and menus.
+  - `audit_ui_accessibility` inspects a window's UIA tree for missing accessible names, missing `AutomationId`s, zero-size visible controls, non-focusable interactive elements, and overlapping bounding boxes.
   - `capture_scene` returns the Set-of-Mark annotated PNG inline as an MCP `ImageContentBlock` by default (`includeImage=true`) and makes `windowHandle` optional.
   - `observe_scene` adds `actionableOnly`, `filterText`, `includeOcr=true` (synthesizing clickable `tN` OCR targets dispatched by `act_verified`), automatic `surfaceHint` (WebView2 port or custom-drawn hint), and automatic `matchingProfiles` discovery.
   - `act_verified` adds `observeAfter=true` (returning a fresh `nextObservation` and structural `diff` in the same call), exploratory postconditions (`value_contains`, `name_contains`, `any_change`, `visual_change`), and structured recovery `hint` payloads with consecutive-failure loop detection.

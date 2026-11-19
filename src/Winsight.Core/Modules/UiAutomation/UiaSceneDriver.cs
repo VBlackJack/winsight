@@ -117,6 +117,11 @@ public sealed class UiaSceneDriver
         if (!node.Visible && action.Action != "scroll_into_view") return OperationResult.Failure("Target is offscreen; scroll_into_view then observe again.");
         if (action.Action == "drag_to" && additional.Count != 1) return OperationResult.Failure("drag_to requires one destination reference.");
         if (action.Action == "select_many" && extras.Any(e => !e.Patterns.SelectionItem.IsSupported)) return OperationResult.Failure("SelectionItem is required on every target.");
+        if (action.BackgroundOnly && action.Action == "activate" &&
+            !element.Patterns.Invoke.IsSupported && !element.Patterns.Toggle.IsSupported)
+        {
+            return OperationResult.Failure("backgroundOnly: target does not support UIA Invoke or Toggle pattern (would require pointer click).");
+        }
         if (action.Action is "drag_to" or "right_click" or "double_click")
         {
             if (!ValidatePoint(node, out string? error)) return OperationResult.Failure(error!);

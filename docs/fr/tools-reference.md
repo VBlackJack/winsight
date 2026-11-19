@@ -42,7 +42,8 @@ sous-jacent.
 ## Flux de travail orienté agent
 
 Les outils recommandés sont `observe_scene`, `act_verified`, `run_verified_steps`,
-`capture_scene`, `select_file_dialog`, `observe_dom_scene`, `locate_scene_target`,
+`capture_scene`, `watch_ui_events`, `audit_ui_accessibility`, `select_file_dialog`,
+`switch_target`, `observe_dom_scene`, `locate_scene_target`,
 `list_app_profiles`, `save_app_profile`, `run_app_profile` et `delete_app_profile`.
 Leurs [contrats et exemples](verified-control.md) distinguent
 l'envoi d'une action des résultats vérifiés. Les flux existants listés
@@ -54,7 +55,7 @@ cette boucle, déclare les annotations MCP (`ReadOnly`, `Destructive`, `Idempote
 (`winsight://guide`, `winsight://state`, `winsight://windows`,
 `winsight://scene/latest`) ainsi que les prompts MCP (`explore_app`,
 `verify_flow`, `diagnose_ui_bug`). Définir `WINSIGHT_TOOL_PROFILE=compact` pour
-exposer un jeu réduit de 28 outils autonomes au lieu des 65 outils complets.
+exposer un jeu réduit de 31 outils autonomes au lieu des 68 outils complets.
 
 Ces outils de commodité d'origine restent disponibles. Les outils de plus bas
 niveau restent disponibles, mais les agents devraient commencer ici, car les

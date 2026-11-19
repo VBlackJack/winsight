@@ -24,10 +24,11 @@ public static class Program
         string logDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Winsight", "logs");
         try
         {
-            if (args.Length != 3 || args[0] is not ("install" or "uninstall"))
-                throw new ArgumentException("Usage: winsight-configure install|uninstall <server.exe> <clients|manifest.json>");
+            if (args.Length < 3 || args[0] is not ("install" or "uninstall"))
+                throw new ArgumentException("Usage: winsight-configure install|uninstall <server.exe> <clients|manifest.json> [--compact] [--yield-ms <ms>]");
             string executable = Path.GetFullPath(args[1]);
             bool remove = args[0] == "uninstall";
+            Dictionary<string, string> environment = ParseEnvironmentOptions(args.Skip(3).ToArray());
             string manifest = Path.Combine(Path.GetDirectoryName(executable)!, "client-registration.json");
             string[] paths;
             if (remove)
@@ -40,7 +41,7 @@ public static class Program
                 if (!File.Exists(executable)) throw new FileNotFoundException("The MCP executable is missing.");
                 paths = ResolvePaths(args[2]);
             }
-            ClientConfiguration.Apply(paths, executable, remove, manifestPath: remove ? null : manifest);
+            ClientConfiguration.Apply(paths, executable, remove, manifestPath: remove ? null : manifest, environment: environment.Count > 0 ? environment : null);
             Log(logDirectory, "INFO", remove ? "Client registrations removed." : "Selected clients configured. Restart clients to load Winsight.");
             return 0;
         }
@@ -70,6 +71,32 @@ public static class Program
             "gemini" => Path.Combine(gemini, "settings.json"),
             _ => throw new ArgumentException("Unknown client: " + client),
         }).ToArray();
+    }
+
+    public static Dictionary<string, string> ParseEnvironmentOptions(IReadOnlyList<string> optionArgs)
+    {
+        Dictionary<string, string> env = new(StringComparer.Ordinal);
+        for (int i = 0; i < optionArgs.Count; i++)
+        {
+            switch (optionArgs[i])
+            {
+                case "--compact":
+                    env["WINSIGHT_TOOL_PROFILE"] = "compact";
+                    break;
+                case "--yield-ms":
+                    if (i + 1 >= optionArgs.Count ||
+                        !int.TryParse(optionArgs[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int yieldMs) ||
+                        yieldMs <= 0)
+                    {
+                        throw new ArgumentException("--yield-ms requires a positive integer number of milliseconds.");
+                    }
+                    env["WINSIGHT_YIELD_TO_USER_MS"] = yieldMs.ToString(CultureInfo.InvariantCulture);
+                    break;
+                default:
+                    throw new ArgumentException("Unknown option: " + optionArgs[i]);
+            }
+        }
+        return env;
     }
 
     private static void Log(string directory, string level, string message)

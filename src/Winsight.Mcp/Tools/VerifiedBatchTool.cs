@@ -50,6 +50,8 @@ public static class VerifiedBatchTool
         int? processId = null,
         [Description("Validate all steps without dispatching any input.")]
         bool dryRun = false,
+        [Description("Only allow background-safe UIA patterns (no focus/mouse/keyboard stealing); bypasses user_active yield checks.")]
+        bool backgroundOnly = false,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default)
         => ToolSafety.SafeInvokeAsync(async () =>
@@ -92,7 +94,7 @@ public static class VerifiedBatchTool
                 });
             }
 
-            if (UserActivityPolicy.CheckYield() is { } userActive)
+            if (!backgroundOnly && UserActivityPolicy.CheckYield() is { } userActive)
             {
                 return VerifiedSceneTool.Serialize(new
                 {
@@ -173,7 +175,8 @@ public static class VerifiedBatchTool
                     step.Expect,
                     Text: step.Text,
                     ItemName: step.ItemName,
-                    TimeoutMs: step.TimeoutMs);
+                    TimeoutMs: step.TimeoutMs,
+                    BackgroundOnly: backgroundOnly);
                 string output = await VerifiedSceneTool.Execute(store, action, cancellationToken).ConfigureAwait(false);
                 using JsonDocument doc = JsonDocument.Parse(output);
                 results.Add(doc.RootElement.Clone());

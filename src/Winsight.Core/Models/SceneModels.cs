@@ -40,7 +40,7 @@ public sealed record SceneAction(
     string Observation, string Target, string Action, SceneExpectation Expect,
     string? Text = null, string? ItemName = null, string? Destination = null,
     string[]? Targets = null, int TimeoutMs = 3000, bool DryRun = false,
-    bool Recover = true, bool ObserveAfter = false);
+    bool Recover = true, bool ObserveAfter = false, bool BackgroundOnly = false);
 
 /// <summary>Dispatched is distinct from Verified, including on exceptions or cancellation.</summary>
 public sealed record VerifiedActionResult(

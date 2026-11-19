@@ -35,41 +35,66 @@ public static class SessionTargetTool
         SessionTarget target,
         WindowDiscovery discovery,
         [Description("Process id to make the session default (from launch_app or list_windows).")]
-        int processId)
+        int processId,
+        [Description("Optional short alias (1..32 ASCII letters/digits/_/-) to remember this process for multi-app switching via switch_target.")]
+        string? alias = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            if (!ToolAccessPolicy.TryAuthorizeProcess(processId, out string error))
+            if (!target.TrySet(processId, out string error, alias))
             {
                 return JsonSerializer.Serialize(OperationResult.Failure(error), JsonOptions.Default);
             }
 
             int windowCount = discovery.List(processId).Count;
-            target.Set(processId);
             return JsonSerializer.Serialize(
-                OperationResult.OkWith(new { processId, windowCount }),
+                OperationResult.OkWith(new { processId, alias, windowCount, aliases = target.Aliases }),
+                JsonOptions.Default);
+        });
+    }
+
+    [McpServerTool(Name = "switch_target", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Switch the active session default target to a previously bound named alias (from set_target with alias). Useful for multi-app workflows without juggling raw PIDs.")]
+    public static string SwitchTarget(
+        SessionTarget target,
+        WindowDiscovery discovery,
+        [Description("Named alias bound earlier via set_target.")]
+        string alias)
+    {
+        return ToolSafety.SafeInvoke(() =>
+        {
+            if (!target.TrySwitch(alias, out int processId, out string error))
+            {
+                return JsonSerializer.Serialize(OperationResult.Failure(error), JsonOptions.Default);
+            }
+
+            int windowCount = discovery.List(processId).Count;
+            return JsonSerializer.Serialize(
+                OperationResult.OkWith(new { alias, processId, windowCount, aliases = target.Aliases }),
                 JsonOptions.Default);
         });
     }
 
     [McpServerTool(Name = "get_target", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Return the session's current default target process, or null when none is set.")]
+    [Description("Return the session's current default target process (or null) and any bound named aliases.")]
     public static string GetTarget(SessionTarget target)
     {
         return ToolSafety.SafeInvoke(() =>
             JsonSerializer.Serialize(
-                OperationResult.OkWith(new { processId = target.ProcessId }),
+                OperationResult.OkWith(new { processId = target.ProcessId, aliases = target.Aliases }),
                 JsonOptions.Default));
     }
 
     [McpServerTool(Name = "clear_target", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Clear the session's default target process. Subsequent process-scoped calls must " +
-                 "pass processId explicitly again until a new set_target.")]
-    public static string ClearTarget(SessionTarget target)
+    [Description("Clear a specific named alias, or clear the session default target and all aliases when alias is omitted.")]
+    public static string ClearTarget(
+        SessionTarget target,
+        [Description("Optional alias to remove without clearing the active target.")]
+        string? alias = null)
     {
         return ToolSafety.SafeInvoke(() =>
         {
-            target.Clear();
+            target.Clear(alias);
             return JsonSerializer.Serialize(OperationResult.Ok(), JsonOptions.Default);
         });
     }

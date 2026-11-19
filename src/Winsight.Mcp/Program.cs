@@ -63,6 +63,7 @@ public static class Program
         builder.Services.AddSingleton<FocusedElementReader>();
         builder.Services.AddSingleton<WindowManager>();
         builder.Services.AddSingleton<ElementWaiter>();
+        builder.Services.AddSingleton<UiEventWatcher>();
         builder.Services.AddSingleton<ManagedStateReader>();
         builder.Services.AddSingleton<WindowCapture>();
         builder.Services.AddSingleton<StepRunner>();
