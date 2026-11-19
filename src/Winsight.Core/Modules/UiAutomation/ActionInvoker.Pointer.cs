@@ -65,7 +65,12 @@ public sealed partial class ActionInvoker
         {
             return PointActionCore(
                 processId, x, y, windowTitle, windowRelative, allowOutOfWindow, expectedWindow, focusWindow,
-                (point, revalidate) => PointerDispatch.Click(point, style, settleMs, revalidate, integrity: integrity));
+                (point, revalidate) =>
+                {
+                    OperationResult? refusal = PointerDispatch.Click(
+                        point, style, out InputDispatchInfo? dispatch, settleMs, revalidate, integrity: integrity);
+                    return (refusal, dispatch);
+                });
         }
     }
 
@@ -100,7 +105,12 @@ public sealed partial class ActionInvoker
         {
             return PointActionCore(
                 processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null, focusWindow,
-                (point, revalidate) => PointerDispatch.Scroll(point, notches, horizontal, settleMs, revalidate, integrity: integrity));
+                (point, revalidate) =>
+                {
+                    OperationResult? refusal = PointerDispatch.Scroll(
+                        point, notches, horizontal, out InputDispatchInfo? dispatch, settleMs, revalidate, integrity: integrity);
+                    return (refusal, dispatch);
+                });
         }
     }
 
@@ -133,14 +143,19 @@ public sealed partial class ActionInvoker
         {
             return PointActionCore(
                 processId, x, y, windowTitle, windowRelative, allowOutOfWindow, null, focusWindow,
-                (point, revalidate) => PointerDispatch.Hover(point, holdMs, settleMs, revalidate, integrity: integrity));
+                (point, revalidate) =>
+                {
+                    OperationResult? refusal = PointerDispatch.Hover(
+                        point, out InputDispatchInfo? dispatch, holdMs, settleMs, revalidate, integrity: integrity);
+                    return (refusal, dispatch);
+                });
         }
     }
 
     private static OperationResult PointActionCore(
         int processId, int x, int y, string? windowTitle,
         bool windowRelative, bool allowOutOfWindow, WindowIdentity? expectedWindow,
-        bool focusWindow, Func<System.Drawing.Point, Func<string?>, OperationResult?> dispatch)
+        bool focusWindow, Func<System.Drawing.Point, Func<string?>, (OperationResult? Failure, InputDispatchInfo? Dispatch)> dispatch)
     {
         if (expectedWindow is not null && expectedWindow.ProcessId != processId)
         {
@@ -219,7 +234,8 @@ public sealed partial class ActionInvoker
         {
             return OperationResult.Failure(recipientError);
         }
-        return dispatch(point, RecipientRefusal) ?? OperationResult.OkWith(new ClickPointResult(screenX, screenY));
+        (OperationResult? failure, InputDispatchInfo? dispatchInfo) = dispatch(point, RecipientRefusal);
+        return failure ?? OperationResult.OkWith(new ClickPointResult(screenX, screenY, dispatchInfo));
     }
 
     private static bool TryResolveClickWindow(
@@ -306,6 +322,10 @@ public sealed partial class ActionInvoker
                 return OperationResult.Failure(recipientError!);
             }
 
+            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
+            {
+                return contextBlocked;
+            }
             int threshold = Math.Max(
                 GetSystemMetrics(SystemMetricDragWidth),
                 GetSystemMetrics(SystemMetricDragHeight));
@@ -328,7 +348,7 @@ public sealed partial class ActionInvoker
             {
                 Mouse.Up(MouseButton.Left);
             }
-            return OperationResult.OkWith(new DragResult(from.X, from.Y, to.X, to.Y, moves.Count));
+            return OperationResult.OkWith(new DragResult(from.X, from.Y, to.X, to.Y, moves.Count, dispatch));
         }
     }
 

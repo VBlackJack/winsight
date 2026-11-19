@@ -102,4 +102,5 @@ public sealed record DragResult(
     int FromY,
     int ToX,
     int ToY,
-    int Moves);
+    int Moves,
+    InputDispatchInfo? Dispatch = null);

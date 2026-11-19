@@ -70,6 +70,10 @@ public sealed partial class ActionInvoker
                     $"Located element has invalid bounds {rect.Width}x{rect.Height}.");
             }
 
+            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
+            {
+                return contextBlocked;
+            }
             System.Drawing.Point center = new(
                 rect.Left + rect.Width / 2,
                 rect.Top + rect.Height / 2);
@@ -99,7 +103,7 @@ public sealed partial class ActionInvoker
                 TooltipSnapshot? tooltip = fresh.FirstOrDefault(t => TooltipTextMatches(t, expectedTooltipText));
                 if (tooltip is not null)
                 {
-                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip));
+                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip, dispatch));
                 }
 
                 lastTooltip = fresh.FirstOrDefault() ?? lastTooltip;
@@ -117,10 +121,10 @@ public sealed partial class ActionInvoker
                     rect.Width,
                     rect.Height,
                     TooltipSnapshot.SourceHelpText);
-                return OperationResult.OkWith(new HoverResult(center.X, center.Y, fromHelpText));
+                return OperationResult.OkWith(new HoverResult(center.X, center.Y, fromHelpText, dispatch));
             }
 
-            HoverResult result = new(center.X, center.Y, lastTooltip);
+            HoverResult result = new(center.X, center.Y, lastTooltip, dispatch);
             if (expectedTooltipText is not null)
             {
                 return OperationResult.FailureWith(

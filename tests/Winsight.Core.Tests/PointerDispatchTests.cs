@@ -301,6 +301,58 @@ public sealed class PointerDispatchTests
         }
     }
 
+    [Fact]
+    public void Successful_click_reports_dispatch_thread_desktop_and_switch_result()
+    {
+        int calls = 0;
+        InputContext.OverrideCapture = () =>
+        {
+            calls++;
+            bool switched = calls > 1;
+            return new InputContextSnapshot(
+                SessionId: 1,
+                ActiveConsoleSessionId: 1,
+                SessionMatchesConsole: true,
+                WindowStation: "WinSta0",
+                WindowStationVisible: true,
+                ThreadDesktop: switched ? "Default" : "WorkerDesktop",
+                InputDesktop: "Default",
+                InputDesktopWin32Error: null,
+                DesktopMatchesInput: switched,
+                InJob: false,
+                JobUiRestrictionsMask: 0,
+                JobUiRestrictions: Array.Empty<string>(),
+                JobQueryWin32Error: null,
+                IsRestrictedToken: false,
+                IsAppContainer: false,
+                IntegrityLevel: "medium (0x2000)",
+                ParentChain: Array.Empty<ProcessChainEntry>(),
+                ThreadId: 4242);
+        };
+        InputContext.OverrideDesktopSwitch = ctx =>
+            new DesktopSwitchAttempt(Attempted: true, Succeeded: true, Win32Error: null, TargetDesktop: ctx.InputDesktop);
+        try
+        {
+            RecordingPointer pointer = new(new Point(100, 100));
+
+            OperationResult? refusal = PointerDispatch.Click(
+                Target, ClickStyle.Primary, out InputDispatchInfo? dispatch, settleMs: 0, driver: pointer);
+
+            refusal.Should().BeNull();
+            dispatch.Should().NotBeNull();
+            dispatch!.ThreadId.Should().Be(4242);
+            dispatch.ThreadDesktop.Should().Be("Default");
+            dispatch.DesktopSwitchAttempted.Should().BeTrue();
+            dispatch.DesktopSwitchSucceeded.Should().BeTrue();
+            dispatch.DesktopSwitchWin32Error.Should().BeNull();
+        }
+        finally
+        {
+            InputContext.OverrideCapture = null;
+            InputContext.OverrideDesktopSwitch = null;
+        }
+    }
+
     private sealed class RecordingPointer : IPointerDriver
     {
         private Point _position;

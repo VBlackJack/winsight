@@ -23,4 +23,5 @@ public sealed record KeyChordResult(
     string Chord,
     string WindowTitle,
     long WindowHandle,
-    FocusedElementInfo? Focus = null);
+    FocusedElementInfo? Focus = null,
+    InputDispatchInfo? Dispatch = null);

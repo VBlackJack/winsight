@@ -24,6 +24,14 @@ public sealed record DesktopSwitchAttempt(
     int? Win32Error,
     string? TargetDesktop);
 
+/// <summary>Compact diagnostics captured on the dispatching thread for a synthetic input call.</summary>
+public sealed record InputDispatchInfo(
+    uint ThreadId,
+    string? ThreadDesktop,
+    bool DesktopSwitchAttempted,
+    bool? DesktopSwitchSucceeded = null,
+    int? DesktopSwitchWin32Error = null);
+
 /// <summary>
 /// Execution-context diagnostics for synthetic desktop input: session, window
 /// station, thread vs input desktop, job object UI restrictions, token
@@ -46,4 +54,5 @@ public sealed record InputContextSnapshot(
     bool? IsRestrictedToken,
     bool? IsAppContainer,
     string IntegrityLevel,
-    IReadOnlyList<ProcessChainEntry> ParentChain);
+    IReadOnlyList<ProcessChainEntry> ParentChain,
+    uint ThreadId = 0);

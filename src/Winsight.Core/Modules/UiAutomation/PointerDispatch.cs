@@ -223,10 +223,21 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
+        IntegrityComparison? integrity = null) =>
+        Scroll(point, notches, horizontal, out _, settleMs, revalidate, driver, integrity);
+
+    internal static OperationResult? Scroll(
+        Point point,
+        int notches,
+        bool horizontal,
+        out InputDispatchInfo? dispatch,
+        int? settleMs = null,
+        Func<string?>? revalidate = null,
+        IPointerDriver? driver = null,
         IntegrityComparison? integrity = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity, out dispatch) is { } refusal)
         {
             return refusal;
         }
@@ -245,10 +256,20 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
+        IntegrityComparison? integrity = null) =>
+        Hover(point, out _, holdMs, settleMs, revalidate, driver, integrity);
+
+    internal static OperationResult? Hover(
+        Point point,
+        out InputDispatchInfo? dispatch,
+        int? holdMs = null,
+        int? settleMs = null,
+        Func<string?>? revalidate = null,
+        IPointerDriver? driver = null,
         IntegrityComparison? integrity = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity, out dispatch) is { } refusal)
         {
             return refusal;
         }
@@ -272,10 +293,20 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
+        IntegrityComparison? integrity = null) =>
+        Click(point, style, out _, settleMs, revalidate, driver, integrity);
+
+    internal static OperationResult? Click(
+        Point point,
+        ClickStyle style,
+        out InputDispatchInfo? dispatch,
+        int? settleMs = null,
+        Func<string?>? revalidate = null,
+        IPointerDriver? driver = null,
         IntegrityComparison? integrity = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity, out dispatch) is { } refusal)
         {
             return refusal;
         }
@@ -300,11 +331,13 @@ public static class PointerDispatch
         Point point,
         int? settleMs,
         Func<string?>? revalidate,
-        IntegrityComparison? integrity)
+        IntegrityComparison? integrity,
+        out InputDispatchInfo? dispatch)
     {
         InputContextSnapshot inputContext = InputContext.Capture();
         if (InputContext.EvaluateBlock(inputContext) is { } blocked)
         {
+            dispatch = InputContext.ToDispatchInfo(inputContext, null);
             return OperationResult.FailureWith(
                 blocked.Message,
                 new
@@ -324,6 +357,7 @@ public static class PointerDispatch
                 inputContext = InputContext.Capture();
             }
         }
+        dispatch = InputContext.ToDispatchInfo(inputContext, desktopSwitch);
 
         int settle = settleMs ?? DefaultSettleMs;
         Point startPosition = pointer.Position;

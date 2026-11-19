@@ -85,7 +85,8 @@ public sealed partial class ActionInvoker
             {
                 case ClickStyle.DoubleClick:
                 case ClickStyle.RightClick:
-                    return PointerDispatch.Click(ClickablePoint(element), style, integrity: integrity) ?? OperationResult.Ok();
+                    return PointerDispatch.Click(ClickablePoint(element), style, out InputDispatchInfo? dispatch, integrity: integrity)
+                        ?? OperationResult.OkWith(new { dispatch });
 
                 default:
                     return InvokePrimaryAction(element, integrity);
@@ -148,9 +149,13 @@ public sealed partial class ActionInvoker
                 return OperationResult.Ok();
             }
 
+            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
+            {
+                return contextBlocked;
+            }
             element.Focus();
             Keyboard.Type(text);
-            return OperationResult.Ok();
+            return OperationResult.OkWith(new { dispatch });
         }
     }
 
@@ -202,7 +207,7 @@ public sealed partial class ActionInvoker
                 return OperationResult.Failure(
                     $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the chord \"{chord}\" was sent.");
             }
-            if (PrepareInputContext() is { } contextBlocked)
+            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;
             }
@@ -218,7 +223,8 @@ public sealed partial class ActionInvoker
                 chord,
                 focus.WindowTitle,
                 focus.WindowHandle.ToInt64(),
-                focused));
+                focused,
+                dispatch));
         }
     }
 
@@ -280,7 +286,7 @@ public sealed partial class ActionInvoker
                     focused);
             }
 
-            if (PrepareInputContext() is { } contextBlocked)
+            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;
             }
@@ -290,7 +296,8 @@ public sealed partial class ActionInvoker
                 text.Length,
                 focus.WindowHandle.ToInt64(),
                 focus.WindowTitle,
-                focused);
+                focused,
+                Dispatch: dispatch);
             if (!paste)
             {
                 try
@@ -370,11 +377,12 @@ public sealed partial class ActionInvoker
     }
 
 
-    private static OperationResult? PrepareInputContext()
+    internal static OperationResult? PrepareInputContext(out InputDispatchInfo dispatch)
     {
         InputContextSnapshot context = InputContext.Capture();
         if (InputContext.EvaluateBlock(context) is { } blocked)
         {
+            dispatch = InputContext.ToDispatchInfo(context, null);
             return OperationResult.FailureWith(
                 blocked.Message,
                 new
@@ -384,10 +392,16 @@ public sealed partial class ActionInvoker
                     inputContext = blocked.Context,
                 });
         }
+        DesktopSwitchAttempt? desktopSwitch = null;
         if (!context.DesktopMatchesInput)
         {
-            InputContext.TryAttachToInputDesktop(context);
+            desktopSwitch = InputContext.TryAttachToInputDesktop(context);
+            if (desktopSwitch.Succeeded)
+            {
+                context = InputContext.Capture();
+            }
         }
+        dispatch = InputContext.ToDispatchInfo(context, desktopSwitch);
         return null;
     }
 
@@ -443,7 +457,8 @@ public sealed partial class ActionInvoker
             return OperationResult.Ok();
         }
 
-        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary, integrity: integrity) ?? OperationResult.Ok();
+        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary, out InputDispatchInfo? dispatch, integrity: integrity)
+            ?? OperationResult.OkWith(new { dispatch });
     }
 
     internal static string WebView2InputRefusal(

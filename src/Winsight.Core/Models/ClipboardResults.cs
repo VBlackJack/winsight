@@ -33,4 +33,5 @@ public sealed record TypeKeysResult(
     string WindowTitle,
     FocusedElementInfo? FocusedElement,
     string? Restored = null,
-    int SkippedFormats = 0);
+    int SkippedFormats = 0,
+    InputDispatchInfo? Dispatch = null);

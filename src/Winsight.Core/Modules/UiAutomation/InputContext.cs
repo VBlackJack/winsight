@@ -73,10 +73,21 @@ public static class InputContext
     private static readonly Lazy<IReadOnlyList<ProcessChainEntry>> CachedParentChain =
         new(() => QueryParentChain(Environment.ProcessId));
 
-    // Test hooks to exercise restricted contexts and desktop-switch paths deterministically.
-    internal static Func<InputContextSnapshot>? OverrideCapture { get; set; }
+    private static readonly AsyncLocal<Func<InputContextSnapshot>?> OverrideCaptureSlot = new();
+    private static readonly AsyncLocal<Func<InputContextSnapshot, DesktopSwitchAttempt>?> OverrideDesktopSwitchSlot = new();
 
-    internal static Func<InputContextSnapshot, DesktopSwitchAttempt>? OverrideDesktopSwitch { get; set; }
+    // Test hooks (async-local so parallel unit tests never interfere with one another).
+    internal static Func<InputContextSnapshot>? OverrideCapture
+    {
+        get => OverrideCaptureSlot.Value;
+        set => OverrideCaptureSlot.Value = value;
+    }
+
+    internal static Func<InputContextSnapshot, DesktopSwitchAttempt>? OverrideDesktopSwitch
+    {
+        get => OverrideDesktopSwitchSlot.Value;
+        set => OverrideDesktopSwitchSlot.Value = value;
+    }
 
     /// <summary>Capture the current process and thread input-context diagnostics.</summary>
     public static InputContextSnapshot Capture()
@@ -96,7 +107,8 @@ public static class InputContext
         string? windowStation = winSta != IntPtr.Zero ? ReadUserObjectName(winSta) : null;
         bool? windowStationVisible = winSta != IntPtr.Zero ? ReadWindowStationVisible(winSta) : null;
 
-        IntPtr threadDesktopHandle = NativeMethods.GetThreadDesktop(NativeMethods.GetCurrentThreadId());
+        uint threadId = NativeMethods.GetCurrentThreadId();
+        IntPtr threadDesktopHandle = NativeMethods.GetThreadDesktop(threadId);
         string? threadDesktop = threadDesktopHandle != IntPtr.Zero ? ReadUserObjectName(threadDesktopHandle) : null;
 
         string? inputDesktop = null;
@@ -176,7 +188,8 @@ public static class InputContext
             isRestricted,
             isAppContainer,
             integrityLevel,
-            parentChain);
+            parentChain,
+            threadId);
     }
 
     /// <summary>Decode a JOBOBJECT_BASIC_UI_RESTRICTIONS bitmask into flag names.</summary>
@@ -298,6 +311,17 @@ public static class InputContext
             NativeMethods.CloseDesktop(inputDesktop);
         }
     }
+
+    /// <summary>Build a compact dispatch summary for successful pointer/keyboard responses.</summary>
+    internal static InputDispatchInfo ToDispatchInfo(
+        InputContextSnapshot context,
+        DesktopSwitchAttempt? switchAttempt) =>
+        new(
+            context.ThreadId != 0 ? context.ThreadId : NativeMethods.GetCurrentThreadId(),
+            context.ThreadDesktop,
+            DesktopSwitchAttempted: switchAttempt is { Attempted: true },
+            DesktopSwitchSucceeded: switchAttempt is { Attempted: true } ? switchAttempt.Succeeded : null,
+            DesktopSwitchWin32Error: switchAttempt is { Attempted: true } ? switchAttempt.Win32Error : null);
 
     /// <summary>One-line summary for embedding in move_not_applied error messages.</summary>
     internal static string FormatSummary(InputContextSnapshot context, DesktopSwitchAttempt? switchAttempt = null)
