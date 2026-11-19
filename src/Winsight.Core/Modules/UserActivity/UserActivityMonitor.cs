@@ -41,9 +41,21 @@ public sealed class UserActivityMonitor
     private const uint CurrentSession = 0xFFFFFFFF;
     private const int WtsSessionInfoEx = 25;
     private const int WtsInfoLevelOne = 1;
-    private const int SessionFlagsOffset = 12;
     private const int SessionStateLocked = 0;
     private const int SessionStateUnlocked = 1;
+    private const uint DesktopReadObjects = 0x0001;
+    private const int UoiName = 2;
+    private const int ErrorAccessDenied = 5;
+    private const string DefaultDesktopName = "Default";
+    private const string WinlogonDesktopName = "Winlogon";
+    private const int MaxDesktopNameChars = 128;
+
+    // WTSINFOEXW starts with DWORD Level (4 bytes), followed by WTSINFOEX_LEVEL1_W
+    // which contains 8-byte LARGE_INTEGER fields and therefore aligns to offset 8.
+    // Inside WTSINFOEX_LEVEL1_W: SessionId (+0), SessionState (+4), SessionFlags (+8) => offset 16.
+    internal static readonly int WtsSessionFlagsOffset =
+        Marshal.OffsetOf<WtsInfoEx>(nameof(WtsInfoEx.Level1)).ToInt32() +
+        Marshal.OffsetOf<WtsInfoExLevel1>(nameof(WtsInfoExLevel1.SessionFlags)).ToInt32();
 
     private readonly IUserActivityBackend _backend;
 
@@ -283,29 +295,89 @@ public sealed class UserActivityMonitor
         return new string(title, 0, Math.Max(0, length));
     }
 
-    private static bool? ReadSessionLocked()
+    internal static bool? ReadSessionLocked()
     {
-        if (!NativeMethods.WTSQuerySessionInformation(
+        if (NativeMethods.WTSQuerySessionInformation(
                 IntPtr.Zero, CurrentSession, WtsSessionInfoEx, out IntPtr buffer, out uint bytes))
+        {
+            try
+            {
+                bool? fromWts = ParseWtsSessionLocked(buffer, bytes);
+                if (fromWts.HasValue)
+                {
+                    return fromWts;
+                }
+            }
+            finally
+            {
+                NativeMethods.WTSFreeMemory(buffer);
+            }
+        }
+
+        return ReadSessionLockedFromInputDesktop();
+    }
+
+    internal static bool? ParseWtsSessionLocked(IntPtr buffer, uint bytes)
+    {
+        if (buffer == IntPtr.Zero || bytes < (uint)(WtsSessionFlagsOffset + sizeof(int)))
         {
             return null;
         }
+        int level = Marshal.ReadInt32(buffer);
+        int flags = Marshal.ReadInt32(buffer, WtsSessionFlagsOffset);
+        return InterpretWtsSessionFlags(level, flags);
+    }
+
+    internal static bool? InterpretWtsSessionFlags(int level, int sessionFlags)
+    {
+        if (level != WtsInfoLevelOne)
+        {
+            return null;
+        }
+        return sessionFlags switch
+        {
+            SessionStateLocked => true,
+            SessionStateUnlocked => false,
+            _ => null,
+        };
+    }
+
+    private static bool? ReadSessionLockedFromInputDesktop()
+    {
+        IntPtr desktop = NativeMethods.OpenInputDesktop(0, false, DesktopReadObjects);
+        if (desktop == IntPtr.Zero)
+        {
+            return Marshal.GetLastWin32Error() == ErrorAccessDenied ? true : null;
+        }
+
         try
         {
-            if (bytes < SessionFlagsOffset + sizeof(int) || Marshal.ReadInt32(buffer) != WtsInfoLevelOne)
+            char[] nameBuffer = new char[MaxDesktopNameChars];
+            if (!NativeMethods.GetUserObjectInformation(
+                    desktop,
+                    UoiName,
+                    nameBuffer,
+                    (uint)(nameBuffer.Length * sizeof(char)),
+                    out uint bytesNeeded) ||
+                bytesNeeded < sizeof(char))
             {
                 return null;
             }
-            return Marshal.ReadInt32(buffer, SessionFlagsOffset) switch
+            int charCount = (int)Math.Min((uint)nameBuffer.Length, bytesNeeded / sizeof(char));
+            string name = new string(nameBuffer, 0, charCount).TrimEnd('\0');
+            if (string.Equals(name, DefaultDesktopName, StringComparison.OrdinalIgnoreCase))
             {
-                SessionStateLocked => true,
-                SessionStateUnlocked => false,
-                _ => null,
-            };
+                return false;
+            }
+            if (string.Equals(name, WinlogonDesktopName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            return null;
         }
         finally
         {
-            NativeMethods.WTSFreeMemory(buffer);
+            NativeMethods.CloseDesktop(desktop);
         }
     }
 
@@ -314,6 +386,24 @@ public sealed class UserActivityMonitor
     {
         public uint Size;
         public uint Time;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WtsInfoEx
+    {
+        public uint Level;
+        public WtsInfoExLevel1 Level1;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WtsInfoExLevel1
+    {
+        public uint SessionId;
+        public int SessionState;
+        public int SessionFlags;
+        // Included solely so natural struct alignment matches the native
+        // WTSINFOEX_LEVEL1_W layout (which contains 8-byte LARGE_INTEGER fields).
+        public long AlignmentAnchor;
     }
 
     private static class NativeMethods
@@ -330,6 +420,18 @@ public sealed class UserActivityMonitor
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetWindowTextW")]
         public static extern int GetWindowText(IntPtr hWnd, [Out] char[] text, int maxCount);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr OpenInputDesktop(uint flags, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint desiredAccess);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseDesktop(IntPtr desktop);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetUserObjectInformationW", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetUserObjectInformation(
+            IntPtr handle, int index, [Out] char[] info, uint length, out uint lengthNeeded);
 
         [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode, EntryPoint = "WTSQuerySessionInformationW")]
         [return: MarshalAs(UnmanagedType.Bool)]

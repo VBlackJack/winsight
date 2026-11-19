@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Runtime.InteropServices;
 using FluentAssertions;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.UserActivity;
@@ -251,6 +252,62 @@ public sealed class UserActivityTests
             timeoutMs: 60_000,
             cancellationToken: cts.Token);
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public void WtsSessionFlagsOffset_accounts_for_8_byte_alignment_of_WTSINFOEX_LEVEL1()
+    {
+        // WTSINFOEXW: DWORD Level (0..3) + 4-byte pad (4..7) + SessionId (8..11) +
+        // SessionState (12..15) + SessionFlags (16..19).
+        UserActivityMonitor.WtsSessionFlagsOffset.Should().Be(16);
+    }
+
+    [Theory]
+    [InlineData(1, 0, 1, false)]
+    [InlineData(1, 0, 0, true)]
+    [InlineData(1, 0, -1, null)]
+    [InlineData(2, 0, 1, null)]
+    public void ParseWtsSessionLocked_reads_SessionFlags_not_SessionState(
+        int level,
+        int sessionStateAtOffset12,
+        int sessionFlagsAtOffset16,
+        bool? expected)
+    {
+        const int BufferSize = 32;
+        IntPtr buffer = Marshal.AllocHGlobal(BufferSize);
+        try
+        {
+            for (int i = 0; i < BufferSize; i++)
+            {
+                Marshal.WriteByte(buffer, i, 0);
+            }
+            Marshal.WriteInt32(buffer, 0, level);
+            Marshal.WriteInt32(buffer, 12, sessionStateAtOffset12);
+            Marshal.WriteInt32(buffer, 16, sessionFlagsAtOffset16);
+
+            UserActivityMonitor.ParseWtsSessionLocked(buffer, BufferSize).Should().Be(expected);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    [Fact]
+    public void ParseWtsSessionLocked_returns_null_for_truncated_or_null_buffer()
+    {
+        UserActivityMonitor.ParseWtsSessionLocked(IntPtr.Zero, 32).Should().BeNull();
+
+        IntPtr buffer = Marshal.AllocHGlobal(16);
+        try
+        {
+            Marshal.WriteInt32(buffer, 0, 1);
+            UserActivityMonitor.ParseWtsSessionLocked(buffer, 16).Should().BeNull();
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
     }
 
     internal sealed class FakeUserActivityBackend : IUserActivityBackend
