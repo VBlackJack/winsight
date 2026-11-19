@@ -160,20 +160,95 @@ public sealed class PointerDispatchTests
         PointerDispatch.ValidateSettle(settleMs).Should().Contain("settleMs");
     }
 
+    [Fact]
+    public void A_pointer_still_at_start_position_reports_move_not_applied_instead_of_cursor_moved()
+    {
+        Point start = new(1245, 890);
+        Point target = new(1857, 44);
+        RecordingPointer pointer = new(start)
+        {
+            ApplyMove = false,
+            MoveOutcome = new PointerMoveResult(0, 5, 20286, 2004, new VirtualDesktopBounds(0, 0, 6000, 1440)),
+        };
+        IntegrityComparison integrity = ProcessIntegrity.Compare(
+            new ProcessIntegrityInfo(ProcessIntegrity.RidMedium, "medium", false, null),
+            new ProcessIntegrityInfo(ProcessIntegrity.RidHigh, "high", false, null));
+
+        OperationResult? refusal = PointerDispatch.Click(
+            target, ClickStyle.Primary, settleMs: 150, driver: pointer, integrity: integrity);
+
+        refusal.Should().NotBeNull();
+        refusal!.Error.Should().StartWith($"{PointerDispatch.MoveNotAppliedCode}:")
+            .And.NotContain("other input moved it")
+            .And.Contain("SendInput=0")
+            .And.Contain("win32Error=5")
+            .And.Contain("medium")
+            .And.Contain("high")
+            .And.Contain("(1245, 890)")
+            .And.Contain("(1857, 44)")
+            .And.Contain("6000x1440");
+        pointer.Calls.Should().NotContain(call => call.StartsWith("click", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_pointer_already_at_target_before_move_succeeds()
+    {
+        RecordingPointer pointer = new(Target) { ApplyMove = false };
+
+        OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: pointer);
+
+        refusal.Should().BeNull();
+        pointer.Calls.Should().Equal("move 400,300", "wait 0", "click Left");
+    }
+
+    [Fact]
+    public void A_pointer_moved_elsewhere_from_both_start_and_target_reports_cursor_moved()
+    {
+        Point start = new(100, 100);
+        RecordingPointer pointer = new(start) { PostMovePosition = new Point(700, 500) };
+
+        OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 150, driver: pointer);
+
+        refusal.Should().NotBeNull();
+        refusal!.Error.Should().StartWith($"{PointerDispatch.CursorMovedCode}:")
+            .And.Contain("(700, 500)")
+            .And.Contain("other input moved it");
+        pointer.Calls.Should().NotContain(call => call.StartsWith("click", StringComparison.Ordinal));
+    }
+
     private sealed class RecordingPointer : IPointerDriver
     {
         private Point _position;
+
+        public RecordingPointer(Point? initial = null)
+        {
+            _position = initial ?? Point.Empty;
+        }
 
         public List<string> Calls { get; } = new();
 
         public Size Drift { get; init; }
 
+        public bool ApplyMove { get; init; } = true;
+
+        public Point? PostMovePosition { get; init; }
+
+        public PointerMoveResult? MoveOutcome { get; init; }
+
         public Point Position => _position + Drift;
 
-        public void MoveTo(Point point)
+        public PointerMoveResult MoveTo(Point point)
         {
-            _position = point;
+            if (PostMovePosition is Point overridden)
+            {
+                _position = overridden;
+            }
+            else if (ApplyMove)
+            {
+                _position = point;
+            }
             Calls.Add($"move {point.X},{point.Y}");
+            return MoveOutcome ?? new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 1920, 1080));
         }
 
         public void Wait(int milliseconds) => Calls.Add($"wait {milliseconds}");

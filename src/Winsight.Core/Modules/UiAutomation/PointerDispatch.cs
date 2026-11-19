@@ -14,17 +14,26 @@
 
 using System.Drawing;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using FlaUI.Core.Input;
 using Winsight.Core.Models;
 
 namespace Winsight.Core.Modules.UiAutomation;
+
+/// <summary>Diagnostics returned by a single synthetic pointer move via SendInput.</summary>
+internal readonly record struct PointerMoveResult(
+    uint SendInputCount,
+    int LastWin32Error,
+    int NormalizedX,
+    int NormalizedY,
+    VirtualDesktopBounds VirtualDesktop);
 
 /// <summary>The physical pointer operations a click is made of; replaced by a recorder in tests.</summary>
 internal interface IPointerDriver
 {
     Point Position { get; }
 
-    void MoveTo(Point point);
+    PointerMoveResult MoveTo(Point point);
 
     void Wait(int milliseconds);
 
@@ -38,13 +47,42 @@ internal interface IPointerDriver
     void Scroll(int notches, bool horizontal);
 }
 
-internal sealed class FlaUiPointerDriver : IPointerDriver
+internal sealed class NativePointerDriver : IPointerDriver
 {
-    public static readonly FlaUiPointerDriver Instance = new();
+    public static readonly NativePointerDriver Instance = new();
 
-    public Point Position => Mouse.Position;
+    private const uint InputMouse = 0;
+    private const uint MouseEventMove = 0x0001;
+    private const uint MouseEventVirtualDesk = 0x4000;
+    private const uint MouseEventAbsolute = 0x8000;
 
-    public void MoveTo(Point point) => Mouse.Position = point;
+    public Point Position =>
+        NativeMethods.GetCursorPos(out NativePoint pt) ? new Point(pt.X, pt.Y) : Mouse.Position;
+
+    public PointerMoveResult MoveTo(Point point)
+    {
+        VirtualDesktopBounds desktop = VirtualDesktopCoordinates.QueryCurrent();
+        NormalizedAbsolutePoint normalized = VirtualDesktopCoordinates.Normalize(point.X, point.Y, desktop);
+        NativeInput[] inputs =
+        {
+            new()
+            {
+                Type = InputMouse,
+                Data = new NativeInputUnion
+                {
+                    Mouse = new NativeMouseInput
+                    {
+                        Dx = normalized.Dx,
+                        Dy = normalized.Dy,
+                        Flags = MouseEventMove | MouseEventAbsolute | MouseEventVirtualDesk,
+                    },
+                },
+            },
+        };
+        uint sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
+        int lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+        return new PointerMoveResult(sent, lastError, normalized.Dx, normalized.Dy, desktop);
+    }
 
     public void Wait(int milliseconds) => Thread.Sleep(milliseconds);
 
@@ -63,6 +101,61 @@ internal sealed class FlaUiPointerDriver : IPointerDriver
             Mouse.Scroll(notches);
         }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput
+    {
+        public uint Type;
+        public NativeInputUnion Data;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct NativeInputUnion
+    {
+        [FieldOffset(0)]
+        public NativeMouseInput Mouse;
+
+        [FieldOffset(0)]
+        public NativeKeyboardInput Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeKeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    private static class NativeMethods
+    {
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint SendInput(uint nInputs, NativeInput[] pInputs, int cbSize);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetCursorPos(out NativePoint point);
+    }
 }
 
 /// <summary>
@@ -70,8 +163,9 @@ internal sealed class FlaUiPointerDriver : IPointerDriver
 /// press at the current position. Immediate-mode UIs (iced on winit) resolve
 /// hover from the last WM_MOUSEMOVE once per frame and act on that hover when
 /// the button goes down; a move and a press sent together act on the previous
-/// pointer position. The press is refused when the pointer is no longer where
-/// it was sent, because something else moved it during the settle.
+/// pointer position. The press is refused when the pointer did not reach the
+/// target: <c>move_not_applied</c> when it never left its starting position, or
+/// <c>cursor_moved</c> when something else moved it to another position.
 /// </summary>
 public static class PointerDispatch
 {
@@ -85,6 +179,8 @@ public static class PointerDispatch
     internal const int CursorTolerancePx = 1;
 
     internal const string CursorMovedCode = "cursor_moved";
+
+    internal const string MoveNotAppliedCode = "move_not_applied";
 
     /// <summary>Largest wheel turn one call sends, in notches.</summary>
     public const int MaxScrollNotches = 50;
@@ -126,10 +222,11 @@ public static class PointerDispatch
         bool horizontal,
         int? settleMs = null,
         Func<string?>? revalidate = null,
-        IPointerDriver? driver = null)
+        IPointerDriver? driver = null,
+        IntegrityComparison? integrity = null)
     {
-        IPointerDriver pointer = driver ?? FlaUiPointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate) is { } refusal)
+        IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
+        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
         {
             return refusal;
         }
@@ -147,17 +244,18 @@ public static class PointerDispatch
         int? holdMs = null,
         int? settleMs = null,
         Func<string?>? revalidate = null,
-        IPointerDriver? driver = null)
+        IPointerDriver? driver = null,
+        IntegrityComparison? integrity = null)
     {
-        IPointerDriver pointer = driver ?? FlaUiPointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate) is { } refusal)
+        IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
+        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
         {
             return refusal;
         }
         if (holdMs is > 0)
         {
             pointer.Wait(holdMs.Value);
-            return CheckPosition(pointer, point, holdMs.Value);
+            return CheckPosition(pointer, point, holdMs.Value, startPosition: null, moveResult: null, integrity: integrity);
         }
         return null;
     }
@@ -173,10 +271,11 @@ public static class PointerDispatch
         ClickStyle style,
         int? settleMs = null,
         Func<string?>? revalidate = null,
-        IPointerDriver? driver = null)
+        IPointerDriver? driver = null,
+        IntegrityComparison? integrity = null)
     {
-        IPointerDriver pointer = driver ?? FlaUiPointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate) is { } refusal)
+        IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
+        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
         {
             return refusal;
         }
@@ -196,30 +295,111 @@ public static class PointerDispatch
         return null;
     }
 
-    private static OperationResult? Settle(IPointerDriver pointer, Point point, int? settleMs, Func<string?>? revalidate)
+    private static OperationResult? Settle(
+        IPointerDriver pointer,
+        Point point,
+        int? settleMs,
+        Func<string?>? revalidate,
+        IntegrityComparison? integrity)
     {
         int settle = settleMs ?? DefaultSettleMs;
-        pointer.MoveTo(point);
+        Point startPosition = pointer.Position;
+        PointerMoveResult moveResult = pointer.MoveTo(point);
         pointer.Wait(settle);
-        if (CheckPosition(pointer, point, settle) is { } moved)
+        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity) is { } moved)
         {
             return moved;
         }
         return revalidate?.Invoke() is { } refusal ? OperationResult.Failure(refusal) : null;
     }
 
-    private static OperationResult? CheckPosition(IPointerDriver pointer, Point point, int waitedMs)
+    private static OperationResult? CheckPosition(
+        IPointerDriver pointer,
+        Point target,
+        int waitedMs,
+        Point? startPosition,
+        PointerMoveResult? moveResult,
+        IntegrityComparison? integrity)
     {
         Point actual = pointer.Position;
-        if (Math.Abs(actual.X - point.X) <= CursorTolerancePx && Math.Abs(actual.Y - point.Y) <= CursorTolerancePx)
+        if (IsNear(actual, target))
         {
             return null;
         }
-        return OperationResult.FailureWith(
-            string.Create(
+
+        if (startPosition is Point start && IsNear(actual, start))
+        {
+            IntegrityComparison? effectiveIntegrity = integrity;
+            string integrityDetail = effectiveIntegrity is not null
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"currentIntegrity={ProcessIntegrity.FormatIntegrity(effectiveIntegrity.Current)}, targetIntegrity={ProcessIntegrity.FormatIntegrity(effectiveIntegrity.Target)}, uipiBlocked={effectiveIntegrity.IsUipiBlocked}")
+                : "integrity=unknown";
+            string sendInputDetail = moveResult is PointerMoveResult move
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
+                : "SendInput=unknown";
+
+            string message = string.Create(
                 CultureInfo.InvariantCulture,
-                $"{CursorMovedCode}: the pointer is at ({actual.X}, {actual.Y}) instead of ({point.X}, {point.Y}) " +
-                $"after {waitedMs} ms; other input moved it. Check get_user_activity before retrying."),
-            new { expectedX = point.X, expectedY = point.Y, actualX = actual.X, actualY = actual.Y });
+                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {integrityDetail}). The synthetic move was not applied or was dropped by the OS.");
+
+            object data = new
+            {
+                code = MoveNotAppliedCode,
+                startX = start.X,
+                startY = start.Y,
+                expectedX = target.X,
+                expectedY = target.Y,
+                actualX = actual.X,
+                actualY = actual.Y,
+                sendInputCount = moveResult?.SendInputCount,
+                lastWin32Error = moveResult?.LastWin32Error,
+                normalizedX = moveResult?.NormalizedX,
+                normalizedY = moveResult?.NormalizedY,
+                virtualDesktop = moveResult is PointerMoveResult m
+                    ? new
+                    {
+                        left = m.VirtualDesktop.Left,
+                        top = m.VirtualDesktop.Top,
+                        width = m.VirtualDesktop.Width,
+                        height = m.VirtualDesktop.Height,
+                    }
+                    : null,
+                dpiAwareness = ProcessDpiAwareness.DescribeCurrent(),
+                integrity = effectiveIntegrity is not null
+                    ? new
+                    {
+                        current = effectiveIntegrity.Current.Name,
+                        currentRid = effectiveIntegrity.Current.Rid,
+                        target = effectiveIntegrity.Target.Name,
+                        targetRid = effectiveIntegrity.Target.Rid,
+                        uipiBlocked = effectiveIntegrity.IsUipiBlocked,
+                    }
+                    : null,
+            };
+            return OperationResult.FailureWith(message, data);
+        }
+
+        string movedMessage = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{CursorMovedCode}: the pointer is at ({actual.X}, {actual.Y}) instead of ({target.X}, {target.Y}) after {waitedMs} ms; other input moved it. Check get_user_activity before retrying.");
+
+        return OperationResult.FailureWith(
+            movedMessage,
+            new
+            {
+                code = CursorMovedCode,
+                startX = startPosition?.X,
+                startY = startPosition?.Y,
+                expectedX = target.X,
+                expectedY = target.Y,
+                actualX = actual.X,
+                actualY = actual.Y,
+            });
     }
+
+    private static bool IsNear(Point a, Point b) =>
+        Math.Abs(a.X - b.X) <= CursorTolerancePx && Math.Abs(a.Y - b.Y) <= CursorTolerancePx;
 }
