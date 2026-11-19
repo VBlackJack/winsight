@@ -387,7 +387,90 @@ public sealed class PointerDispatchTests
             .And.Contain(PointerMoveMethods.SendInputVirtualDesk)
             .And.Contain(PointerMoveMethods.SendInputPrimaryAbsolute)
             .And.Contain(PointerMoveMethods.SendInputRelative)
-            .And.Contain(PointerMoveMethods.SetCursorPos);
+            .And.Contain(PointerMoveMethods.SetCursorPos)
+            .And.Contain("attempts=[");
+    }
+
+    [Fact]
+    public void Real_dispatch_path_reads_moved_cursor_and_never_restores_on_success()
+    {
+        Point start = new(817, 1332);
+        Point target = new(1857, 44);
+        RecordingPointer pointer = new(start);
+
+        OperationResult? hoverRefusal = PointerDispatch.Hover(
+            target, out InputDispatchInfo? dispatch, holdMs: 0, settleMs: 150, driver: pointer);
+
+        hoverRefusal.Should().BeNull();
+        pointer.Position.Should().Be(target, "successful dispatch must leave the cursor at target and never restore");
+        pointer.Calls.Should().Equal("move 1857,44", "wait 150");
+        dispatch.Should().NotBeNull();
+        dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
+    }
+
+    [Fact]
+    public void Async_primary_move_that_applies_during_short_poll_does_not_trigger_fallback()
+    {
+        Point start = new(817, 1332);
+        Point target = new(1857, 44);
+        DelayedMovePointer pointer = new(start, applyOnWaitNumber: 2);
+
+        OperationResult? refusal = PointerDispatch.Hover(
+            target, out InputDispatchInfo? dispatch, holdMs: 0, settleMs: 150, driver: pointer);
+
+        refusal.Should().BeNull();
+        pointer.Position.Should().Be(target);
+        dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
+        pointer.Calls.Should().NotContain(call => call.StartsWith("fallback", StringComparison.Ordinal));
+    }
+
+    private sealed class DelayedMovePointer : IPointerDriver
+    {
+        private readonly int _applyOnWaitNumber;
+        private Point _position;
+        private Point? _pending;
+        private int _waitCount;
+
+        public DelayedMovePointer(Point initial, int applyOnWaitNumber)
+        {
+            _position = initial;
+            _applyOnWaitNumber = applyOnWaitNumber;
+        }
+
+        public List<string> Calls { get; } = new();
+
+        public Point Position => _position;
+
+        public PointerMoveResult MoveTo(Point point)
+        {
+            _pending = point;
+            Calls.Add($"move {point.X},{point.Y}");
+            return new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440));
+        }
+
+        public PointerMoveResult MoveToWithMethod(Point point, string method)
+        {
+            Calls.Add($"fallback {method} {point.X},{point.Y}");
+            return new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440), method);
+        }
+
+        public void Wait(int milliseconds)
+        {
+            Calls.Add($"wait {milliseconds}");
+            _waitCount++;
+            if (_pending is Point target && _waitCount >= _applyOnWaitNumber)
+            {
+                _position = target;
+                _pending = null;
+            }
+        }
+
+        public void Click(MouseButton button) => Calls.Add($"click {button}");
+
+        public void DoubleClick(MouseButton button) => Calls.Add($"double {button}");
+
+        public void Scroll(int notches, bool horizontal) =>
+            Calls.Add($"{(horizontal ? "hscroll" : "scroll")} {notches}");
     }
 
     private sealed class RecordingPointer : IPointerDriver

@@ -249,6 +249,17 @@ public static class PointerDispatch
         return null;
     }
 
+    /// <summary>Short poll window after an asynchronous SendInput move before triggering fallback.</summary>
+    private const int AsyncMovePollStepMs = 5;
+    private const int AsyncMovePollAttempts = 5;
+
+    private readonly record struct MoveAttemptTrace(
+        string Method,
+        uint ApiResult,
+        int LastWin32Error,
+        int AfterX,
+        int AfterY);
+
     private static OperationResult? Settle(
         IPointerDriver pointer,
         Point point,
@@ -283,18 +294,36 @@ public static class PointerDispatch
         int settle = settleMs ?? DefaultSettleMs;
         Point startPosition = pointer.Position;
         List<string> attemptedMethods = new() { PointerMoveMethods.SendInputVirtualDesk };
+        List<MoveAttemptTrace> attemptTraces = new();
         PointerMoveResult moveResult = pointer.MoveTo(point);
         string usedMethod = string.IsNullOrEmpty(moveResult.Method)
             ? PointerMoveMethods.SendInputVirtualDesk
             : moveResult.Method;
 
-        if (!IsNear(point, startPosition) && IsNear(pointer.Position, startPosition))
+        Point afterPrimary = WaitForCursorDeparture(pointer, startPosition, point);
+        attemptTraces.Add(new MoveAttemptTrace(
+            usedMethod,
+            moveResult.SendInputCount,
+            moveResult.LastWin32Error,
+            afterPrimary.X,
+            afterPrimary.Y));
+
+        if (!IsNear(point, startPosition) && IsNear(afterPrimary, startPosition))
         {
             foreach (string fallbackMethod in PointerMoveMethods.FallbackOrder)
             {
                 attemptedMethods.Add(fallbackMethod);
                 PointerMoveResult fallbackResult = pointer.MoveToWithMethod(point, fallbackMethod);
-                if (!IsNear(pointer.Position, startPosition))
+                Point afterFallback = fallbackMethod == PointerMoveMethods.SetCursorPos
+                    ? pointer.Position
+                    : WaitForCursorDeparture(pointer, startPosition, point);
+                attemptTraces.Add(new MoveAttemptTrace(
+                    fallbackMethod,
+                    fallbackResult.SendInputCount,
+                    fallbackResult.LastWin32Error,
+                    afterFallback.X,
+                    afterFallback.Y));
+                if (!IsNear(afterFallback, startPosition))
                 {
                     moveResult = fallbackResult;
                     usedMethod = fallbackMethod;
@@ -305,11 +334,35 @@ public static class PointerDispatch
 
         dispatch = InputContext.ToDispatchInfo(inputContext, desktopSwitch, usedMethod);
         pointer.Wait(settle);
-        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch, attemptedMethods) is { } moved)
+        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch, attemptedMethods, attemptTraces) is { } moved)
         {
             return moved;
         }
         return revalidate?.Invoke() is { } refusal ? OperationResult.Failure(refusal) : null;
+    }
+
+    /// <summary>
+    /// SendInput is processed asynchronously by Windows's Raw Input Thread;
+    /// poll briefly before concluding the move was not applied and triggering
+    /// fallback methods. When the cursor moves immediately, zero waits occur.
+    /// </summary>
+    private static Point WaitForCursorDeparture(IPointerDriver pointer, Point startPosition, Point target)
+    {
+        Point current = pointer.Position;
+        if (IsNear(target, startPosition) || !IsNear(current, startPosition))
+        {
+            return current;
+        }
+        for (int i = 0; i < AsyncMovePollAttempts; i++)
+        {
+            pointer.Wait(AsyncMovePollStepMs);
+            current = pointer.Position;
+            if (!IsNear(current, startPosition))
+            {
+                return current;
+            }
+        }
+        return current;
     }
 
     private static OperationResult? CheckPosition(
@@ -321,7 +374,8 @@ public static class PointerDispatch
         IntegrityComparison? integrity,
         InputContextSnapshot? inputContext = null,
         DesktopSwitchAttempt? desktopSwitch = null,
-        IReadOnlyList<string>? attemptedMethods = null)
+        IReadOnlyList<string>? attemptedMethods = null,
+        IReadOnlyList<MoveAttemptTrace>? attemptTraces = null)
     {
         Point actual = pointer.Position;
         if (IsNear(actual, target))
@@ -343,9 +397,11 @@ public static class PointerDispatch
                     CultureInfo.InvariantCulture,
                     $"method={move.Method}, SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
                 : "SendInput=unknown";
-            string methodsDetail = attemptedMethods is { Count: > 0 }
-                ? $"attemptedMethods=[{string.Join(",", attemptedMethods)}]"
-                : "attemptedMethods=[]";
+            string methodsDetail = attemptTraces is { Count: > 0 }
+                ? $"attempts=[{string.Join("; ", attemptTraces.Select(t => $"{t.Method}:res={t.ApiResult},err={t.LastWin32Error},pos=({t.AfterX},{t.AfterY})"))}]"
+                : attemptedMethods is { Count: > 0 }
+                    ? $"attemptedMethods=[{string.Join(",", attemptedMethods)}]"
+                    : "attemptedMethods=[]";
             string contextDetail = InputContext.FormatSummary(effectiveContext, desktopSwitch);
 
             string message = string.Create(
@@ -363,6 +419,7 @@ public static class PointerDispatch
                 actualY = actual.Y,
                 moveMethod = moveResult?.Method,
                 attemptedMethods,
+                attemptTraces,
                 sendInputCount = moveResult?.SendInputCount,
                 lastWin32Error = moveResult?.LastWin32Error,
                 normalizedX = moveResult?.NormalizedX,
