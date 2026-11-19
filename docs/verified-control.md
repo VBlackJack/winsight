@@ -155,18 +155,28 @@ only to the completed run; it does not guarantee all future runs.
 ## Autonomous loop extensions
 
 - **Token-budget & hybrid perception (`observe_scene`)**: pass `actionableOnly=true`
-  or `filterText` to trim large UIA trees. When UIA yields few actionable nodes,
-  `surfaceHint` reports either a listening WebView2 CDP port or a custom-drawn
-  surface hint. Pass `includeOcr=true` to synthesize clickable `tN` OCR targets
-  directly usable by `act_verified`.
+  or `filterText` to trim large UIA trees. Filters are applied before the
+  `maxResults` cap, and `truncated` is `true` only when matching results were
+  actually cut by `maxResults` or UIA traversal hit its node limit. When UIA
+  yields few actionable nodes, `surfaceHint` reports either a listening WebView2
+  CDP port or a custom-drawn surface hint. Pass `includeOcr=true` to synthesize
+  clickable `tN` OCR targets directly usable by `act_verified`.
 - **Inline Set-of-Mark (`capture_scene`)**: `windowHandle` is optional (defaults
   to the foreground/primary window) and `includeImage=true` (default) returns the
   annotated PNG inline as an MCP image.
 - **One-trip `act_verified` & exploratory predicates**: set `observeAfter=true`
-  to return `nextObservation` and structural `diff` on `verified`. Alongside strict
-  predicates, exploratory predicates `value_contains`, `name_contains`,
-  `any_change` and `visual_change` support autonomous exploration. Repeated
-  failures emit a structured `hint` with a `loopWarning` pivot suggestion.
+  to return `nextObservation` and structural `diff` on `verified`, reusing the
+  source observation's filters (`windowTitle`, `maxResults`, `actionableOnly`,
+  `filterText`, `includeOcr`). Alongside strict predicates, exploratory
+  predicates `value_contains`, `name_contains`, `any_change` (which also reuses
+  the source observation's filters) and `visual_change` support autonomous
+  exploration. For `activate` on a `MenuItem`, `any_change` requires menu
+  evidence (new window/popup, new `Menu`/`MenuItem` elements, or `Expanded`
+  state); if none appears before timeout, `act_verified` returns
+  `dispatched_unconfirmed` with a `click_point` hint centered on the element's
+  bounds (handling Win32 custom menubars such as `wui.unibar` that ignore UIA
+  `Invoke`). Repeated failures emit a structured `hint` with a `loopWarning`
+  pivot suggestion.
 - **Verified multi-step batch (`run_verified_steps`)**: runs 1..20 semantic steps
   in a single call with fresh `observe_scene` + `act_verified` per step, stops on
   the first unverified step with a fresh `recovery` observation, and reports MCP

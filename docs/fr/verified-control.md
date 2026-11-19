@@ -180,18 +180,29 @@ ne garantit pas toutes les exécutions futures.
 ## Extensions de la boucle autonome
 
 - **Perception hybride et budget tokens (`observe_scene`)** : passer
-  `actionableOnly=true` ou `filterText` pour réduire les grands arbres UIA. Quand
-  UIA expose peu d'éléments actionnables, `surfaceHint` signale un port CDP
-  WebView2 à l'écoute ou une surface dessinée manuellement. Passer
-  `includeOcr=true` pour synthétiser des cibles OCR cliquables `tN` utilisables
-  directement par `act_verified`.
+  `actionableOnly=true` ou `filterText` pour réduire les grands arbres UIA. Les
+  filtres sont appliqués avant le plafond `maxResults`, et `truncated` vaut
+  `true` uniquement si les résultats correspondants ont été coupés par
+  `maxResults` ou si le parcours UIA a atteint sa limite de noeuds. Quand UIA
+  expose peu d'éléments actionnables, `surfaceHint` signale un port CDP WebView2
+  à l'écoute ou une surface dessinée manuellement. Passer `includeOcr=true` pour
+  synthétiser des cibles OCR cliquables `tN` utilisables directement par
+  `act_verified`.
 - **Set-of-Mark inline (`capture_scene`)** : `windowHandle` est optionnel (fenêtre
   au premier plan ou principale par défaut) et `includeImage=true` (par défaut)
   renvoie le PNG annoté inline en tant qu'image MCP.
 - **`act_verified` en un aller-retour et prédicats exploratoires** : définir
   `observeAfter=true` pour obtenir `nextObservation` et le `diff` structurel dès
-  `verified`. En plus des prédicats stricts, `value_contains`, `name_contains`,
-  `any_change` et `visual_change` facilitent l'exploration autonome. Les échecs
+  `verified`, en réutilisant les filtres de l'observation source (`windowTitle`,
+  `maxResults`, `actionableOnly`, `filterText`, `includeOcr`). En plus des
+  prédicats stricts, `value_contains`, `name_contains`, `any_change` (qui
+  réutilise aussi les filtres source) et `visual_change` facilitent
+  l'exploration autonome. Pour `activate` sur un `MenuItem`, `any_change` exige
+  une preuve d'ouverture de menu (nouvelle fenêtre/popup, nouveaux éléments
+  `Menu`/`MenuItem` ou état `Expanded`) ; sans preuve avant expiration,
+  `act_verified` renvoie `dispatched_unconfirmed` avec un indice `click_point`
+  centré sur les bornes de l'élément (utile sur les barres de menus Win32
+  personnalisées comme `wui.unibar` qui ignorent UIA `Invoke`). Les échecs
   répétés incluent un `hint` structuré avec `loopWarning` et suggestion de pivot.
 - **Lot vérifié multi-étapes (`run_verified_steps`)** : exécute 1..20 étapes
   sémantiques en un seul appel avec `observe_scene` + `act_verified` à chaque
