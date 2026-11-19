@@ -104,6 +104,28 @@ public sealed partial class ApplicationProfiles
         }
     }
 
+    /// <summary>Best-effort discovery of saved profiles matching the running executable bytes and version.</summary>
+    public IReadOnlyList<string> FindMatchingNames(int pid)
+    {
+        IReadOnlyList<ApplicationProfileSummary> saved = List();
+        if (saved.Count == 0) return [];
+        try
+        {
+            (string path, string version, string hash) = Fingerprint(pid);
+            return saved
+                .Where(p =>
+                    string.Equals(p.Executable, path, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(p.Version, version, StringComparison.Ordinal) &&
+                    string.Equals(p.Sha256, hash, StringComparison.Ordinal))
+                .Select(p => p.Name)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        {
+            return [];
+        }
+    }
+
     private string Resolve(string name)
     {
         if (name is null || !ProfileName().IsMatch(name)) throw new ArgumentException("Profile name must use 1..64 ASCII letters, digits, underscores or hyphens.");

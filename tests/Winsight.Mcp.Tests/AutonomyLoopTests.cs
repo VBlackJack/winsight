@@ -165,4 +165,60 @@ public sealed class AutonomyLoopTests
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
         target.ProcessId.Should().BeNull();
     }
+
+    [Fact]
+    public void Session_memory_detects_repeated_failure_loops_and_resets_on_different_code()
+    {
+        SessionMemory memory = new();
+        memory.RecordFailure("act_verified", "stale", "stale 1", "observe_scene").Should().BeNull();
+        LoopWarning? second = memory.RecordFailure("act_verified", "stale", "stale 2", "observe_scene");
+        second.Should().NotBeNull();
+        second!.ConsecutiveFailures.Should().Be(2);
+        second.PivotSuggestion.Should().Contain("capture_scene");
+
+        // A different code resets the consecutive streak.
+        memory.RecordFailure("act_verified", "user_active", "busy", "wait_for_user_idle").Should().BeNull();
+    }
+
+    [Fact]
+    public void Enrich_capture_filters_actionable_elements_text_and_emits_sparse_surface_hint()
+    {
+        using Process self = Process.GetCurrentProcess();
+        WindowDescriptor win = new(self.Id, 42, "CustomApp", self.ProcessName, true, 0, 0, 800, 600);
+        WindowIdentity winId = new(self.Id, 42, new WindowBounds(0, 0, 800, 600));
+        SceneElement label = new("e1", "uia", "Text", "Static Label", null, true, true, false, null, new WindowBounds(0, 0, 100, 20), [], winId, new ElementLocator(AutomationId: "Lbl"), "1");
+        SceneElement button = new("e2", "uia", "Button", "Save Project", null, true, true, false, null, new WindowBounds(0, 30, 100, 30), ["activate"], winId, new ElementLocator(AutomationId: "SaveBtn"), "2");
+
+        SceneCapture raw = new([win], [label, button], false, "uia");
+        SceneCapture enriched = VerifiedSceneTool.EnrichCapture(
+            SceneServices.Default, self.Id, null, raw, actionableOnly: true, filterText: "save");
+
+        enriched.Elements.Should().ContainSingle(e => e.Ref == "e2");
+        enriched.SurfaceHint.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void Application_profiles_auto_matches_running_executable_fingerprint()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"winsight-match-{Guid.NewGuid():N}");
+        try
+        {
+            ApplicationProfiles profiles = new(tempDir);
+            using Process self = Process.GetCurrentProcess();
+            (string path, string version, string hash) = ApplicationProfiles.Fingerprint(self.Id);
+            ProfileStep step = new(
+                new ElementLocator(AutomationId: "Ok"),
+                "activate",
+                new SceneExpectation("exists", Locator: new ElementLocator(AutomationId: "Ok")));
+            profiles.Save(new ApplicationProfile("self-match", path, version, hash, [step]));
+            profiles.Save(new ApplicationProfile("other-app", @"C:\other.exe", "9.9.9", "DEAD", [step]));
+
+            IReadOnlyList<string> matches = profiles.FindMatchingNames(self.Id);
+            matches.Should().ContainSingle().Which.Should().Be("self-match");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

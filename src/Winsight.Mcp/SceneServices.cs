@@ -14,6 +14,7 @@
 
 using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.ManagedState;
+using Winsight.Core.Modules.Ocr;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.VisualRegression;
 using Winsight.Core.Modules.WebView2;
@@ -21,7 +22,7 @@ using Winsight.Core.Modules.WebView2;
 namespace Winsight.Mcp;
 
 /// <summary>
-/// Aggregates DI-managed Core services used by the verified scene tools so they
+/// Aggregates DI-managed Core and session services used by the verified scene tools so they
 /// share the host's singleton instances instead of instantiating services per call.
 /// </summary>
 public sealed class SceneServices
@@ -36,7 +37,10 @@ public sealed class SceneServices
         WebView2Detector webView2,
         WindowCapture capture,
         ActionInvoker invoker,
-        VisualDiffer visualDiffer)
+        VisualDiffer visualDiffer,
+        VisualTextReader ocr,
+        ApplicationProfiles profiles,
+        SessionMemory memory)
     {
         Driver = driver;
         Windows = windows;
@@ -46,6 +50,9 @@ public sealed class SceneServices
         Capture = capture;
         Invoker = invoker;
         VisualDiffer = visualDiffer;
+        Ocr = ocr;
+        Profiles = profiles;
+        Memory = memory;
     }
 
     public UiaSceneDriver Driver { get; }
@@ -56,18 +63,25 @@ public sealed class SceneServices
     public WindowCapture Capture { get; }
     public ActionInvoker Invoker { get; }
     public VisualDiffer VisualDiffer { get; }
+    public VisualTextReader Ocr { get; }
+    public ApplicationProfiles Profiles { get; }
+    public SessionMemory Memory { get; }
 
     private static SceneServices CreateDefault()
     {
         WindowDiscovery windows = new();
+        WindowCapture capture = new();
         return new SceneServices(
             new UiaSceneDriver(windows),
             windows,
             new ManagedStateReader(),
             new ElementStateReader(),
             new WebView2Detector(),
-            new WindowCapture(),
+            capture,
             new ActionInvoker(),
-            new VisualDiffer());
+            new VisualDiffer(),
+            new VisualTextReader(capture),
+            new ApplicationProfiles(),
+            new SessionMemory());
     }
 }

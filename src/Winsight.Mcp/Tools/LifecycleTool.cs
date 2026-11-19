@@ -34,6 +34,7 @@ public static class LifecycleTool
     public static string LaunchApp(
         AppLauncher launcher,
         SessionTarget target,
+        ApplicationProfiles profiles,
         [Description("Absolute path to the executable to launch.")]
         string path,
         [Description("Optional command-line arguments passed to the process.")]
@@ -60,9 +61,18 @@ public static class LifecycleTool
             }
             OperationResult result = launcher.Launch(
                 path, arguments, workingDirectory, waitForWindowTitle, timeoutMs);
-            if (setAsTarget && result.Success && result.Data is LaunchResult launched)
+            if (result.Success && result.Data is LaunchResult launched)
             {
-                target.TrySet(launched.ProcessId, out _);
+                if (setAsTarget)
+                {
+                    target.TrySet(launched.ProcessId, out _);
+                }
+
+                IReadOnlyList<string> matchingProfiles = profiles.FindMatchingNames(launched.ProcessId);
+                if (matchingProfiles.Count > 0)
+                {
+                    result = OperationResult.OkWith(launched with { MatchingProfiles = matchingProfiles });
+                }
             }
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
