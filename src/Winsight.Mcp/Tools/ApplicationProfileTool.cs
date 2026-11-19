@@ -81,9 +81,28 @@ public static class ApplicationProfileTool
             return VerifiedSceneTool.Serialize(new { status = "verified", verified = true, completed = results.Count, results });
         });
 
+    [McpServerTool(Name = "list_app_profiles", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("List saved version-pinned application profiles (name, executable, version, SHA256, step count) so an agent can discover and reuse verified workflows across sessions.")]
+    public static string List(ApplicationProfiles profiles) => ToolSafety.SafeInvoke(() =>
+        VerifiedSceneTool.Serialize(OperationResult.OkWith(profiles.List())));
+
+    [McpServerTool(Name = "delete_app_profile", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Delete a saved application profile by name. Returns deleted=true when a file was removed or deleted=false if it did not exist.")]
+    public static string Delete(ApplicationProfiles profiles, string name) => ToolSafety.SafeInvoke(() =>
+    {
+        if (ToolAccessPolicy.GuardMutation("delete_app_profile", new { name }) is { } gated)
+        {
+            return VerifiedSceneTool.Serialize(gated);
+        }
+
+        bool deleted = profiles.Delete(name);
+        return VerifiedSceneTool.Serialize(OperationResult.OkWith(new { name, deleted }));
+    });
+
     private static string? ValidateStep(ProfileStep step)
     {
         if (step is null || step.Target is null || step.Expect is null) return "Step target and expectation are required.";
+        if (step.Expect.Kind is "any_change" or "visual_change") return "Saved profiles require a strict deterministic expectation (any_change and visual_change are exploratory only).";
         if (step.Target.Index is not null || step.Target.ClassName is not null || step.Target.NameContains is not null || step.Target.DescendantText is not null ||
             (string.IsNullOrEmpty(step.Target.AutomationId) && string.IsNullOrEmpty(step.Target.Name))) return "Profile target requires an exact AutomationId or Name; only ControlType may supplement it.";
         if (step.Action is not ("activate" or "set_value" or "select" or "select_item" or "expand" or "collapse" or "scroll_into_view" or "focus" or "right_click" or "double_click")) return "Unsupported profile action.";

@@ -40,12 +40,13 @@ public sealed record SceneAction(
     string Observation, string Target, string Action, SceneExpectation Expect,
     string? Text = null, string? ItemName = null, string? Destination = null,
     string[]? Targets = null, int TimeoutMs = 3000, bool DryRun = false,
-    bool Recover = true);
+    bool Recover = true, bool ObserveAfter = false);
 
 /// <summary>Dispatched is distinct from Verified, including on exceptions or cancellation.</summary>
 public sealed record VerifiedActionResult(
     string Status, bool Dispatched, bool Verified, string Message,
-    string? Observation = null, object? Evidence = null, object? Recovery = null);
+    string? Observation = null, object? Evidence = null, object? Recovery = null,
+    object? NextObservation = null, object? Diff = null);
 
 public sealed record SceneCapture(
     IReadOnlyList<WindowDescriptor> Windows, IReadOnlyList<SceneElement> Elements,

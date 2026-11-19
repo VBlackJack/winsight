@@ -26,12 +26,14 @@ public static class LifecycleTool
 {
     [McpServerTool(Name = "launch_app", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Start an application and wait until its window is actually present before returning, " +
-                 "so you never race a still-initializing UI. Returns an OperationResult whose data " +
-                 "carries the new processId and a classified window descriptor (kind, bounds, etc.) " +
-                 "ready to drive, with no follow-up list_windows/poll needed. Fails if the process exits " +
-                 "during startup or no window appears within the timeout.")]
+                 "so you never race a still-initializing UI. Automatically binds the launched process as the " +
+                 "session target unless setAsTarget=false, so follow-up tools need no set_target call. " +
+                 "Returns an OperationResult whose data carries the new processId and a classified window " +
+                 "descriptor (kind, bounds, etc.) ready to drive, with no follow-up list_windows/poll needed. " +
+                 "Fails if the process exits during startup or no window appears within the timeout.")]
     public static string LaunchApp(
         AppLauncher launcher,
+        SessionTarget target,
         [Description("Absolute path to the executable to launch.")]
         string path,
         [Description("Optional command-line arguments passed to the process.")]
@@ -42,7 +44,9 @@ public static class LifecycleTool
                      "When omitted, the launcher waits for the process's main window.")]
         string? waitForWindowTitle = null,
         [Description("Max milliseconds to wait for the window. Default 15000; max 120000.")]
-        int timeoutMs = AppLauncher.DefaultLaunchTimeoutMs)
+        int timeoutMs = AppLauncher.DefaultLaunchTimeoutMs,
+        [Description("Automatically set the launched processId as the session default target (default true).")]
+        bool setAsTarget = true)
     {
         return ToolSafety.SafeInvoke(() =>
         {
@@ -56,6 +60,10 @@ public static class LifecycleTool
             }
             OperationResult result = launcher.Launch(
                 path, arguments, workingDirectory, waitForWindowTitle, timeoutMs);
+            if (setAsTarget && result.Success && result.Data is LaunchResult launched)
+            {
+                target.TrySet(launched.ProcessId, out _);
+            }
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }
@@ -84,6 +92,10 @@ public static class LifecycleTool
                 return JsonSerializer.Serialize(gated, JsonOptions.Default);
             }
             OperationResult result = launcher.Close(pid, force);
+            if (result.Success && target.ProcessId == pid)
+            {
+                target.Clear();
+            }
             return JsonSerializer.Serialize(result, JsonOptions.Default);
         });
     }

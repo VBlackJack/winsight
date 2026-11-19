@@ -24,6 +24,7 @@ public sealed record ProfileStep(ElementLocator Target, string Action, SceneExpe
     string? TextParameter = null, string? ItemName = null, string? WindowTitle = null);
 public sealed record ApplicationProfile(string Name, string Executable, string Version, string Sha256,
     IReadOnlyList<ProfileStep> Steps, int SchemaVersion = 1);
+public sealed record ApplicationProfileSummary(string Name, string Executable, string Version, string Sha256, int StepCount);
 
 /// <summary>Explicit recipes, pinned to executable bytes. Runtime text is never persisted.</summary>
 public sealed partial class ApplicationProfiles
@@ -67,6 +68,40 @@ public sealed partial class ApplicationProfiles
         ApplicationProfile profile = JsonSerializer.Deserialize<ApplicationProfile>(stream, Options) ?? throw new InvalidDataException("Empty profile.");
         if (profile.Name != name || profile.SchemaVersion != 1 || profile.Steps is null || profile.Steps.Count is < 1 or > 20) throw new InvalidDataException("Invalid profile schema.");
         return profile;
+    }
+
+    public IReadOnlyList<ApplicationProfileSummary> List()
+    {
+        lock (_gate)
+        {
+            if (!Directory.Exists(_directory)) return [];
+            List<ApplicationProfileSummary> items = new();
+            foreach (string file in Directory.EnumerateFiles(_directory, "*.json").OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                string name = Path.GetFileNameWithoutExtension(file);
+                try
+                {
+                    ApplicationProfile profile = Load(name);
+                    items.Add(new ApplicationProfileSummary(profile.Name, profile.Executable, profile.Version, profile.Sha256, profile.Steps.Count));
+                }
+                catch (Exception ex) when (ex is IOException or JsonException or InvalidDataException or ArgumentException)
+                {
+                    // Skip unreadable/corrupt entries rather than breaking listing.
+                }
+            }
+            return items;
+        }
+    }
+
+    public bool Delete(string name)
+    {
+        string path = Resolve(name);
+        lock (_gate)
+        {
+            if (!File.Exists(path)) return false;
+            File.Delete(path);
+            return true;
+        }
     }
 
     private string Resolve(string name)

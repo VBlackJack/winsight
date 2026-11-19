@@ -17,9 +17,11 @@ using System.Diagnostics;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
+using Winsight.Core.Modules.Capture;
 using Winsight.Core.Modules.ManagedState;
 using Winsight.Core.Modules.UiAutomation;
 using Winsight.Core.Modules.UserActivity;
+using Winsight.Core.Modules.VisualRegression;
 using Winsight.Mcp.Serialization;
 
 namespace Winsight.Mcp.Tools;
@@ -47,7 +49,7 @@ public static class VerifiedSceneTool
     }
 
     [McpServerTool(Name = "act_verified", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Act once on an observe_scene reference and verify an explicit postcondition. Required expect.kind: exists, absent, value, name, selected, toggle, focused, visible, selected_item, window_open, window_closed, managed. Element conditions require an exact locator; window conditions require windowTitle; managed requires typeName/fieldName. Expected is an exact string (booleans lowercase). Timeout 1..10000ms. Status verified means the predicate was observed; dispatched_unconfirmed must NEVER trigger a blind retry. Stale returns a fresh observation without acting. Actions: activate,set_value,select,select_many,select_item,expand,collapse,scroll_into_view,scroll (text up/down),focus,key_chord,right_click,double_click,drag_to. Dry run does not dispatch or consume references.")]
+    [Description("Act once on an observe_scene reference and verify an explicit postcondition. Required expect.kind: strict (exists, absent, value, name, selected, toggle, focused, visible, selected_item, window_open, window_closed, managed) or exploratory (value_contains, name_contains, any_change, visual_change). Element conditions require an exact locator; window conditions require windowTitle; managed requires typeName/fieldName; any_change/visual_change require no locator. Expected is an exact or substring match (booleans lowercase). Timeout 1..10000ms. Set observeAfter=true to receive nextObservation and structural diff in the same call on verified. Status verified means the predicate was observed; dispatched_unconfirmed must NEVER trigger a blind retry. Stale returns a fresh observation without acting. Actions: activate,set_value,select,select_many,select_item,expand,collapse,scroll_into_view,scroll (text up/down),focus,key_chord,right_click,double_click,drag_to. Dry run does not dispatch or consume references.")]
     public static Task<string> Act(SceneStore store, SceneAction request, CancellationToken cancellationToken = default)
         => ToolSafety.SafeInvokeAsync(() => Execute(store, request, cancellationToken));
 
@@ -78,6 +80,11 @@ public static class VerifiedSceneTool
             if (request.DryRun || ToolAccessPolicy.IsDryRunEnabled) return Result("preview", false, false, "Validated request; no input dispatched. Live state is revalidated on execution.");
             if (UserActivityPolicy.CheckYield() is { } userActive) return Result("blocked", false, false, userActive);
             cancellationToken.ThrowIfCancellationRequested();
+
+            using CapturedFrame? beforeVisual = request.Expect.Kind == "visual_change" && node.Source != "dom"
+                ? store.Services.Capture.CaptureFrame(entry.ProcessId, request.Expect.WindowTitle ?? entry.Title)
+                : null;
+
             void BeforeDispatch()
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -103,9 +110,22 @@ public static class VerifiedSceneTool
                 if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != entry.ProcessStart) break;
                 (bool passed, object? observed) = node.Source == "dom"
                     ? await DomSceneTool.Check(entry, request.Expect, cancellationToken).ConfigureAwait(false)
-                    : Check(store.Services, entry.ProcessId, request.Expect);
+                    : Check(store.Services, entry, request.Expect, beforeVisual);
                 evidence = observed;
-                if (passed) return Serialize(new VerifiedActionResult("verified", true, true, "Expected state observed after dispatch.", entry.Id, evidence));
+                if (passed)
+                {
+                    object? nextObservation = null;
+                    object? diff = null;
+                    if (request.ObserveAfter && node.Source != "dom" && !process.HasExited)
+                    {
+                        SceneStore.Entry fresh = Capture(store, entry.ProcessId, entry.Title);
+                        nextObservation = fresh;
+                        diff = ComputeDiff(entry.Capture, fresh.Capture);
+                    }
+                    return Serialize(new VerifiedActionResult(
+                        "verified", true, true, "Expected state observed after dispatch.",
+                        entry.Id, evidence, NextObservation: nextObservation, Diff: diff));
+                }
                 await Task.Delay(Math.Min(100, request.TimeoutMs), cancellationToken).ConfigureAwait(false);
             } while (timer.ElapsedMilliseconds < request.TimeoutMs);
             return Serialize(new VerifiedActionResult("dispatched_unconfirmed", true, false,
@@ -139,7 +159,8 @@ public static class VerifiedSceneTool
         }
         if (expect.Kind is "window_open" or "window_closed") return string.IsNullOrWhiteSpace(expect.WindowTitle) ? "Window condition requires windowTitle." : null;
         if (expect.Kind == "managed") return string.IsNullOrWhiteSpace(expect.TypeName) || string.IsNullOrWhiteSpace(expect.FieldName) || expect.Expected is null ? "Managed condition requires typeName, fieldName and expected." : null;
-        if (expect.Kind is not ("exists" or "absent" or "value" or "name" or "selected" or "toggle" or "focused" or "visible" or "selected_item")) return "Unknown expectation kind.";
+        if (expect.Kind is "any_change" or "visual_change") return null;
+        if (expect.Kind is not ("exists" or "absent" or "value" or "name" or "value_contains" or "name_contains" or "selected" or "toggle" or "focused" or "visible" or "selected_item")) return "Unknown expectation kind.";
         if (expect.Locator is null || (string.IsNullOrEmpty(expect.Locator.AutomationId) && string.IsNullOrEmpty(expect.Locator.Name))) return "Exact AutomationId or Name locator is required.";
         if (expect.Locator.Index is not null || expect.Locator.NameContains is not null || expect.Locator.DescendantText is not null || expect.Locator.ClassName is not null) return "Verified conditions support only exact AutomationId, Name and ControlType.";
         if (expect.Kind is not ("exists" or "absent") && expect.Expected is null) return "Expectation requires expected.";
@@ -147,8 +168,22 @@ public static class VerifiedSceneTool
         return null;
     }
 
-    internal static (bool Passed, object? Evidence) Check(SceneServices services, int pid, SceneExpectation expect)
+    internal static (bool Passed, object? Evidence) Check(SceneServices services, SceneStore.Entry entry, SceneExpectation expect, CapturedFrame? beforeVisual = null)
     {
+        int pid = entry.ProcessId;
+        if (expect.Kind == "any_change")
+        {
+            SceneCapture current = services.Driver.Capture(pid, expect.WindowTitle ?? entry.Title, 200);
+            SceneDiff diff = ComputeDiff(entry.Capture, current);
+            return (diff.HasChanges, diff);
+        }
+        if (expect.Kind == "visual_change")
+        {
+            if (beforeVisual is null) return (false, "No baseline visual frame captured.");
+            using CapturedFrame afterVisual = services.Capture.CaptureFrame(pid, expect.WindowTitle ?? entry.Title);
+            VisualDiffResult result = services.VisualDiffer.Compare(beforeVisual.Bitmap, afterVisual.Bitmap, VisualDiffOptions.FromEnvironment());
+            return (!result.Passed, new { result.Ssim, result.LocalSsimMin, result.PixelDiffRatio, result.Reasoning });
+        }
         if (expect.Kind is "window_open" or "window_closed")
         {
             IReadOnlyList<WindowDescriptor> windows = services.Windows.List(pid);
@@ -170,6 +205,14 @@ public static class VerifiedSceneTool
         }
         OperationResult read = services.ElementState.Read(pid, expect.Locator!, expect.WindowTitle);
         if (!read.Success || read.Data is not ElementState state) return (false, read);
+        if (expect.Kind == "value_contains")
+        {
+            return (state.Value?.Contains(expect.Expected!, StringComparison.Ordinal) == true, state);
+        }
+        if (expect.Kind == "name_contains")
+        {
+            return (state.Name.Contains(expect.Expected!, StringComparison.Ordinal), state);
+        }
         string? value = expect.Kind switch
         {
             "exists" => "true",
@@ -183,6 +226,58 @@ public static class VerifiedSceneTool
             _ => null,
         };
         return (expect.Kind == "exists" || value == expect.Expected, state);
+    }
+
+    internal static SceneDiff ComputeDiff(SceneCapture before, SceneCapture after)
+    {
+        HashSet<long> beforeHandles = before.Windows.Select(w => w.WindowHandle).ToHashSet();
+        HashSet<long> afterHandles = after.Windows.Select(w => w.WindowHandle).ToHashSet();
+        string[] windowsAdded = after.Windows.Where(w => !beforeHandles.Contains(w.WindowHandle)).Select(w => w.Title).ToArray();
+        string[] windowsRemoved = before.Windows.Where(w => !afterHandles.Contains(w.WindowHandle)).Select(w => w.Title).ToArray();
+
+        static string KeyFor(SceneElement e) =>
+            !string.IsNullOrEmpty(e.Identity) ? e.Identity : $"{e.Window.Handle}:{e.Role}:{e.Locator.AutomationId ?? e.Name}";
+
+        Dictionary<string, SceneElement> beforeByKey = new(StringComparer.Ordinal);
+        foreach (SceneElement e in before.Elements) beforeByKey.TryAdd(KeyFor(e), e);
+
+        Dictionary<string, SceneElement> afterByKey = new(StringComparer.Ordinal);
+        foreach (SceneElement e in after.Elements) afterByKey.TryAdd(KeyFor(e), e);
+
+        List<string> added = new();
+        List<string> changed = new();
+        foreach ((string key, SceneElement current) in afterByKey)
+        {
+            if (!beforeByKey.TryGetValue(key, out SceneElement? prior))
+            {
+                added.Add($"{current.Ref}:{current.Role} \"{current.Name}\"");
+            }
+            else if (prior.Name != current.Name || prior.Value != current.Value ||
+                     prior.Enabled != current.Enabled || prior.Visible != current.Visible ||
+                     prior.Selected != current.Selected || prior.ToggleState != current.ToggleState)
+            {
+                changed.Add($"{current.Ref}:{current.Role} \"{current.Name}\"");
+            }
+        }
+
+        List<string> removed = beforeByKey
+            .Where(pair => !afterByKey.ContainsKey(pair.Key))
+            .Select(pair => $"{pair.Value.Role} \"{pair.Value.Name}\"")
+            .ToList();
+
+        return new SceneDiff(windowsAdded, windowsRemoved, added, removed, changed);
+    }
+
+    internal sealed record SceneDiff(
+        IReadOnlyList<string> WindowsAdded,
+        IReadOnlyList<string> WindowsRemoved,
+        IReadOnlyList<string> ElementsAdded,
+        IReadOnlyList<string> ElementsRemoved,
+        IReadOnlyList<string> ElementsChanged)
+    {
+        public bool HasChanges =>
+            WindowsAdded.Count > 0 || WindowsRemoved.Count > 0 ||
+            ElementsAdded.Count > 0 || ElementsRemoved.Count > 0 || ElementsChanged.Count > 0;
     }
 
     internal static bool Matches(SceneElement node, ElementLocator locator) =>
