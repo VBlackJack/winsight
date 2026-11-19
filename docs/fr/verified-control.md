@@ -153,7 +153,14 @@ explicite sous `%LOCALAPPDATA%\Winsight\profiles`. Les noms sont restreints; les
 profils utilisent le schéma 1, contiennent 1..20 étapes et sont limités à 1 MiB,
 avec 128 profils au maximum. Les écritures passent par un fichier temporaire
 voisin et un remplacement atomique. Un enregistrement remplace le profil de même
-nom.
+nom. Les prédicats exploratoires (`any_change`, `visual_change`) sont refusés
+dans les profils enregistrés afin de garder des recettes strictement déterministes.
+
+`list_app_profiles()` liste les profils enregistrés (nom, exécutable, version,
+SHA256, nombre d'étapes) et `delete_app_profile(name)` en supprime un.
+`launch_app` et `observe_scene` remontent aussi automatiquement `matchingProfiles`
+quand des profils enregistrés correspondent au chemin, à la version et au SHA256
+de l'exécutable en cours.
 
 Chaque étape contient `target` (locator exact), `action`, `expect` et
 éventuellement `windowTitle`, `itemName` et `textParameter`. `textParameter`
@@ -163,11 +170,36 @@ pas placer de secrets dans les noms littéraux, les prédicats ou les recettes.
 `run_app_profile(name, parameters, processId, dryRun)` s'exécute par défaut en
 `preview`. Il vérifie le chemin, la version et le SHA256 de l'exécutable,
 prévalide toutes les étapes et tous les paramètres, puis observe et vérifie
-chaque action. Toute modification des octets de l'exécutable invalide le
+chaque action (avec notifications de progression MCP par étape). Toute modification
+des octets de l'exécutable invalide le
 profil. Une cible absente ou ambiguë et un résultat non vérifié arrêtent
 l'exécution. Les profils ne sont ni réparés silencieusement ni certifiés
 automatiquement. `verified` s'applique uniquement à l'exécution terminée; cela
 ne garantit pas toutes les exécutions futures.
+
+## Extensions de la boucle autonome
+
+- **Perception hybride et budget tokens (`observe_scene`)** : passer
+  `actionableOnly=true` ou `filterText` pour réduire les grands arbres UIA. Quand
+  UIA expose peu d'éléments actionnables, `surfaceHint` signale un port CDP
+  WebView2 à l'écoute ou une surface dessinée manuellement. Passer
+  `includeOcr=true` pour synthétiser des cibles OCR cliquables `tN` utilisables
+  directement par `act_verified`.
+- **Set-of-Mark inline (`capture_scene`)** : `windowHandle` est optionnel (fenêtre
+  au premier plan ou principale par défaut) et `includeImage=true` (par défaut)
+  renvoie le PNG annoté inline en tant qu'image MCP.
+- **`act_verified` en un aller-retour et prédicats exploratoires** : définir
+  `observeAfter=true` pour obtenir `nextObservation` et le `diff` structurel dès
+  `verified`. En plus des prédicats stricts, `value_contains`, `name_contains`,
+  `any_change` et `visual_change` facilitent l'exploration autonome. Les échecs
+  répétés incluent un `hint` structuré avec `loopWarning` et suggestion de pivot.
+- **Lot vérifié multi-étapes (`run_verified_steps`)** : exécute 1..20 étapes
+  sémantiques en un seul appel avec `observe_scene` + `act_verified` à chaque
+  étape, s'arrête au premier échec avec une observation `recovery` fraîche, et
+  émet la progression MCP entre étapes.
+- **Raccourci boîtes de dialogue fichiers (`select_file_dialog`)** : cible les
+  boîtes Windows `#32770` (Ouvrir/Enregistrer), saisit le chemin, valide et
+  vérifie la fermeture.
 
 ## Évaluation
 

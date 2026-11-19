@@ -131,6 +131,13 @@ DOM and vision failures require explicit reobservation/grounding.
 `%LOCALAPPDATA%\Winsight\profiles`. Names are restricted; profiles use schema 1,
 contain 1..20 steps, and are limited to 1 MiB with 128 profiles maximum. Writes
 use a temporary sibling and atomic replacement. Saving replaces the same name.
+Exploratory predicates (`any_change`, `visual_change`) are rejected in saved
+profiles so recipes remain strictly deterministic.
+
+`list_app_profiles()` lists saved profiles (name, executable, version, SHA256,
+step count) and `delete_app_profile(name)` removes one. `launch_app` and
+`observe_scene` also surface `matchingProfiles` automatically when saved
+profiles match the running executable's path, version and SHA256.
 
 Each step contains `target` (exact locator), `action`, `expect`, optional
 `windowTitle`, `itemName` and `textParameter`. `textParameter` names a value
@@ -139,10 +146,33 @@ literal names, predicates or recipes.
 
 `run_app_profile(name, parameters, processId, dryRun)` defaults to preview. It
 checks executable path, version and SHA256, prevalidates all steps/parameters,
-then observes and verifies each action. Changed executable bytes invalidate the
+then observes and verifies each action (emitting MCP progress notifications per
+step). Changed executable bytes invalidate the
 profile. Missing or ambiguous targets and unverified results stop the run.
 Profiles are not silently repaired or automatically certified. `verified` applies
 only to the completed run; it does not guarantee all future runs.
+
+## Autonomous loop extensions
+
+- **Token-budget & hybrid perception (`observe_scene`)**: pass `actionableOnly=true`
+  or `filterText` to trim large UIA trees. When UIA yields few actionable nodes,
+  `surfaceHint` reports either a listening WebView2 CDP port or a custom-drawn
+  surface hint. Pass `includeOcr=true` to synthesize clickable `tN` OCR targets
+  directly usable by `act_verified`.
+- **Inline Set-of-Mark (`capture_scene`)**: `windowHandle` is optional (defaults
+  to the foreground/primary window) and `includeImage=true` (default) returns the
+  annotated PNG inline as an MCP image.
+- **One-trip `act_verified` & exploratory predicates**: set `observeAfter=true`
+  to return `nextObservation` and structural `diff` on `verified`. Alongside strict
+  predicates, exploratory predicates `value_contains`, `name_contains`,
+  `any_change` and `visual_change` support autonomous exploration. Repeated
+  failures emit a structured `hint` with a `loopWarning` pivot suggestion.
+- **Verified multi-step batch (`run_verified_steps`)**: runs 1..20 semantic steps
+  in a single call with fresh `observe_scene` + `act_verified` per step, stops on
+  the first unverified step with a fresh `recovery` observation, and reports MCP
+  progress between steps.
+- **Standard file dialog fast-path (`select_file_dialog`)**: targets open Windows
+  `#32770` Open/Save dialogs, enters the path, clicks confirm and verifies closure.
 
 ## Evaluation
 

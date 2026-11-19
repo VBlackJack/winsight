@@ -38,10 +38,19 @@ for the underlying engine call.
 
 ## Agent-first workflow
 
-The preferred tools are `observe_scene`, `act_verified`, `capture_scene`,
-`observe_dom_scene`, `locate_scene_target`, `save_app_profile` and `run_app_profile`.
+The preferred tools are `observe_scene`, `act_verified`, `run_verified_steps`,
+`capture_scene`, `select_file_dialog`, `observe_dom_scene`, `locate_scene_target`,
+`list_app_profiles`, `save_app_profile`, `run_app_profile` and `delete_app_profile`.
 Their [contracts and examples](verified-control.md) distinguish action dispatch
 from verified outcomes. Existing workflows listed below remain compatible.
+
+At startup, `Winsight.Mcp` sends MCP `ServerInstructions` summarizing this loop,
+declares MCP tool annotations (`ReadOnly`, `Destructive`, `Idempotent`, `OpenWorld`)
+on every tool, and exposes read-only MCP resources (`winsight://guide`,
+`winsight://state`, `winsight://windows`, `winsight://scene/latest`) plus MCP
+prompts (`explore_app`, `verify_flow`, `diagnose_ui_bug`). Set
+`WINSIGHT_TOOL_PROFILE=compact` to expose a focused 28-tool autonomous subset
+instead of all 65 tools.
 
 These original convenience tools remain available. The lower-level tools remain
 available, but agents should start here because the responses are oriented around
