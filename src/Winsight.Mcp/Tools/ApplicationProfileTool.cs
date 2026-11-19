@@ -15,6 +15,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using Winsight.Core.Models;
 
@@ -45,7 +46,7 @@ public static class ApplicationProfileTool
     [Description("Run a saved recipe with fresh observations and act_verified at every step. Refuses a changed executable/hash/version, missing parameters or ambiguous target. Stops at the first unverified result and never retries. Default dryRun=true returns a plan; use false only for an authorized workflow. Overall verified requires every postcondition; verification applies to this run only.")]
     public static Task<string> Run(ApplicationProfiles profiles, SceneStore store, SessionTarget target,
         string name, Dictionary<string, string>? parameters = null, int? processId = null, bool dryRun = true,
-        CancellationToken cancellationToken = default) => ToolSafety.SafeInvokeAsync(async () =>
+        IProgress<ProgressNotificationValue>? progress = null, CancellationToken cancellationToken = default) => ToolSafety.SafeInvokeAsync(async () =>
         {
             if (!target.TryResolve(processId, out int pid, out string error)) return VerifiedSceneTool.Serialize(OperationResult.Failure(error));
             ApplicationProfile profile = profiles.Load(name);
@@ -63,9 +64,16 @@ public static class ApplicationProfileTool
             }
             if (dryRun || ToolAccessPolicy.IsDryRunEnabled) return VerifiedSceneTool.Serialize(OperationResult.OkWith(new { dryRun = true, profile, verified = false }));
             List<JsonElement> results = new();
-            foreach (ProfileStep step in profile.Steps)
+            for (int stepIndex = 0; stepIndex < profile.Steps.Count; stepIndex++)
             {
+                ProfileStep step = profile.Steps[stepIndex];
                 cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(new ProgressNotificationValue
+                {
+                    Progress = stepIndex,
+                    Total = profile.Steps.Count,
+                    Message = $"Profile '{name}' step {stepIndex + 1}/{profile.Steps.Count}: {step.Action}",
+                });
                 if (process.HasExited) return VerifiedSceneTool.Serialize(new { status = "blocked", verified = false, message = "Profile process exited.", results });
                 SceneStore.Entry scene = VerifiedSceneTool.Capture(store, pid, step.WindowTitle);
                 if (scene.ProcessStart != processStart) return VerifiedSceneTool.Serialize(new { status = "blocked", verified = false, message = "Profile process was replaced.", results });
@@ -78,6 +86,12 @@ public static class ApplicationProfileTool
                 results.Add(document.RootElement.Clone());
                 if (!document.RootElement.GetProperty("verified").GetBoolean()) return VerifiedSceneTool.Serialize(new { status = "stopped", verified = false, completed = results.Count - 1, results });
             }
+            progress?.Report(new ProgressNotificationValue
+            {
+                Progress = profile.Steps.Count,
+                Total = profile.Steps.Count,
+                Message = $"Profile '{name}' completed ({profile.Steps.Count}/{profile.Steps.Count}).",
+            });
             return VerifiedSceneTool.Serialize(new { status = "verified", verified = true, completed = results.Count, results });
         });
 

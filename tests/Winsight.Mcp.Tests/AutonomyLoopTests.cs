@@ -221,4 +221,87 @@ public sealed class AutonomyLoopTests
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task Run_verified_steps_validates_and_previews_in_dry_run()
+    {
+        using Process self = Process.GetCurrentProcess();
+        VerifiedBatchStep[] steps =
+        [
+            new(new ElementLocator(AutomationId: "NameBox"), "set_value", new SceneExpectation("value", "Alice", new ElementLocator(AutomationId: "NameBox")), Text: "Alice"),
+            new(new ElementLocator(AutomationId: "SaveBtn"), "activate", new SceneExpectation("any_change")),
+        ];
+
+        string json = await VerifiedBatchTool.RunVerifiedSteps(
+            new SceneStore(),
+            new SessionTarget(),
+            steps,
+            processId: self.Id,
+            dryRun: true,
+            cancellationToken: TestContext.Current.CancellationToken);
+        using JsonDocument doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("status").GetString().Should().Be("preview");
+        doc.RootElement.GetProperty("dryRun").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_verified_steps_rejects_ambiguous_or_partial_target_locators_before_dispatch()
+    {
+        using Process self = Process.GetCurrentProcess();
+        VerifiedBatchStep[] invalidSteps =
+        [
+            new(new ElementLocator(NameContains: "Save"), "activate", new SceneExpectation("any_change")),
+        ];
+
+        string json = await VerifiedBatchTool.RunVerifiedSteps(
+            new SceneStore(),
+            new SessionTarget(),
+            invalidSteps,
+            processId: self.Id,
+            dryRun: false,
+            cancellationToken: TestContext.Current.CancellationToken);
+        using JsonDocument doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("status").GetString().Should().Be("blocked");
+        doc.RootElement.GetProperty("failedAtIndex").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public void File_dialog_picker_prefers_standard_32770_dialog_or_explicit_title()
+    {
+        WindowDescriptor main = new(1, 10, "MyApp", "MyApp", false, 0, 0, 800, 600, WindowClassifier.KindMain, "HwndWrapper");
+        WindowDescriptor openDialog = new(1, 20, "Open", "MyApp", true, 100, 100, 500, 400, WindowClassifier.KindDialog, "#32770", OwnerHandle: 10, IsModal: true);
+        WindowDescriptor customModal = new(1, 30, "Export Report", "MyApp", false, 120, 120, 400, 300, WindowClassifier.KindDialog, "CustomDlg", OwnerHandle: 10, IsModal: true);
+
+        FileDialogTool.PickDialog([main, customModal, openDialog], null)!.WindowHandle.Should().Be(20);
+        FileDialogTool.PickDialog([main, customModal, openDialog], "Export")!.WindowHandle.Should().Be(30);
+        FileDialogTool.PickDialog([main], null).Should().BeNull();
+    }
+
+    [Fact]
+    public void Select_file_dialog_respects_dry_run_and_validates_arguments()
+    {
+        string? priorDryRun = Environment.GetEnvironmentVariable(ToolAccessPolicy.DryRunVariable);
+        Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, "1");
+        try
+        {
+            using Process self = Process.GetCurrentProcess();
+            string emptyPath = FileDialogTool.SelectFileDialog(new WindowDiscovery(), new ActionInvoker(), new SessionTarget(), "   ", processId: self.Id);
+            using (JsonDocument doc = JsonDocument.Parse(emptyPath))
+            {
+                doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+            }
+
+            string dry = FileDialogTool.SelectFileDialog(new WindowDiscovery(), new ActionInvoker(), new SessionTarget(), @"C:\temp\report.txt", processId: self.Id);
+            using (JsonDocument doc = JsonDocument.Parse(dry))
+            {
+                doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
+                doc.RootElement.GetProperty("data").GetProperty("dryRun").GetBoolean().Should().BeTrue();
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, priorDryRun);
+        }
+    }
 }

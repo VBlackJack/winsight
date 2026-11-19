@@ -34,8 +34,9 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
         "Call capture_scene(observation) when visual layout helps (returns an inline Set-of-Mark annotated PNG).\n" +
         "3. Act & verify: prefer act_verified with an explicit expect postcondition (strict predicates: exists, absent, value, name, selected, toggle, focused, visible, selected_item, window_open, window_closed, managed; exploratory predicates: value_contains, name_contains, any_change, visual_change). " +
         "Set observeAfter=true to receive a fresh observation and structural diff in the same call.\n" +
-        "4. Batch & custom surfaces: use run_steps for multi-step scripts (captureExceptions=true for causal CLR exceptions). " +
-        "For GPU/custom-drawn UIs without UIA, use click_point, type_keys, read_text_visually, and wait_for_visual_change/wait_for_visual_stable. " +
+        "4. Batch & custom surfaces: use run_verified_steps for multi-step verified forms/wizards (emits progress notifications) or run_steps for scripts (captureExceptions=true for causal CLR exceptions). " +
+        "Use select_file_dialog for Windows Open/Save dialogs (#32770). " +
+        "For GPU/custom-drawn UIs without UIA, use observe_scene(includeOcr=true), click_point, type_keys, read_text_visually, and wait_for_visual_change/wait_for_visual_stable. " +
         "For authorized WebView2, use detect_webview2_endpoints + list_cdp_targets + observe_dom_scene.\n" +
         "5. Recovery: on stale, use the returned recovery observation or call observe_scene. " +
         "NEVER blindly retry dispatched_unconfirmed: observe first. On user_active or foreground_changed, call wait_for_user_idle then observe again.\n" +
@@ -51,6 +52,8 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
         "observe_scene",
         "capture_scene",
         "act_verified",
+        "run_verified_steps",
+        "select_file_dialog",
         "run_steps",
         "click_point",
         "type_keys",

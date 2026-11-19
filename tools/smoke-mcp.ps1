@@ -16,7 +16,7 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
-    [int]$ExpectedToolCount = 63,
+    [int]$ExpectedToolCount = 65,
     [int]$ResponseTimeoutSeconds = 10
 )
 
