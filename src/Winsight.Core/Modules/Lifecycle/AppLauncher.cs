@@ -18,6 +18,23 @@ using Winsight.Core.Modules.UiAutomation;
 
 namespace Winsight.Core.Modules.Lifecycle;
 
+internal interface ILaunchedProcess : IDisposable
+{
+    int Id { get; }
+    bool HasExited { get; }
+    int ExitCode { get; }
+    void Refresh();
+}
+
+internal interface ILaunchEnvironment
+{
+    bool FileExists(string path);
+    ILaunchedProcess Start(ProcessStartInfo startInfo);
+    IReadOnlyList<WindowDescriptor> ListWindows(int? processId);
+    long ElapsedMs();
+    void Sleep(int milliseconds);
+}
+
 /// <summary>
 /// Launches and tears down applications under test. Launch waits until the
 /// target's window is actually present before returning, so the agent never
@@ -31,18 +48,25 @@ public sealed class AppLauncher
     internal const int DefaultCloseGraceMs = 5_000;
     private const int WindowPollIntervalMs = 150;
 
-    private readonly WindowDiscovery _discovery;
+    private readonly ILaunchEnvironment _environment;
 
     public AppLauncher(WindowDiscovery discovery)
+        : this(new NativeLaunchEnvironment(discovery))
     {
-        _discovery = discovery;
+    }
+
+    internal AppLauncher(ILaunchEnvironment environment)
+    {
+        _environment = environment;
     }
 
     /// <summary>
     /// Start an executable and wait until its window appears. When
     /// <paramref name="waitForWindowTitle"/> is set, the launcher waits for a
     /// window whose title contains it; otherwise it waits for the process's main
-    /// window. Fails if the process exits early or no window appears in time.
+    /// window. When a stub launcher or app execution alias exits with code 0
+    /// before showing a window, waits for a newly created top-level window in
+    /// another process and binds to it, reporting <c>handedOffToProcessId</c>.
     /// </summary>
     public OperationResult Launch(
         string path,
@@ -55,7 +79,7 @@ public sealed class AppLauncher
         {
             return OperationResult.Failure("path is required.");
         }
-        if (!File.Exists(path))
+        if (!_environment.FileExists(path))
         {
             return OperationResult.Failure($"Executable not found: \"{path}\".");
         }
@@ -64,6 +88,12 @@ public sealed class AppLauncher
             return OperationResult.Failure(
                 $"timeoutMs must be between 1 and {MaxLaunchTimeoutMs}.");
         }
+
+        HashSet<long> baselineHandles = _environment
+            .ListWindows(processId: null)
+            .Select(w => w.WindowHandle)
+            .ToHashSet();
+        string expectedExeName = Path.GetFileNameWithoutExtension(path);
 
         ProcessStartInfo startInfo = new(path)
         {
@@ -77,37 +107,68 @@ public sealed class AppLauncher
             startInfo.Arguments = arguments;
         }
 
-        Process startedProcess;
+        ILaunchedProcess startedProcess;
         try
         {
-            startedProcess = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Process.Start returned null.");
+            startedProcess = _environment.Start(startInfo);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return OperationResult.Failure($"Failed to start \"{path}\": {ex.Message}");
         }
 
-        using Process process = startedProcess;
+        using ILaunchedProcess process = startedProcess;
 
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        while (stopwatch.ElapsedMilliseconds <= timeoutMs)
+        long startMs = _environment.ElapsedMs();
+        bool exitedCleanly = false;
+        while (_environment.ElapsedMs() - startMs <= timeoutMs)
         {
-            process.Refresh();
-            if (process.HasExited)
+            if (!exitedCleanly)
             {
-                return OperationResult.Failure(
-                    $"Process {process.Id} exited during startup with code {process.ExitCode} " +
-                    "before a window appeared.");
+                process.Refresh();
+                if (process.HasExited)
+                {
+                    if (process.ExitCode != 0)
+                    {
+                        return OperationResult.Failure(
+                            $"Process {process.Id} exited during startup with code {process.ExitCode} " +
+                            "before a window appeared.");
+                    }
+                    exitedCleanly = true;
+                }
             }
 
-            WindowDescriptor? window = PickWindow(process.Id, waitForWindowTitle);
-            if (window is not null)
+            if (!exitedCleanly)
             {
-                return OperationResult.OkWith(new LaunchResult(process.Id, window));
+                WindowDescriptor? window = PickWindow(process.Id, waitForWindowTitle);
+                if (window is not null)
+                {
+                    return OperationResult.OkWith(new LaunchResult(process.Id, window));
+                }
+            }
+            else
+            {
+                WindowDescriptor? handedOff = PickHandedOffWindow(
+                    baselineHandles,
+                    process.Id,
+                    waitForWindowTitle,
+                    expectedExeName);
+                if (handedOff is not null)
+                {
+                    return OperationResult.OkWith(new LaunchResult(
+                        handedOff.ProcessId,
+                        handedOff,
+                        HandedOffToProcessId: handedOff.ProcessId));
+                }
             }
 
-            Thread.Sleep(WindowPollIntervalMs);
+            _environment.Sleep(WindowPollIntervalMs);
+        }
+
+        if (exitedCleanly)
+        {
+            return OperationResult.Failure(
+                $"Process {process.Id} exited during startup with code 0 before a window appeared.");
         }
 
         string target = waitForWindowTitle is null
@@ -164,7 +225,7 @@ public sealed class AppLauncher
 
     private WindowDescriptor? PickWindow(int processId, string? waitForWindowTitle)
     {
-        IReadOnlyList<WindowDescriptor> windows = _discovery.List(processId);
+        IReadOnlyList<WindowDescriptor> windows = _environment.ListWindows(processId);
         if (waitForWindowTitle is not null)
         {
             return windows.FirstOrDefault(
@@ -173,5 +234,69 @@ public sealed class AppLauncher
 
         return windows.FirstOrDefault(w => w.Kind == WindowClassifier.KindMain)
             ?? windows.FirstOrDefault(w => !string.IsNullOrEmpty(w.Title));
+    }
+
+    private WindowDescriptor? PickHandedOffWindow(
+        HashSet<long> baselineHandles,
+        int exitedProcessId,
+        string? waitForWindowTitle,
+        string expectedExeName)
+    {
+        List<WindowDescriptor> appeared = _environment
+            .ListWindows(processId: null)
+            .Where(w => w.ProcessId != exitedProcessId && !baselineHandles.Contains(w.WindowHandle))
+            .ToList();
+
+        if (appeared.Count == 0)
+        {
+            return null;
+        }
+
+        if (waitForWindowTitle is not null)
+        {
+            return appeared.FirstOrDefault(
+                w => w.Title.Contains(waitForWindowTitle, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(expectedExeName))
+        {
+            WindowDescriptor? byProcessOrTitle = appeared.FirstOrDefault(w =>
+                string.Equals(w.ProcessName, expectedExeName, StringComparison.OrdinalIgnoreCase) ||
+                w.Title.Contains(expectedExeName, StringComparison.OrdinalIgnoreCase));
+            if (byProcessOrTitle is not null)
+            {
+                return byProcessOrTitle;
+            }
+        }
+
+        return appeared.FirstOrDefault(w => w.Kind == WindowClassifier.KindMain)
+            ?? appeared.FirstOrDefault(w => !string.IsNullOrEmpty(w.Title));
+    }
+
+    private sealed class NativeLaunchedProcess(Process process) : ILaunchedProcess
+    {
+        public int Id => process.Id;
+        public bool HasExited => process.HasExited;
+        public int ExitCode => process.ExitCode;
+        public void Refresh() => process.Refresh();
+        public void Dispose() => process.Dispose();
+    }
+
+    private sealed class NativeLaunchEnvironment(WindowDiscovery discovery) : ILaunchEnvironment
+    {
+        public bool FileExists(string path) => File.Exists(path);
+
+        public ILaunchedProcess Start(ProcessStartInfo startInfo)
+        {
+            Process started = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Process.Start returned null.");
+            return new NativeLaunchedProcess(started);
+        }
+
+        public IReadOnlyList<WindowDescriptor> ListWindows(int? processId) => discovery.List(processId);
+
+        public long ElapsedMs() => Environment.TickCount64;
+
+        public void Sleep(int milliseconds) => Thread.Sleep(milliseconds);
     }
 }

@@ -10,6 +10,8 @@ Minor release strengthening shared UI automation reliability: desktop-composited
 - **Opt-in hardware mouse jiggler filter (`WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1`)**: Small mouse-only movements under a configurable displacement threshold (`WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, default `15` px) occurring at regular intervals are classified as `lastInputSource="periodic_micro_move"` and do not reset `humanIdleMs`. Keyboard input, clicks, and larger or irregular mouse movements always count as `human`. Classification details are exposed in `get_user_activity` diagnostics.
 - **Session lock source (`sessionLockSource`)**: `get_user_activity` now reports `sessionLockSource` (`wts`, `input_desktop`, or `unknown`) alongside `sessionLocked`.
 - **Low-level input hook resilience (`WINSIGHT_INPUT_HOOK=1`)**: Lock-free minimal hook callbacks, pump-thread heartbeat timer, and silent OS removal detection (`LowLevelHooksTimeout`), reporting `inputHookActive=false` plus `inputHookWarning` in `get_user_activity` diagnostics instead of silently degrading.
+- **Stub-launcher handoff (`launch_app`)**: When a stub launcher or app execution alias (such as `C:\Windows\System32\notepad.exe` on Windows 11) exits with code `0` before showing a window, `launch_app` binds to the newly appeared top-level window in the target process and reports `handedOffToProcessId`.
+- **Safe optional UIA property access**: `observe_scene`, `inspect_ui_tree`, `snapshot_ui`, and `ElementStateReader` read optional UIA properties (`IsOffscreen`, `BoundingRectangle`, `ExpandCollapseState`, etc.) through safe `TryGetValue` accessors, avoiding `PropertyNotSupportedException` on WinUI/XAML and Chromium providers.
 
 ## Install
 

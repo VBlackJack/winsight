@@ -30,7 +30,9 @@ public static class LifecycleTool
                  "session target unless setAsTarget=false, so follow-up tools need no set_target call. " +
                  "Returns an OperationResult whose data carries the new processId and a classified window " +
                  "descriptor (kind, bounds, etc.) ready to drive, with no follow-up list_windows/poll needed. " +
-                 "Fails if the process exits during startup or no window appears within the timeout.")]
+                 "When a stub launcher or app execution alias exits with code 0 and hands off to another " +
+                 "process (for example Windows 11 Notepad), binds to the newly appeared window and reports " +
+                 "handedOffToProcessId. Fails if the process exits with a non-zero code or no window appears within the timeout.")]
     public static string LaunchApp(
         AppLauncher launcher,
         SessionTarget target,

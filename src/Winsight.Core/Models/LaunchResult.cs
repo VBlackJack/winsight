@@ -22,4 +22,5 @@ namespace Winsight.Core.Models;
 public sealed record LaunchResult(
     int ProcessId,
     WindowDescriptor Window,
-    IReadOnlyList<string>? MatchingProfiles = null);
+    IReadOnlyList<string>? MatchingProfiles = null,
+    int? HandedOffToProcessId = null);
