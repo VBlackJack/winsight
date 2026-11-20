@@ -149,6 +149,10 @@ public sealed partial class ActionInvoker
                 return OperationResult.Ok();
             }
 
+            if (ForegroundInputPolicy.CheckForegroundForKeyboardInput("type_text") is { } fgRejected)
+            {
+                return fgRejected;
+            }
             if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;
@@ -206,6 +210,10 @@ public sealed partial class ActionInvoker
             {
                 return OperationResult.Failure(
                     $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the chord \"{chord}\" was sent.");
+            }
+            if (ForegroundInputPolicy.CheckForegroundForKeyboardInput("send_key_chord") is { } fgRejected)
+            {
+                return fgRejected;
             }
             if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
@@ -286,6 +294,10 @@ public sealed partial class ActionInvoker
                     focused);
             }
 
+            if (ForegroundInputPolicy.CheckForegroundForKeyboardInput("type_keys") is { } fgRejected)
+            {
+                return fgRejected;
+            }
             if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;

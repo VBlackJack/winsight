@@ -330,6 +330,9 @@ public static class PointerDispatch
 
         if (!IsNear(point, startPosition) && IsNear(afterPrimary, startPosition))
         {
+            // Fallback methods are a harmless diagnostic aid on failure (zero extra
+            // calls on success): recording SetCursorPos res/err distinguishes OS/host
+            // foreground rejection from SendInput-specific issues.
             foreach (string fallbackMethod in PointerMoveMethods.FallbackOrder)
             {
                 attemptedMethods.Add(fallbackMethod);
@@ -362,9 +365,9 @@ public static class PointerDispatch
     }
 
     /// <summary>
-    /// SendInput is processed asynchronously by Windows's Raw Input Thread;
-    /// poll briefly before concluding the move was not applied and triggering
-    /// fallback methods. When the cursor moves immediately, zero waits occur.
+    /// Zero-cost-on-success guard: when the cursor moves immediately (normal
+    /// desktop), returns with zero waits. Otherwise polls briefly (up to 25 ms)
+    /// before triggering fallback diagnostics.
     /// </summary>
     private static Point WaitForCursorDeparture(IPointerDriver pointer, Point startPosition, Point target)
     {
@@ -424,7 +427,7 @@ public static class PointerDispatch
                     ? $"attemptedMethods=[{string.Join(",", attemptedMethods)}]"
                     : "attemptedMethods=[]";
             uint? leaseThreadId = expectedLeaseThreadId ?? DesktopInputLease.CurrentThreadLeaseId;
-            ForegroundProcessInfo? foreground = PointerDiagnostics.ReadForegroundProcess();
+            ForegroundProcessInfo? foreground = ForegroundInputPolicy.ReadForeground();
             PointerClipRect? clipCursor = PointerDiagnostics.ReadClipCursor();
             CursorStateInfo? cursorInfo = PointerDiagnostics.ReadCursorInfo();
             string threadDetail = string.Create(
@@ -432,13 +435,28 @@ public static class PointerDispatch
                 $"leaseThreadId={leaseThreadId?.ToString(CultureInfo.InvariantCulture) ?? "none"}, dispatchThreadId={effectiveContext.ThreadId}, fg={foreground?.ProcessName ?? "?"}({foreground?.ProcessId ?? 0})");
             string contextDetail = InputContext.FormatSummary(effectiveContext, desktopSwitch);
 
-            string message = string.Create(
-                CultureInfo.InvariantCulture,
-                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {methodsDetail}; {threadDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
+            MoveAttemptTrace? setCursorPosTrace = attemptTraces?.FirstOrDefault(
+                t => string.Equals(t.Method, PointerMoveMethods.SetCursorPos, StringComparison.Ordinal));
+            bool setCursorPosRejected = setCursorPosTrace is { Method: PointerMoveMethods.SetCursorPos, ApiResult: 0 };
+            bool knownRejectingHost = ForegroundInputPolicy.IsKnownRejectingHost(foreground?.ProcessName);
+            bool foregroundRejected = setCursorPosRejected || knownRejectingHost;
+            string errorCode = foregroundRejected
+                ? ForegroundInputPolicy.ForegroundRejectsSyntheticInputCode
+                : MoveNotAppliedCode;
+            string? hint = foregroundRejected ? ForegroundInputPolicy.HintFor(foreground) : null;
+
+            string message = foregroundRejected
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{errorCode}: foreground process {foreground?.ProcessName ?? "unknown"} (PID {foreground?.ProcessId ?? 0}) rejected synthetic pointer input from ({actual.X}, {actual.Y}) to ({target.X}, {target.Y}) (set_cursor_pos res={setCursorPosTrace?.ApiResult ?? 0}, err={setCursorPosTrace?.LastWin32Error ?? 0}; {methodsDetail}; {threadDetail}; {integrityDetail}; {contextDetail}). {hint}")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {methodsDetail}; {threadDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
 
             object data = new
             {
-                code = MoveNotAppliedCode,
+                code = errorCode,
+                hint,
                 startX = start.X,
                 startY = start.Y,
                 expectedX = target.X,

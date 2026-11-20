@@ -231,3 +231,20 @@ Les écritures de traces et de relectures se font au mieux: un échec de stockag
 préserve le résultat d'origine de l'outil, et une relecture indisponible n'a pas
 de `tracePath`. Les noms de fichiers des captures d'écran incluent un suffixe
 unique pour que des captures rapides en lot ne s'écrasent pas mutuellement.
+
+## Hôtes connus qui rejettent les entrées synthétiques
+
+Certaines applications hôtes Windows installent des pilotes clavier/souris bas
+niveau ou des captures d'entrées qui amènent Windows à rejeter ou ignorer
+silencieusement les entrées Win32 synthétiques (`SendInput` et `SetCursorPos`,
+où `SetCursorPos` renvoie `FALSE` avec `GetLastError() == 0`) dès que leur
+fenêtre est au premier plan, même à niveau d'intégrité Medium identique.
+
+| Processus | Symptôme | Contournement recommandé |
+|---|---|---|
+| `vmware.exe`, `vmware-vmx.exe`, `vmplayer.exe` (VMware Workstation / Player) | Les déplacements de pointeur (`click_point`, `hover_point`, `scroll_point`) échouent avec `foreground_rejects_synthetic_input` (`SetCursorPos` renvoie `FALSE`, `err=0`) et les outils clavier (`send_key_chord`, `type_keys`) sont refusés au lieu d'être ignorés silencieusement. | Vérifiez dans VMware `Edit > Preferences > Input` (ou désactivez le pilote Enhanced Virtual Keyboard), utilisez les patrons UI Automation (`click_element`, `select_item`) pour l'interface hôte de VMware, et utilisez `vmsight` pour les entrées dans la VM invitée plutôt que les entrées physiques. |
+
+Utilisez `diagnose_pointer` pour comparer les quatre méthodes de déplacement du
+pointeur face à la fenêtre de premier plan courante, `ClipCursor`,
+`GetCursorInfo` et le contexte d'entrée du processus.
+

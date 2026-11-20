@@ -208,3 +208,20 @@ Use `windowTitle` to select the intended main window or modal explicitly.
 Trace and replay writes are best effort: storage failure preserves the original
 tool outcome, and an unavailable replay has no `tracePath`. Screenshot filenames
 include a unique suffix so rapid batch captures do not overwrite each other.
+
+## Known hosts that reject synthetic input
+
+Some Windows host applications install low-level keyboard/mouse drivers or input
+grabs that cause Windows to reject or silently drop synthetic Win32 input
+(`SendInput` and `SetCursorPos`, where `SetCursorPos` returns `FALSE` with
+`GetLastError() == 0`) whenever their window is in the foreground, even at
+matching Medium integrity levels.
+
+| Process | Symptom | Recommended workaround |
+|---|---|---|
+| `vmware.exe`, `vmware-vmx.exe`, `vmplayer.exe` (VMware Workstation / Player) | Pointer moves (`click_point`, `hover_point`, `scroll_point`) fail with `foreground_rejects_synthetic_input` (`SetCursorPos` returns `FALSE`, `err=0`) and keyboard tools (`send_key_chord`, `type_keys`) are rejected instead of being silently dropped. | Check VMware `Edit > Preferences > Input` (or disable the Enhanced Virtual Keyboard driver), use UI Automation patterns (`click_element`, `select_item`) for VMware host controls, and use `vmsight` for guest VM input instead of physical desktop input. |
+
+Use `diagnose_pointer` to compare all four pointer move methods against the
+current foreground window, `ClipCursor`, `GetCursorInfo`, and process input
+context.
+
