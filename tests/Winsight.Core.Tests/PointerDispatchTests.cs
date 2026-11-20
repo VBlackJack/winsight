@@ -242,14 +242,14 @@ public sealed class PointerDispatchTests
         {
             RecordingPointer pointer = new(new Point(100, 100)) { ApplyMove = false };
 
-            OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 150, driver: pointer);
+            OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: pointer);
 
             refusal.Should().NotBeNull();
             refusal!.Error.Should().StartWith($"{InputContext.InputContextBlockedCode}:")
                 .And.Contain("JOB_OBJECT_UILIMIT_HANDLES")
                 .And.Contain("JOB_OBJECT_UILIMIT_DESKTOP")
                 .And.NotContain(PointerDispatch.MoveNotAppliedCode);
-            pointer.Calls.Should().BeEmpty("input must be refused before attempting a blocked move");
+            pointer.Calls.Should().NotContain(call => call.StartsWith("click", StringComparison.Ordinal));
         }
         finally
         {
@@ -258,247 +258,62 @@ public sealed class PointerDispatchTests
     }
 
     [Fact]
-    public void Desktop_mismatch_attempts_set_thread_desktop_before_move_and_reports_outcome()
+    public void Real_dispatch_path_reads_moved_cursor_never_restores_and_skips_input_context_on_success()
     {
-        bool switchAttempted = false;
-        InputContext.OverrideCapture = () => new InputContextSnapshot(
-            SessionId: 1,
-            ActiveConsoleSessionId: 1,
-            SessionMatchesConsole: true,
-            WindowStation: "WinSta0",
-            WindowStationVisible: true,
-            ThreadDesktop: "OtherDesktop",
-            InputDesktop: "Default",
-            InputDesktopWin32Error: null,
-            DesktopMatchesInput: false,
-            InJob: false,
-            JobUiRestrictionsMask: 0,
-            JobUiRestrictions: Array.Empty<string>(),
-            JobQueryWin32Error: null,
-            IsRestrictedToken: false,
-            IsAppContainer: false,
-            IntegrityLevel: "medium (0x2000)",
-            ParentChain: Array.Empty<ProcessChainEntry>());
-        InputContext.OverrideDesktopSwitch = ctx =>
+        bool contextCaptured = false;
+        InputContext.OverrideCapture = () =>
         {
-            switchAttempted = true;
-            return new DesktopSwitchAttempt(Attempted: true, Succeeded: false, Win32Error: 170, TargetDesktop: ctx.InputDesktop);
+            contextCaptured = true;
+            throw new InvalidOperationException("InputContext must not be captured on the successful path.");
         };
         try
         {
-            RecordingPointer pointer = new(new Point(100, 100)) { ApplyMove = false };
+            Point start = new(817, 1332);
+            Point target = new(1857, 44);
+            RecordingPointer pointer = new(start);
+
+            OperationResult? hoverRefusal = PointerDispatch.Hover(target, holdMs: 0, settleMs: 150, driver: pointer);
+
+            hoverRefusal.Should().BeNull();
+            contextCaptured.Should().BeFalse();
+            pointer.Position.Should().Be(target, "successful dispatch must leave the cursor at target and never restore");
+            pointer.Calls.Should().Equal("move 1857,44", "wait 150");
+        }
+        finally
+        {
+            InputContext.OverrideCapture = null;
+        }
+    }
+
+    [Fact]
+    public void Unmeasured_set_cursor_pos_or_nonzero_error_stays_move_not_applied_for_unknown_host()
+    {
+        ForegroundInputPolicy.OverrideEnvReader = () => string.Empty;
+        ForegroundInputPolicy.OverrideForegroundReader = () => new ForegroundProcessInfo(0x100, 1234, "notepad");
+        try
+        {
+            RecordingPointer pointer = new(new Point(100, 100))
+            {
+                ApplyMove = false,
+                ProbeOutcome = new PointerMoveResult(0, 5, Target.X, Target.Y, new VirtualDesktopBounds(0, 0, 1920, 1080), PointerMoveMethods.SetCursorPos),
+            };
 
             OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: pointer);
 
-            switchAttempted.Should().BeTrue();
             refusal.Should().NotBeNull();
             refusal!.Error.Should().StartWith($"{PointerDispatch.MoveNotAppliedCode}:")
-                .And.Contain("setThreadDesktop=False(err=170)");
+                .And.Contain("set_cursor_pos:res=0,err=5");
+
+            RecordingPointer noProbePointer = new(new Point(100, 100)) { ApplyMove = false, ProbeOutcome = null };
+            OperationResult? noProbeRefusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: noProbePointer);
+            noProbeRefusal!.Error.Should().StartWith($"{PointerDispatch.MoveNotAppliedCode}:")
+                .And.NotContain("set_cursor_pos");
         }
         finally
         {
-            InputContext.OverrideCapture = null;
-            InputContext.OverrideDesktopSwitch = null;
+            ForegroundInputPolicy.OverrideForegroundReader = null;
+            ForegroundInputPolicy.OverrideEnvReader = null;
         }
-    }
-
-    [Fact]
-    public void Successful_click_reports_dispatch_thread_desktop_and_switch_result()
-    {
-        int calls = 0;
-        InputContext.OverrideCapture = () =>
-        {
-            calls++;
-            bool switched = calls > 1;
-            return new InputContextSnapshot(
-                SessionId: 1,
-                ActiveConsoleSessionId: 1,
-                SessionMatchesConsole: true,
-                WindowStation: "WinSta0",
-                WindowStationVisible: true,
-                ThreadDesktop: switched ? "Default" : "WorkerDesktop",
-                InputDesktop: "Default",
-                InputDesktopWin32Error: null,
-                DesktopMatchesInput: switched,
-                InJob: false,
-                JobUiRestrictionsMask: 0,
-                JobUiRestrictions: Array.Empty<string>(),
-                JobQueryWin32Error: null,
-                IsRestrictedToken: false,
-                IsAppContainer: false,
-                IntegrityLevel: "medium (0x2000)",
-                ParentChain: Array.Empty<ProcessChainEntry>(),
-                ThreadId: 4242);
-        };
-        InputContext.OverrideDesktopSwitch = ctx =>
-            new DesktopSwitchAttempt(Attempted: true, Succeeded: true, Win32Error: null, TargetDesktop: ctx.InputDesktop);
-        try
-        {
-            RecordingPointer pointer = new(new Point(100, 100));
-
-            OperationResult? refusal = PointerDispatch.Click(
-                Target, ClickStyle.Primary, out InputDispatchInfo? dispatch, settleMs: 0, driver: pointer);
-
-            refusal.Should().BeNull();
-            dispatch.Should().NotBeNull();
-            dispatch!.ThreadId.Should().Be(4242);
-            dispatch.ThreadDesktop.Should().Be("Default");
-            dispatch.DesktopSwitchAttempted.Should().BeTrue();
-            dispatch.DesktopSwitchSucceeded.Should().BeTrue();
-            dispatch.DesktopSwitchWin32Error.Should().BeNull();
-            dispatch.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
-        }
-        finally
-        {
-            InputContext.OverrideCapture = null;
-            InputContext.OverrideDesktopSwitch = null;
-        }
-    }
-
-    [Fact]
-    public void Falls_back_to_first_working_method_when_primary_move_is_not_applied()
-    {
-        RecordingPointer pointer = new(new Point(100, 100))
-        {
-            ApplyMove = false,
-            WorkingFallbackMethod = PointerMoveMethods.SetCursorPos,
-        };
-
-        OperationResult? refusal = PointerDispatch.Click(
-            Target, ClickStyle.Primary, out InputDispatchInfo? dispatch, settleMs: 0, driver: pointer);
-
-        refusal.Should().BeNull();
-        dispatch.Should().NotBeNull();
-        dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SetCursorPos);
-        pointer.Calls.Should().Contain($"fallback {PointerMoveMethods.SendInputPrimaryAbsolute} 400,300")
-            .And.Contain($"fallback {PointerMoveMethods.SendInputRelative} 400,300")
-            .And.Contain($"fallback {PointerMoveMethods.SetCursorPos} 400,300")
-            .And.Contain("click Left");
-    }
-
-    [Fact]
-    public void Reports_all_attempted_methods_when_primary_and_all_fallbacks_fail()
-    {
-        RecordingPointer pointer = new(new Point(100, 100)) { ApplyMove = false };
-
-        OperationResult? refusal = PointerDispatch.Click(Target, ClickStyle.Primary, settleMs: 0, driver: pointer);
-
-        refusal.Should().NotBeNull();
-        refusal!.Error.Should().StartWith($"{PointerDispatch.MoveNotAppliedCode}:")
-            .And.Contain(PointerMoveMethods.SendInputVirtualDesk)
-            .And.Contain(PointerMoveMethods.SendInputPrimaryAbsolute)
-            .And.Contain(PointerMoveMethods.SendInputRelative)
-            .And.Contain(PointerMoveMethods.SetCursorPos)
-            .And.Contain("attempts=[");
-    }
-
-    [Fact]
-    public void Real_dispatch_path_reads_moved_cursor_and_never_restores_on_success()
-    {
-        Point start = new(817, 1332);
-        Point target = new(1857, 44);
-        RecordingPointer pointer = new(start);
-
-        OperationResult? hoverRefusal = PointerDispatch.Hover(
-            target, out InputDispatchInfo? dispatch, holdMs: 0, settleMs: 150, driver: pointer);
-
-        hoverRefusal.Should().BeNull();
-        pointer.Position.Should().Be(target, "successful dispatch must leave the cursor at target and never restore");
-        pointer.Calls.Should().Equal("move 1857,44", "wait 150");
-        dispatch.Should().NotBeNull();
-        dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
-    }
-
-    [Fact]
-    public void Async_primary_move_that_applies_during_short_poll_does_not_trigger_fallback()
-    {
-        Point start = new(817, 1332);
-        Point target = new(1857, 44);
-        DelayedMovePointer pointer = new(start, applyOnWaitNumber: 2);
-
-        OperationResult? refusal = PointerDispatch.Hover(
-            target, out InputDispatchInfo? dispatch, holdMs: 0, settleMs: 150, driver: pointer);
-
-        refusal.Should().BeNull();
-        pointer.Position.Should().Be(target);
-        dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
-        pointer.Calls.Should().NotContain(call => call.StartsWith("fallback", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Lease_and_dispatch_must_run_on_the_same_thread()
-    {
-        using DesktopInputLease lease = DesktopInputLease.Acquire();
-        RecordingPointer sameThreadPointer = new(new Point(100, 100));
-
-        OperationResult? sameThread = PointerDispatch.Hover(
-            Target, out InputDispatchInfo? dispatch, holdMs: 0, settleMs: 0, driver: sameThreadPointer, expectedLeaseThreadId: lease.LeaseThreadId);
-
-        sameThread.Should().BeNull();
-        dispatch!.ThreadId.Should().Be(lease.LeaseThreadId);
-
-        OperationResult? crossThread = null;
-        Thread worker = new(() =>
-        {
-            RecordingPointer otherThreadPointer = new(new Point(100, 100));
-            crossThread = PointerDispatch.Hover(
-                Target, out _, holdMs: 0, settleMs: 0, driver: otherThreadPointer, expectedLeaseThreadId: lease.LeaseThreadId);
-        });
-        worker.Start();
-        worker.Join();
-
-        crossThread.Should().NotBeNull();
-        crossThread!.Error.Should().StartWith("lease_thread_mismatch:")
-            .And.Contain(lease.LeaseThreadId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    }
-
-    private sealed class DelayedMovePointer : IPointerDriver
-    {
-        private readonly int _applyOnWaitNumber;
-        private Point _position;
-        private Point? _pending;
-        private int _waitCount;
-
-        public DelayedMovePointer(Point initial, int applyOnWaitNumber)
-        {
-            _position = initial;
-            _applyOnWaitNumber = applyOnWaitNumber;
-        }
-
-        public List<string> Calls { get; } = new();
-
-        public Point Position => _position;
-
-        public PointerMoveResult MoveTo(Point point)
-        {
-            _pending = point;
-            Calls.Add($"move {point.X},{point.Y}");
-            return new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440));
-        }
-
-        public PointerMoveResult MoveToWithMethod(Point point, string method)
-        {
-            Calls.Add($"fallback {method} {point.X},{point.Y}");
-            return new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440), method);
-        }
-
-        public void Wait(int milliseconds)
-        {
-            Calls.Add($"wait {milliseconds}");
-            _waitCount++;
-            if (_pending is Point target && _waitCount >= _applyOnWaitNumber)
-            {
-                _position = target;
-                _pending = null;
-            }
-        }
-
-        public void Click(MouseButton button) => Calls.Add($"click {button}");
-
-        public void DoubleClick(MouseButton button) => Calls.Add($"double {button}");
-
-        public void Scroll(int notches, bool horizontal) =>
-            Calls.Add($"{(horizontal ? "hscroll" : "scroll")} {notches}");
     }
 
     private sealed class RecordingPointer : IPointerDriver
@@ -516,11 +331,11 @@ public sealed class PointerDispatchTests
 
         public bool ApplyMove { get; init; } = true;
 
-        public string? WorkingFallbackMethod { get; init; }
-
         public Point? PostMovePosition { get; init; }
 
         public PointerMoveResult? MoveOutcome { get; init; }
+
+        public PointerMoveResult? ProbeOutcome { get; init; }
 
         public Point Position => _position + Drift;
 
@@ -538,14 +353,14 @@ public sealed class PointerDispatchTests
             return MoveOutcome ?? new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 1920, 1080));
         }
 
-        public PointerMoveResult MoveToWithMethod(Point point, string method)
+        public PointerMoveResult? ProbeSetCursorPos(Point point)
         {
-            if (string.Equals(method, WorkingFallbackMethod, StringComparison.Ordinal))
+            if (ProbeOutcome is null)
             {
-                _position = point;
+                return null;
             }
-            Calls.Add($"fallback {method} {point.X},{point.Y}");
-            return new PointerMoveResult(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 1920, 1080), method);
+            Calls.Add($"probe {point.X},{point.Y}");
+            return ProbeOutcome;
         }
 
         public void Wait(int milliseconds) => Calls.Add($"wait {milliseconds}");

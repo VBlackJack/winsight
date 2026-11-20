@@ -21,5 +21,4 @@ namespace Winsight.Core.Models;
 /// </summary>
 public sealed record ClickPointResult(
     int ScreenX,
-    int ScreenY,
-    InputDispatchInfo? Dispatch = null);
+    int ScreenY);

@@ -35,7 +35,12 @@ internal interface IPointerDriver
 
     PointerMoveResult MoveTo(Point point);
 
-    PointerMoveResult MoveToWithMethod(Point point, string method) => MoveTo(point);
+    /// <summary>
+    /// Single SetCursorPos diagnostic probe used only on failure paths to
+    /// classify foreground rejection. Returns null when the driver does not
+    /// implement a separate probe.
+    /// </summary>
+    PointerMoveResult? ProbeSetCursorPos(Point point) => null;
 
     void Wait(int milliseconds);
 
@@ -59,8 +64,8 @@ internal sealed class NativePointerDriver : IPointerDriver
     public PointerMoveResult MoveTo(Point point) =>
         PointerDiagnostics.MoveSendInputVirtualDesk(point);
 
-    public PointerMoveResult MoveToWithMethod(Point point, string method) =>
-        PointerDiagnostics.MoveWithMethod(point, Position, method);
+    public PointerMoveResult? ProbeSetCursorPos(Point point) =>
+        PointerDiagnostics.MoveSetCursorPos(point);
 
     public void Wait(int milliseconds) => Thread.Sleep(milliseconds);
 
@@ -87,7 +92,11 @@ internal sealed class NativePointerDriver : IPointerDriver
 /// hover from the last WM_MOUSEMOVE once per frame and act on that hover when
 /// the button goes down; a move and a press sent together act on the previous
 /// pointer position. The press is refused when the pointer did not reach the
-/// target: <c>move_not_applied</c> when it never left its starting position, or
+/// target: <c>input_context_blocked</c> when a job UI restriction or
+/// non-interactive window station blocks input,
+/// <c>foreground_rejects_synthetic_input</c> when a SetCursorPos probe returns
+/// FALSE with error 0 or the foreground is a configured rejecting host,
+/// <c>move_not_applied</c> when it never left its starting position, or
 /// <c>cursor_moved</c> when something else moved it to another position.
 /// </summary>
 public static class PointerDispatch
@@ -146,22 +155,10 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null) =>
-        Scroll(point, notches, horizontal, out _, settleMs, revalidate, driver, integrity);
-
-    internal static OperationResult? Scroll(
-        Point point,
-        int notches,
-        bool horizontal,
-        out InputDispatchInfo? dispatch,
-        int? settleMs = null,
-        Func<string?>? revalidate = null,
-        IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null,
-        uint? expectedLeaseThreadId = null)
+        IntegrityComparison? integrity = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity, expectedLeaseThreadId, out dispatch) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
         {
             return refusal;
         }
@@ -180,21 +177,10 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null) =>
-        Hover(point, out _, holdMs, settleMs, revalidate, driver, integrity);
-
-    internal static OperationResult? Hover(
-        Point point,
-        out InputDispatchInfo? dispatch,
-        int? holdMs = null,
-        int? settleMs = null,
-        Func<string?>? revalidate = null,
-        IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null,
-        uint? expectedLeaseThreadId = null)
+        IntegrityComparison? integrity = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity, expectedLeaseThreadId, out dispatch) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
         {
             return refusal;
         }
@@ -218,21 +204,10 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null) =>
-        Click(point, style, out _, settleMs, revalidate, driver, integrity);
-
-    internal static OperationResult? Click(
-        Point point,
-        ClickStyle style,
-        out InputDispatchInfo? dispatch,
-        int? settleMs = null,
-        Func<string?>? revalidate = null,
-        IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null,
-        uint? expectedLeaseThreadId = null)
+        IntegrityComparison? integrity = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity, expectedLeaseThreadId, out dispatch) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity) is { } refusal)
         {
             return refusal;
         }
@@ -252,10 +227,6 @@ public static class PointerDispatch
         return null;
     }
 
-    /// <summary>Short poll window after an asynchronous SendInput move before triggering fallback.</summary>
-    private const int AsyncMovePollStepMs = 5;
-    private const int AsyncMovePollAttempts = 5;
-
     private readonly record struct MoveAttemptTrace(
         string Method,
         uint ApiResult,
@@ -268,124 +239,17 @@ public static class PointerDispatch
         Point point,
         int? settleMs,
         Func<string?>? revalidate,
-        IntegrityComparison? integrity,
-        uint? expectedLeaseThreadId,
-        out InputDispatchInfo? dispatch)
+        IntegrityComparison? integrity)
     {
-        InputContextSnapshot inputContext = InputContext.Capture();
-        uint? leaseThreadId = expectedLeaseThreadId ?? DesktopInputLease.CurrentThreadLeaseId;
-        if (leaseThreadId is uint activeLeaseTid && inputContext.ThreadId != 0 && activeLeaseTid != inputContext.ThreadId)
-        {
-            dispatch = InputContext.ToDispatchInfo(inputContext, null);
-            return OperationResult.FailureWith(
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"lease_thread_mismatch: DesktopInputLease is held by thread {activeLeaseTid} but pointer dispatch ran on thread {inputContext.ThreadId}."),
-                new
-                {
-                    code = "lease_thread_mismatch",
-                    leaseThreadId = activeLeaseTid,
-                    dispatchThreadId = inputContext.ThreadId,
-                    inputContext,
-                });
-        }
-        if (InputContext.EvaluateBlock(inputContext) is { } blocked)
-        {
-            dispatch = InputContext.ToDispatchInfo(inputContext, null);
-            return OperationResult.FailureWith(
-                blocked.Message,
-                new
-                {
-                    code = blocked.Code,
-                    restrictions = blocked.Restrictions,
-                    inputContext = blocked.Context,
-                });
-        }
-
-        DesktopSwitchAttempt? desktopSwitch = null;
-        if (!inputContext.DesktopMatchesInput)
-        {
-            desktopSwitch = InputContext.TryAttachToInputDesktop(inputContext);
-            if (desktopSwitch.Succeeded)
-            {
-                inputContext = InputContext.Capture();
-            }
-        }
         int settle = settleMs ?? DefaultSettleMs;
         Point startPosition = pointer.Position;
-        List<string> attemptedMethods = new() { PointerMoveMethods.SendInputVirtualDesk };
-        List<MoveAttemptTrace> attemptTraces = new();
         PointerMoveResult moveResult = pointer.MoveTo(point);
-        string usedMethod = string.IsNullOrEmpty(moveResult.Method)
-            ? PointerMoveMethods.SendInputVirtualDesk
-            : moveResult.Method;
-
-        Point afterPrimary = WaitForCursorDeparture(pointer, startPosition, point);
-        attemptTraces.Add(new MoveAttemptTrace(
-            usedMethod,
-            moveResult.SendInputCount,
-            moveResult.LastWin32Error,
-            afterPrimary.X,
-            afterPrimary.Y));
-
-        if (!IsNear(point, startPosition) && IsNear(afterPrimary, startPosition))
-        {
-            // Fallback methods are a harmless diagnostic aid on failure (zero extra
-            // calls on success): recording SetCursorPos res/err distinguishes OS/host
-            // foreground rejection from SendInput-specific issues.
-            foreach (string fallbackMethod in PointerMoveMethods.FallbackOrder)
-            {
-                attemptedMethods.Add(fallbackMethod);
-                PointerMoveResult fallbackResult = pointer.MoveToWithMethod(point, fallbackMethod);
-                Point afterFallback = fallbackMethod == PointerMoveMethods.SetCursorPos
-                    ? pointer.Position
-                    : WaitForCursorDeparture(pointer, startPosition, point);
-                attemptTraces.Add(new MoveAttemptTrace(
-                    fallbackMethod,
-                    fallbackResult.SendInputCount,
-                    fallbackResult.LastWin32Error,
-                    afterFallback.X,
-                    afterFallback.Y));
-                if (!IsNear(afterFallback, startPosition))
-                {
-                    moveResult = fallbackResult;
-                    usedMethod = fallbackMethod;
-                    break;
-                }
-            }
-        }
-
-        dispatch = InputContext.ToDispatchInfo(inputContext, desktopSwitch, usedMethod);
         pointer.Wait(settle);
-        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch, attemptedMethods, attemptTraces, leaseThreadId) is { } moved)
+        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity) is { } moved)
         {
             return moved;
         }
         return revalidate?.Invoke() is { } refusal ? OperationResult.Failure(refusal) : null;
-    }
-
-    /// <summary>
-    /// Zero-cost-on-success guard: when the cursor moves immediately (normal
-    /// desktop), returns with zero waits. Otherwise polls briefly (up to 25 ms)
-    /// before triggering fallback diagnostics.
-    /// </summary>
-    private static Point WaitForCursorDeparture(IPointerDriver pointer, Point startPosition, Point target)
-    {
-        Point current = pointer.Position;
-        if (IsNear(target, startPosition) || !IsNear(current, startPosition))
-        {
-            return current;
-        }
-        for (int i = 0; i < AsyncMovePollAttempts; i++)
-        {
-            pointer.Wait(AsyncMovePollStepMs);
-            current = pointer.Position;
-            if (!IsNear(current, startPosition))
-            {
-                return current;
-            }
-        }
-        return current;
     }
 
     private static OperationResult? CheckPosition(
@@ -394,12 +258,7 @@ public static class PointerDispatch
         int waitedMs,
         Point? startPosition,
         PointerMoveResult? moveResult,
-        IntegrityComparison? integrity,
-        InputContextSnapshot? inputContext = null,
-        DesktopSwitchAttempt? desktopSwitch = null,
-        IReadOnlyList<string>? attemptedMethods = null,
-        IReadOnlyList<MoveAttemptTrace>? attemptTraces = null,
-        uint? expectedLeaseThreadId = null)
+        IntegrityComparison? integrity)
     {
         Point actual = pointer.Position;
         if (IsNear(actual, target))
@@ -409,49 +268,94 @@ public static class PointerDispatch
 
         if (startPosition is Point start && IsNear(actual, start))
         {
-            InputContextSnapshot effectiveContext = inputContext ?? InputContext.Capture();
-            IntegrityComparison? effectiveIntegrity = integrity;
-            string integrityDetail = effectiveIntegrity is not null
+            InputContextSnapshot inputContext = InputContext.Capture();
+            if (InputContext.EvaluateBlock(inputContext) is { } blocked)
+            {
+                Console.Error.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[winsight] {InputContext.InputContextBlockedCode} restrictions=[{string.Join(",", blocked.Restrictions)}] winSta={inputContext.WindowStation ?? "?"} desktop={inputContext.ThreadDesktop ?? "?"}/{inputContext.InputDesktop ?? "?"}"));
+                return OperationResult.FailureWith(
+                    blocked.Message,
+                    new
+                    {
+                        code = blocked.Code,
+                        restrictions = blocked.Restrictions,
+                        inputContext = blocked.Context,
+                    });
+            }
+
+            List<MoveAttemptTrace> attemptTraces = new();
+            if (moveResult is PointerMoveResult primary)
+            {
+                attemptTraces.Add(new MoveAttemptTrace(
+                    primary.Method,
+                    primary.SendInputCount,
+                    primary.LastWin32Error,
+                    actual.X,
+                    actual.Y));
+            }
+
+            PointerMoveResult? setCursorPosProbe = pointer.ProbeSetCursorPos(target);
+            if (setCursorPosProbe is PointerMoveResult probe)
+            {
+                Point afterProbe = pointer.Position;
+                attemptTraces.Add(new MoveAttemptTrace(
+                    PointerMoveMethods.SetCursorPos,
+                    probe.SendInputCount,
+                    probe.LastWin32Error,
+                    afterProbe.X,
+                    afterProbe.Y));
+            }
+
+            ForegroundProcessInfo? foreground = ForegroundInputPolicy.ReadForeground();
+            PointerClipRect? clipCursor = PointerDiagnostics.ReadClipCursor();
+            CursorStateInfo? cursorInfo = PointerDiagnostics.ReadCursorInfo();
+
+            bool setCursorPosRejected = setCursorPosProbe is { SendInputCount: 0, LastWin32Error: 0 };
+            bool knownRejectingHost = ForegroundInputPolicy.IsKnownRejectingHost(foreground?.ProcessName);
+            bool foregroundRejected = setCursorPosRejected || knownRejectingHost;
+
+            string integrityDetail = integrity is not null
                 ? string.Create(
                     CultureInfo.InvariantCulture,
-                    $"currentIntegrity={ProcessIntegrity.FormatIntegrity(effectiveIntegrity.Current)}, targetIntegrity={ProcessIntegrity.FormatIntegrity(effectiveIntegrity.Target)}, uipiBlocked={effectiveIntegrity.IsUipiBlocked}")
+                    $"currentIntegrity={ProcessIntegrity.FormatIntegrity(integrity.Current)}, targetIntegrity={ProcessIntegrity.FormatIntegrity(integrity.Target)}, uipiBlocked={integrity.IsUipiBlocked}")
                 : "integrity=unknown";
             string sendInputDetail = moveResult is PointerMoveResult move
                 ? string.Create(
                     CultureInfo.InvariantCulture,
                     $"method={move.Method}, SendInput={move.SendInputCount}, win32Error={move.LastWin32Error}, normalized=({move.NormalizedX}, {move.NormalizedY}), virtualDesktop=({move.VirtualDesktop.Left},{move.VirtualDesktop.Top} {move.VirtualDesktop.Width}x{move.VirtualDesktop.Height})")
                 : "SendInput=unknown";
-            string methodsDetail = attemptTraces is { Count: > 0 }
+            string attemptsDetail = attemptTraces.Count > 0
                 ? $"attempts=[{string.Join("; ", attemptTraces.Select(t => $"{t.Method}:res={t.ApiResult},err={t.LastWin32Error},pos=({t.AfterX},{t.AfterY})"))}]"
-                : attemptedMethods is { Count: > 0 }
-                    ? $"attemptedMethods=[{string.Join(",", attemptedMethods)}]"
-                    : "attemptedMethods=[]";
-            uint? leaseThreadId = expectedLeaseThreadId ?? DesktopInputLease.CurrentThreadLeaseId;
-            ForegroundProcessInfo? foreground = ForegroundInputPolicy.ReadForeground();
-            PointerClipRect? clipCursor = PointerDiagnostics.ReadClipCursor();
-            CursorStateInfo? cursorInfo = PointerDiagnostics.ReadCursorInfo();
-            string threadDetail = string.Create(
+                : "attempts=[]";
+            string fgDetail = string.Create(
                 CultureInfo.InvariantCulture,
-                $"leaseThreadId={leaseThreadId?.ToString(CultureInfo.InvariantCulture) ?? "none"}, dispatchThreadId={effectiveContext.ThreadId}, fg={foreground?.ProcessName ?? "?"}({foreground?.ProcessId ?? 0})");
-            string contextDetail = InputContext.FormatSummary(effectiveContext, desktopSwitch);
+                $"fg={foreground?.ProcessName ?? "?"}({foreground?.ProcessId ?? 0})");
+            string contextDetail = InputContext.FormatSummary(inputContext);
 
-            MoveAttemptTrace? setCursorPosTrace = attemptTraces?.FirstOrDefault(
-                t => string.Equals(t.Method, PointerMoveMethods.SetCursorPos, StringComparison.Ordinal));
-            bool setCursorPosRejected = setCursorPosTrace is { Method: PointerMoveMethods.SetCursorPos, ApiResult: 0 };
-            bool knownRejectingHost = ForegroundInputPolicy.IsKnownRejectingHost(foreground?.ProcessName);
-            bool foregroundRejected = setCursorPosRejected || knownRejectingHost;
             string errorCode = foregroundRejected
                 ? ForegroundInputPolicy.ForegroundRejectsSyntheticInputCode
                 : MoveNotAppliedCode;
             string? hint = foregroundRejected ? ForegroundInputPolicy.HintFor(foreground) : null;
 
+            string probeDetail = setCursorPosProbe is PointerMoveResult measuredProbe
+                ? string.Create(CultureInfo.InvariantCulture, $"set_cursor_pos res={measuredProbe.SendInputCount}, err={measuredProbe.LastWin32Error}; ")
+                : string.Empty;
+
+            if (foregroundRejected)
+            {
+                Console.Error.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[winsight] {ForegroundInputPolicy.ForegroundRejectsSyntheticInputCode} fg={foreground?.ProcessName ?? "unknown"}({foreground?.ProcessId ?? 0}) target=({target.X},{target.Y}) {probeDetail}knownHost={knownRejectingHost}"));
+            }
+
             string message = foregroundRejected
                 ? string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{errorCode}: foreground process {foreground?.ProcessName ?? "unknown"} (PID {foreground?.ProcessId ?? 0}) rejected synthetic pointer input from ({actual.X}, {actual.Y}) to ({target.X}, {target.Y}) (set_cursor_pos res={setCursorPosTrace?.ApiResult ?? 0}, err={setCursorPosTrace?.LastWin32Error ?? 0}; {methodsDetail}; {threadDetail}; {integrityDetail}; {contextDetail}). {hint}")
+                    $"{errorCode}: foreground process {foreground?.ProcessName ?? "unknown"} (PID {foreground?.ProcessId ?? 0}) rejected synthetic pointer input from ({actual.X}, {actual.Y}) to ({target.X}, {target.Y}) ({probeDetail}{attemptsDetail}; {fgDetail}; {integrityDetail}; {contextDetail}). {hint}")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {methodsDetail}; {threadDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
+                    $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {attemptsDetail}; {fgDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
 
             object data = new
             {
@@ -464,10 +368,7 @@ public static class PointerDispatch
                 actualX = actual.X,
                 actualY = actual.Y,
                 moveMethod = moveResult?.Method,
-                attemptedMethods,
                 attemptTraces,
-                leaseThreadId,
-                dispatchThreadId = effectiveContext.ThreadId,
                 foregroundWindow = foreground,
                 clipCursor,
                 cursorInfo,
@@ -485,18 +386,17 @@ public static class PointerDispatch
                     }
                     : null,
                 dpiAwareness = ProcessDpiAwareness.DescribeCurrent(),
-                integrity = effectiveIntegrity is not null
+                integrity = integrity is not null
                     ? new
                     {
-                        current = effectiveIntegrity.Current.Name,
-                        currentRid = effectiveIntegrity.Current.Rid,
-                        target = effectiveIntegrity.Target.Name,
-                        targetRid = effectiveIntegrity.Target.Rid,
-                        uipiBlocked = effectiveIntegrity.IsUipiBlocked,
+                        current = integrity.Current.Name,
+                        currentRid = integrity.Current.Rid,
+                        target = integrity.Target.Name,
+                        targetRid = integrity.Target.Rid,
+                        uipiBlocked = integrity.IsUipiBlocked,
                     }
                     : null,
-                inputContext = effectiveContext,
-                desktopSwitch,
+                inputContext,
             };
             return OperationResult.FailureWith(message, data);
         }

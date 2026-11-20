@@ -20,5 +20,4 @@ namespace Winsight.Core.Models;
 public sealed record HoverResult(
     int X,
     int Y,
-    TooltipSnapshot? Tooltip,
-    InputDispatchInfo? Dispatch = null);
+    TooltipSnapshot? Tooltip);
