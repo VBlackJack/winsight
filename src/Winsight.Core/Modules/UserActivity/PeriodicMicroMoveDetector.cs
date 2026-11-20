@@ -25,23 +25,28 @@ public readonly record struct PeriodicMicroMoveConfig(
     int MinIntervals = 3,
     long MinPeriodMs = 250,
     long MaxPeriodMs = 60_000,
-    double MaxRelativeJitter = 0.15,
+    double MaxRelativeJitter = UserActivityPolicy.DefaultPeriodicMicroMoveTolerancePct / 100.0,
     long MinJitterToleranceMs = 100)
 {
     public static PeriodicMicroMoveConfig FromEnvironment() => new(
         Enabled: UserActivityPolicy.IsPeriodicMicroMoveFilterEnabled,
-        MaxDisplacementPx: UserActivityPolicy.PeriodicMicroMoveThresholdPx);
+        MaxDisplacementPx: UserActivityPolicy.PeriodicMicroMoveThresholdPx,
+        MaxRelativeJitter: UserActivityPolicy.PeriodicMicroMoveRelativeTolerance);
 }
 
 /// <summary>
 /// Opt-in classifier that recognizes periodic small mouse-only movements
 /// typical of a USB mouse jiggler so they do not keep <c>humanIdleMs</c> near
 /// zero forever. Any keyboard input, any click/wheel, any stationary event
-/// without hook confirmation, or any larger mouse move always counts as human
-/// and resets the streak.
+/// without hook confirmation, or any larger mouse move always counts as human.
+/// Once a jiggler period is learned, Winsight-injected inputs preserve the
+/// learned history and after a human interruption classification resumes as
+/// soon as a micro-move matches the learned period and amplitude bound.
 /// </summary>
 internal sealed class PeriodicMicroMoveDetector
 {
+    private const int MaxHarmonicResumeCount = 4;
+
     private readonly Lock _gate = new();
     private readonly Func<PeriodicMicroMoveConfig> _configProvider;
     private readonly List<uint> _candidateTicks = new(8);
@@ -49,6 +54,9 @@ internal sealed class PeriodicMicroMoveDetector
     private bool _hasLastEvaluatedTick;
     private uint _lastEvaluatedTick;
     private bool _lastEvaluatedResult;
+    private bool _hasLearnedPattern;
+    private double _learnedPeriodMs;
+    private uint _lastJigglerTick;
 
     public PeriodicMicroMoveDetector(Func<PeriodicMicroMoveConfig>? configProvider = null)
     {
@@ -56,6 +64,24 @@ internal sealed class PeriodicMicroMoveDetector
     }
 
     public PeriodicMicroMoveConfig CurrentConfig => _configProvider();
+
+    /// <summary>
+    /// Update the reference cursor position after a Winsight-injected or
+    /// other-injected input without resetting the learned pattern or candidate
+    /// history, so the next jiggler micro-move is measured from the new cursor
+    /// location rather than the pre-injection location.
+    /// </summary>
+    public void ObserveNonHumanCursor(CursorPoint? cursor)
+    {
+        if (cursor is null)
+        {
+            return;
+        }
+        lock (_gate)
+        {
+            _lastCursor = cursor;
+        }
+    }
 
     public bool Evaluate(uint inputTick, CursorPoint? cursor, string inputKind, bool mouseMoveOnly)
     {
@@ -71,6 +97,7 @@ internal sealed class PeriodicMicroMoveDetector
                 _candidateTicks.Clear();
                 _hasLastEvaluatedTick = false;
                 _lastEvaluatedResult = false;
+                _hasLearnedPattern = false;
                 return false;
             }
 
@@ -107,32 +134,119 @@ internal sealed class PeriodicMicroMoveDetector
 
             if (isDisallowedKind || !mouseMoveOnly || !isSmallMove)
             {
+                // Real human input breaks the active candidate streak, but preserves
+                // _hasLearnedPattern / _learnedPeriodMs / _lastJigglerTick so jiggler
+                // classification resumes immediately once the jiggler ticks again.
                 _candidateTicks.Clear();
                 _lastEvaluatedResult = false;
                 return false;
             }
 
-            int requiredSamples = Math.Max(2, config.MinIntervals + 1);
-            if (_candidateTicks.Count >= requiredSamples)
+            // Fast-path resume against the previously learned jiggler period.
+            if (_hasLearnedPattern && MatchesLearnedPattern(inputTick, config, out double observedPeriod))
             {
-                _candidateTicks.RemoveAt(0);
+                _learnedPeriodMs = (_learnedPeriodMs * 0.75) + (observedPeriod * 0.25);
+                _lastJigglerTick = inputTick;
+                AppendCandidate(inputTick, config);
+                _lastEvaluatedResult = true;
+                return true;
             }
-            _candidateTicks.Add(inputTick);
 
+            // If we have a learned pattern and a single prior candidate after a long
+            // human interruption, check if this single interval matches the learned period.
+            if (_hasLearnedPattern && _candidateTicks.Count >= 1)
+            {
+                long singleDt = InputAttributor.AgeMs(inputTick, _candidateTicks[^1]);
+                if (MatchesSinglePeriod(singleDt, _learnedPeriodMs, config))
+                {
+                    _learnedPeriodMs = (_learnedPeriodMs * 0.75) + (singleDt * 0.25);
+                    _lastJigglerTick = inputTick;
+                    AppendCandidate(inputTick, config);
+                    _lastEvaluatedResult = true;
+                    return true;
+                }
+            }
+
+            AppendCandidate(inputTick, config);
+
+            int requiredSamples = Math.Max(2, config.MinIntervals + 1);
             if (_candidateTicks.Count < requiredSamples)
             {
                 _lastEvaluatedResult = false;
                 return false;
             }
 
-            bool regular = AreIntervalsRegular(_candidateTicks, config);
+            bool regular = TryComputeRegularPeriod(_candidateTicks, config, out double meanPeriod);
+            if (regular)
+            {
+                _hasLearnedPattern = true;
+                _learnedPeriodMs = meanPeriod;
+                _lastJigglerTick = inputTick;
+            }
             _lastEvaluatedResult = regular;
             return regular;
         }
     }
 
-    private static bool AreIntervalsRegular(List<uint> ticks, PeriodicMicroMoveConfig config)
+    private void AppendCandidate(uint inputTick, PeriodicMicroMoveConfig config)
     {
+        int requiredSamples = Math.Max(2, config.MinIntervals + 1);
+        if (_candidateTicks.Count >= requiredSamples)
+        {
+            _candidateTicks.RemoveAt(0);
+        }
+        _candidateTicks.Add(inputTick);
+    }
+
+    private bool MatchesLearnedPattern(uint inputTick, PeriodicMicroMoveConfig config, out double observedPeriod)
+    {
+        observedPeriod = _learnedPeriodMs;
+        long dt = InputAttributor.AgeMs(inputTick, _lastJigglerTick);
+        if (dt < config.MinPeriodMs)
+        {
+            return false;
+        }
+
+        if (MatchesSinglePeriod(dt, _learnedPeriodMs, config))
+        {
+            observedPeriod = dt;
+            return true;
+        }
+
+        // Allow up to MaxHarmonicResumeCount missed jiggler ticks during an interruption
+        // (e.g. a Winsight action or short human interaction).
+        double ratio = dt / _learnedPeriodMs;
+        int multiple = (int)Math.Round(ratio);
+        if (multiple >= 2 && multiple <= MaxHarmonicResumeCount)
+        {
+            double expected = multiple * _learnedPeriodMs;
+            double tolerance = Math.Max(config.MinJitterToleranceMs, _learnedPeriodMs * config.MaxRelativeJitter);
+            if (Math.Abs(dt - expected) <= tolerance)
+            {
+                observedPeriod = (double)dt / multiple;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool MatchesSinglePeriod(long dt, double referencePeriodMs, PeriodicMicroMoveConfig config)
+    {
+        if (dt < config.MinPeriodMs || dt > config.MaxPeriodMs)
+        {
+            return false;
+        }
+        double tolerance = Math.Max(config.MinJitterToleranceMs, referencePeriodMs * config.MaxRelativeJitter);
+        return Math.Abs(dt - referencePeriodMs) <= tolerance;
+    }
+
+    private static bool TryComputeRegularPeriod(
+        List<uint> ticks,
+        PeriodicMicroMoveConfig config,
+        out double meanPeriodMs)
+    {
+        meanPeriodMs = 0;
         int intervalCount = ticks.Count - 1;
         if (intervalCount < config.MinIntervals)
         {
@@ -166,6 +280,7 @@ internal sealed class PeriodicMicroMoveDetector
             }
         }
 
+        meanPeriodMs = mean;
         return true;
     }
 }

@@ -529,6 +529,18 @@ public sealed class UserActivityTests
 
         public void RecordExternalInput() => _lastInputTick = _tick;
 
+        public void RecordWinsightInjection(uint startTick, uint endTick)
+        {
+            _ledger = _ledger with
+            {
+                HasInjection = true,
+                InjectionActive = false,
+                InjectionStartTick = startTick,
+                InjectionEndTick = endTick,
+            };
+            _lastInputTick = endTick;
+        }
+
         public uint TickNow() => _tick;
 
         public long ElapsedMs() => _elapsedMs;

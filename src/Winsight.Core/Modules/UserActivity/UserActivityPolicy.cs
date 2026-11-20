@@ -29,8 +29,12 @@ public static class UserActivityPolicy
     public const string InputHookVariable = LowLevelInputHook.InputHookVariable;
     public const string IgnorePeriodicMicroMovesVariable = "WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES";
     public const string PeriodicMicroMoveMaxPxVariable = "WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX";
+    public const string PeriodicMicroMoveTolerancePctVariable = "WINSIGHT_PERIODIC_MICRO_MOVE_TOLERANCE_PCT";
     public const int DefaultPeriodicMicroMoveMaxPx = 15;
     public const int MaxPeriodicMicroMoveMaxPx = 200;
+    public const int DefaultPeriodicMicroMoveTolerancePct = 25;
+    public const int MinPeriodicMicroMoveTolerancePct = 5;
+    public const int MaxPeriodicMicroMoveTolerancePct = 50;
     public const string UserActiveCode = "user_active";
 
     public static int? YieldToUserMs => Parse(Environment.GetEnvironmentVariable(YieldToUserVariable));
@@ -43,12 +47,22 @@ public static class UserActivityPolicy
     public static int PeriodicMicroMoveThresholdPx =>
         ParsePeriodicMicroMoveMaxPx(Environment.GetEnvironmentVariable(PeriodicMicroMoveMaxPxVariable));
 
+    public static double PeriodicMicroMoveRelativeTolerance =>
+        ParsePeriodicMicroMoveTolerancePct(Environment.GetEnvironmentVariable(PeriodicMicroMoveTolerancePctVariable)) / 100.0;
+
     internal static int ParsePeriodicMicroMoveMaxPx(string? raw) =>
         int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) &&
         value >= 1 &&
         value <= MaxPeriodicMicroMoveMaxPx
             ? value
             : DefaultPeriodicMicroMoveMaxPx;
+
+    internal static int ParsePeriodicMicroMoveTolerancePct(string? raw) =>
+        int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) &&
+        value >= MinPeriodicMicroMoveTolerancePct &&
+        value <= MaxPeriodicMicroMoveTolerancePct
+            ? value
+            : DefaultPeriodicMicroMoveTolerancePct;
 
     /// <summary>
     /// Host-configured per-session override enabled exclusively by the human

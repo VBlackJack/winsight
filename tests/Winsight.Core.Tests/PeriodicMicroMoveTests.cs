@@ -241,4 +241,117 @@ public sealed class PeriodicMicroMoveTests
     {
         UserActivityPolicy.ParsePeriodicMicroMoveMaxPx(raw).Should().Be(expected);
     }
+
+    [Theory]
+    [InlineData(null, UserActivityPolicy.DefaultPeriodicMicroMoveTolerancePct)]
+    [InlineData("", UserActivityPolicy.DefaultPeriodicMicroMoveTolerancePct)]
+    [InlineData("1", UserActivityPolicy.DefaultPeriodicMicroMoveTolerancePct)]
+    [InlineData("80", UserActivityPolicy.DefaultPeriodicMicroMoveTolerancePct)]
+    [InlineData("5", 5)]
+    [InlineData("25", 25)]
+    [InlineData("50", 50)]
+    public void ParsePeriodicMicroMoveTolerancePct_validates_tolerance(string? raw, int expected)
+    {
+        UserActivityPolicy.ParsePeriodicMicroMoveTolerancePct(raw).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Jiggler_running_then_Winsight_click_classifies_next_jiggler_move_immediately_as_periodic_micro_move()
+    {
+        UserActivityTests.FakeUserActivityBackend clock = new(StartTick, StartTick)
+        {
+            Cursor = new CursorPoint(500, 500),
+        };
+        UserActivityMonitor monitor = new(clock, () => new PeriodicMicroMoveConfig(Enabled: true, MaxDisplacementPx: 15));
+
+        monitor.Read();
+
+        // Learn the 2400 ms jiggler pattern
+        for (int i = 1; i <= 4; i++)
+        {
+            clock.Sleep(2400);
+            clock.Cursor = new CursorPoint(500 + (i % 2 == 0 ? 0 : 2), 500);
+            clock.RecordExternalInput();
+            monitor.Read();
+        }
+
+        // Winsight moves cursor far away to (180, 220) and clicks (takes 200 ms)
+        uint injectStart = clock.TickNow() + 400;
+        clock.Sleep(600);
+        clock.Cursor = new CursorPoint(180, 220);
+        clock.RecordWinsightInjection(injectStart, clock.TickNow());
+        UserActivitySnapshot winsightSnap = monitor.Read();
+        winsightSnap.LastInputSource.Should().Be(UserActivityMonitor.SourceWinsight);
+
+        // Next jiggler move arrives 1800 ms later (2400 ms since previous jiggler tick) at (182, 220)
+        clock.Sleep(1800);
+        clock.Cursor = new CursorPoint(182, 220);
+        clock.RecordExternalInput();
+        UserActivitySnapshot afterClick = monitor.Read();
+
+        afterClick.LastInputSource.Should().Be(UserActivityMonitor.SourcePeriodicMicroMove);
+        afterClick.Diagnostics!.LastInputIgnoredAsPeriodicMicroMove.Should().BeTrue();
+        afterClick.HumanIdleMs.Should().Be(4800, "neither the Winsight click nor the next jiggler move should reset humanIdleMs");
+    }
+
+    [Fact]
+    public void Jiggler_resumes_immediately_after_human_move_on_first_matching_micro_move()
+    {
+        UserActivityTests.FakeUserActivityBackend clock = new(StartTick, StartTick)
+        {
+            Cursor = new CursorPoint(500, 500),
+        };
+        UserActivityMonitor monitor = new(clock, () => new PeriodicMicroMoveConfig(Enabled: true, MaxDisplacementPx: 15));
+
+        monitor.Read();
+        for (int i = 1; i <= 4; i++)
+        {
+            clock.Sleep(2400);
+            clock.Cursor = new CursorPoint(500 + (i % 2 == 0 ? 0 : 2), 500);
+            clock.RecordExternalInput();
+            monitor.Read();
+        }
+
+        // Human moves cursor 120 px at +600 ms
+        clock.Sleep(600);
+        clock.Cursor = new CursorPoint(620, 500);
+        clock.RecordExternalInput();
+        UserActivitySnapshot humanSnap = monitor.Read();
+        humanSnap.LastInputSource.Should().Be(UserActivityMonitor.SourceHuman);
+        humanSnap.HumanIdleMs.Should().Be(0);
+
+        // Next jiggler tick arrives 1800 ms later (2400 ms since previous jiggler tick) with 2 px move
+        clock.Sleep(1800);
+        clock.Cursor = new CursorPoint(622, 500);
+        clock.RecordExternalInput();
+        UserActivitySnapshot resumedSnap = monitor.Read();
+
+        resumedSnap.LastInputSource.Should().Be(UserActivityMonitor.SourcePeriodicMicroMove);
+        resumedSnap.HumanIdleMs.Should().Be(1800, "humanIdleMs stays anchored at the human move, not reset by the jiggler");
+    }
+
+    [Fact]
+    public void Jiggler_with_alternating_2047_and_2406ms_intervals_is_recognized()
+    {
+        UserActivityTests.FakeUserActivityBackend clock = new(StartTick, StartTick)
+        {
+            Cursor = new CursorPoint(400, 400),
+        };
+        UserActivityMonitor monitor = new(clock, () => new PeriodicMicroMoveConfig(Enabled: true, MaxDisplacementPx: 15));
+
+        monitor.Read();
+        int[] intervals = [2047, 2406, 2047, 2406, 2047];
+        UserActivitySnapshot? last = null;
+        for (int i = 0; i < intervals.Length; i++)
+        {
+            clock.Sleep(intervals[i]);
+            clock.Cursor = new CursorPoint(400 + (i % 2 == 0 ? 2 : 0), 400);
+            clock.RecordExternalInput();
+            last = monitor.Read();
+        }
+
+        last!.LastInputSource.Should().Be(UserActivityMonitor.SourcePeriodicMicroMove);
+        last.Diagnostics!.LastInputIgnoredAsPeriodicMicroMove.Should().BeTrue();
+        last.HumanIdleMs.Should().BeGreaterThan(0);
+    }
 }

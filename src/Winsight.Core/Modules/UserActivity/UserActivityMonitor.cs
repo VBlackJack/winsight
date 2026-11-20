@@ -178,6 +178,7 @@ public sealed class UserActivityMonitor
 
             if (attribution.LastInputIsWinsight)
             {
+                microMoveDetector.ObserveNonHumanCursor(cursor);
                 source = SourceWinsight;
                 inputKind = hookMatchesLastInput ? hook.LastInputKind : KindUnknown;
                 injectedByOther = false;
@@ -186,6 +187,7 @@ public sealed class UserActivityMonitor
             else if (hookMatchesLastInput && hook.LastEventInjected)
             {
                 // Input was flagged LLMHF_INJECTED / LLKHF_INJECTED and did not come from Winsight.
+                microMoveDetector.ObserveNonHumanCursor(cursor);
                 source = SourceOtherInjected;
                 inputKind = hook.LastInputKind;
                 injectedByOther = true;
@@ -244,6 +246,7 @@ public sealed class UserActivityMonitor
             }
             else
             {
+                microMoveDetector.ObserveNonHumanCursor(cursor);
                 source = SourceWinsight;
                 humanTick = attribution.HumanTick;
             }
