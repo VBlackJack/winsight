@@ -116,7 +116,7 @@ public sealed class ForegroundInputPolicyTests
             refusal!.Error.Should().StartWith($"{ForegroundInputPolicy.ForegroundRejectsSyntheticInputCode}:")
                 .And.Contain("vmware")
                 .And.Contain("set_cursor_pos res=0, err=0")
-                .And.Contain("no known VMware preference fixes it")
+                .And.Contain("no known host preference fixes it")
                 .And.Contain("vmsight")
                 .And.NotContain("Preferences > Input")
                 .And.NotContain("Enhanced Virtual Keyboard");
@@ -139,10 +139,8 @@ public sealed class ForegroundInputPolicyTests
         public PointerMoveResult MoveTo(Point point) =>
             new(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440), PointerMoveMethods.SendInputVirtualDesk);
 
-        public PointerMoveResult MoveToWithMethod(Point point, string method) =>
-            method == PointerMoveMethods.SetCursorPos
-                ? new(0, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440), method)
-                : new(1, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440), method);
+        public PointerMoveResult? ProbeSetCursorPos(Point point) =>
+            new(0, 0, point.X, point.Y, new VirtualDesktopBounds(0, 0, 6000, 1440), PointerMoveMethods.SetCursorPos);
 
         public void Wait(int milliseconds) { }
 

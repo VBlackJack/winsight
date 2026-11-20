@@ -85,8 +85,8 @@ public sealed partial class ActionInvoker
             {
                 case ClickStyle.DoubleClick:
                 case ClickStyle.RightClick:
-                    return PointerDispatch.Click(ClickablePoint(element), style, out InputDispatchInfo? dispatch, integrity: integrity)
-                        ?? OperationResult.OkWith(new { dispatch });
+                    return PointerDispatch.Click(ClickablePoint(element), style, integrity: integrity)
+                        ?? OperationResult.Ok();
 
                 default:
                     return InvokePrimaryAction(element, integrity);
@@ -109,7 +109,7 @@ public sealed partial class ActionInvoker
         bool allowWebView2Input = false)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (CheckInputIntegrity(processId, out _) is { } blocked)
+        if (CheckInputIntegrity(processId, out IntegrityComparison integrity) is { } blocked)
         {
             return blocked;
         }
@@ -149,14 +149,19 @@ public sealed partial class ActionInvoker
                 return OperationResult.Ok();
             }
 
-            string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("type_text");
-            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
-            {
-                return contextBlocked;
-            }
             element.Focus();
-            Keyboard.Type(text);
-            return OperationResult.OkWith(new { dispatch, warning = foregroundWarning });
+            string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("type_text");
+            try
+            {
+                Keyboard.Type(text);
+            }
+            catch (Win32Exception ex)
+            {
+                return SendInputFailure(ex, integrity);
+            }
+            return foregroundWarning is null
+                ? OperationResult.Ok()
+                : OperationResult.OkWith(new { warning = foregroundWarning });
         }
     }
 
@@ -209,10 +214,6 @@ public sealed partial class ActionInvoker
                     $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the chord \"{chord}\" was sent.");
             }
             string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("send_key_chord");
-            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
-            {
-                return contextBlocked;
-            }
             try
             {
                 DispatchKeyboardChord(keys);
@@ -226,7 +227,6 @@ public sealed partial class ActionInvoker
                 focus.WindowTitle,
                 focus.WindowHandle.ToInt64(),
                 focused,
-                dispatch,
                 foregroundWarning));
         }
     }
@@ -290,10 +290,6 @@ public sealed partial class ActionInvoker
             }
 
             string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("type_keys");
-            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
-            {
-                return contextBlocked;
-            }
             bool StillTargeted() => GetForegroundWindow() == focus.WindowHandle;
             TypeKeysResult sent = new(
                 paste ? TypeKeysModePaste : TypeKeysModeKeys,
@@ -301,7 +297,6 @@ public sealed partial class ActionInvoker
                 focus.WindowHandle.ToInt64(),
                 focus.WindowTitle,
                 focused,
-                Dispatch: dispatch,
                 Warning: foregroundWarning);
             if (!paste)
             {
@@ -382,12 +377,14 @@ public sealed partial class ActionInvoker
     }
 
 
-    internal static OperationResult? PrepareInputContext(out InputDispatchInfo dispatch)
+    private static OperationResult SendInputFailure(Win32Exception ex, IntegrityComparison integrity)
     {
-        InputContextSnapshot context = InputContext.Capture();
-        if (InputContext.EvaluateBlock(context) is { } blocked)
+        InputContextSnapshot inputContext = InputContext.Capture();
+        if (InputContext.EvaluateBlock(inputContext) is { } blocked)
         {
-            dispatch = InputContext.ToDispatchInfo(context, null);
+            Console.Error.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"[winsight] {InputContext.InputContextBlockedCode} restrictions=[{string.Join(",", blocked.Restrictions)}] winSta={inputContext.WindowStation ?? "?"} desktop={inputContext.ThreadDesktop ?? "?"}/{inputContext.InputDesktop ?? "?"}"));
             return OperationResult.FailureWith(
                 blocked.Message,
                 new
@@ -397,21 +394,7 @@ public sealed partial class ActionInvoker
                     inputContext = blocked.Context,
                 });
         }
-        DesktopSwitchAttempt? desktopSwitch = null;
-        if (!context.DesktopMatchesInput)
-        {
-            desktopSwitch = InputContext.TryAttachToInputDesktop(context);
-            if (desktopSwitch.Succeeded)
-            {
-                context = InputContext.Capture();
-            }
-        }
-        dispatch = InputContext.ToDispatchInfo(context, desktopSwitch);
-        return null;
-    }
-
-    private static OperationResult SendInputFailure(Win32Exception ex, IntegrityComparison integrity) =>
-        OperationResult.FailureWith(
+        return OperationResult.FailureWith(
             ex.Message,
             new
             {
@@ -422,7 +405,9 @@ public sealed partial class ActionInvoker
                 targetIntegrity = integrity.Target.Name,
                 targetRid = integrity.Target.Rid,
                 uipiBlocked = integrity.IsUipiBlocked,
+                inputContext,
             });
+    }
 
     internal static OperationResult? CheckInputIntegrity(int processId, out IntegrityComparison comparison)
     {
@@ -431,6 +416,10 @@ public sealed partial class ActionInvoker
         {
             return null;
         }
+
+        Console.Error.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"[winsight] {ProcessIntegrity.UipiBlockedCode} targetPid={processId} current={ProcessIntegrity.FormatIntegrity(comparison.Current)} target={ProcessIntegrity.FormatIntegrity(comparison.Target)}"));
 
         return OperationResult.FailureWith(
             comparison.Warning!,
@@ -462,8 +451,8 @@ public sealed partial class ActionInvoker
             return OperationResult.Ok();
         }
 
-        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary, out InputDispatchInfo? dispatch, integrity: integrity)
-            ?? OperationResult.OkWith(new { dispatch });
+        return PointerDispatch.Click(ClickablePoint(element), ClickStyle.Primary, integrity: integrity)
+            ?? OperationResult.Ok();
     }
 
     internal static string WebView2InputRefusal(

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Drawing;
 using FluentAssertions;
 using Winsight.Core.Models;
 using Winsight.Core.Modules.UiAutomation;
@@ -64,5 +65,67 @@ public sealed class PointerDiagnosticsTests
             PointerMoveMethods.SendInputPrimaryAbsolute,
             PointerMoveMethods.SendInputRelative,
             PointerMoveMethods.SetCursorPos);
+    }
+
+    [Fact]
+    public void Run_diagnostic_tries_all_four_methods_in_order_and_restores_cursor_each_time()
+    {
+        FakeDiagnosticDriver driver = new(new Point(817, 1332), workingMethod: PointerMoveMethods.SetCursorPos);
+
+        PointerDiagnosticReport report = PointerDiagnostics.RunDiagnostic(new Point(1857, 44), driver);
+
+        report.TargetX.Should().Be(1857);
+        report.TargetY.Should().Be(44);
+        report.FirstWorkingMethod.Should().Be(PointerMoveMethods.SetCursorPos);
+        report.Attempts.Should().HaveCount(4);
+        report.Attempts.Select(a => a.Method).Should().Equal(PointerMoveMethods.AllOrdered);
+        report.Attempts.Take(3).Should().OnlyContain(a => !a.ReachedTarget && a.Restored);
+        report.Attempts[3].ReachedTarget.Should().BeTrue();
+        report.Attempts[3].Restored.Should().BeTrue();
+        driver.Cursor.Should().Be(new Point(817, 1332), "original cursor position must be restored after every attempt");
+        driver.Waits.Should().Equal(
+            PointerDiagnostics.FirstSampleDelayMs, PointerDiagnostics.SecondSampleDelayMs,
+            PointerDiagnostics.FirstSampleDelayMs, PointerDiagnostics.SecondSampleDelayMs,
+            PointerDiagnostics.FirstSampleDelayMs, PointerDiagnostics.SecondSampleDelayMs,
+            PointerDiagnostics.FirstSampleDelayMs, PointerDiagnostics.SecondSampleDelayMs);
+    }
+
+    private sealed class FakeDiagnosticDriver : IPointerDiagnosticDriver
+    {
+        private readonly string _workingMethod;
+
+        public FakeDiagnosticDriver(Point start, string workingMethod)
+        {
+            Cursor = start;
+            _workingMethod = workingMethod;
+        }
+
+        public Point Cursor { get; private set; }
+        public List<int> Waits { get; } = new();
+
+        public InputContextSnapshot CaptureContext() =>
+            new(1, 1, true, InputContext.InteractiveWindowStationName, true, "Default", "Default", null, true, false, 0, Array.Empty<string>(), null, false, false, "medium (0x2000)", Array.Empty<ProcessChainEntry>(), 42);
+        public CursorPoint? ReadCursorPos() => new(Cursor.X, Cursor.Y);
+        public CursorPoint? ReadPhysicalCursorPos() => new(Cursor.X, Cursor.Y);
+        public PointerClipRect? ReadClipCursor() => new(0, 0, 6000, 1440, 6000, 1440);
+        public CursorStateInfo? ReadCursorInfo() => new(1, true, false, Cursor.X, Cursor.Y);
+        public IReadOnlyList<string> ReadMouseButtonsDown() => Array.Empty<string>();
+        public MouseAccelerationInfo? ReadMouseAcceleration() => new(6, 10, 1, 10);
+        public ForegroundProcessInfo? ReadForegroundProcess() => new(0x100, 1234, "brave");
+        public VirtualDesktopBounds QueryVirtualDesktop() => new(0, 0, 6000, 1440);
+        public VirtualDesktopBounds QueryPrimaryMonitor() => new(0, 0, 3440, 1440);
+        public string DescribeDpiAwareness() => "per_monitor_aware_v2";
+
+        public PointerMoveResult MoveWithMethod(Point target, Point current, string method)
+        {
+            if (method == _workingMethod || method == PointerMoveMethods.SetCursorPos)
+            {
+                Cursor = target;
+                return new PointerMoveResult(1, 0, target.X, target.Y, QueryVirtualDesktop(), method);
+            }
+            return new PointerMoveResult(1, 0, target.X, target.Y, QueryVirtualDesktop(), method);
+        }
+
+        public void Wait(int milliseconds) => Waits.Add(milliseconds);
     }
 }

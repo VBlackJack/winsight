@@ -70,24 +70,20 @@ public sealed partial class ActionInvoker
                     $"Located element has invalid bounds {rect.Width}x{rect.Height}.");
             }
 
-            if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
-            {
-                return contextBlocked;
-            }
             System.Drawing.Point center = new(
                 rect.Left + rect.Width / 2,
                 rect.Top + rect.Height / 2);
             System.Drawing.Point outsideElement = new(
                 Math.Max(0, rect.Left - 24),
                 Math.Max(0, rect.Top - 24));
-            Mouse.MoveTo(outsideElement);
+            NativePointerDriver.Instance.MoveTo(outsideElement);
             Thread.Sleep(PreHoverSettleMs);
 
             HashSet<string> staleTooltips = CaptureTooltips(automation, processId)
                 .Select(t => TooltipSignature(t.Snapshot))
                 .ToHashSet(StringComparer.Ordinal);
 
-            Mouse.MoveTo(center);
+            NativePointerDriver.Instance.MoveTo(center);
 
             string? helpText = SafeReadHelpText(element);
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -103,7 +99,7 @@ public sealed partial class ActionInvoker
                 TooltipSnapshot? tooltip = fresh.FirstOrDefault(t => TooltipTextMatches(t, expectedTooltipText));
                 if (tooltip is not null)
                 {
-                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip, dispatch));
+                    return OperationResult.OkWith(new HoverResult(center.X, center.Y, tooltip));
                 }
 
                 lastTooltip = fresh.FirstOrDefault() ?? lastTooltip;
@@ -121,10 +117,10 @@ public sealed partial class ActionInvoker
                     rect.Width,
                     rect.Height,
                     TooltipSnapshot.SourceHelpText);
-                return OperationResult.OkWith(new HoverResult(center.X, center.Y, fromHelpText, dispatch));
+                return OperationResult.OkWith(new HoverResult(center.X, center.Y, fromHelpText));
             }
 
-            HoverResult result = new(center.X, center.Y, lastTooltip, dispatch);
+            HoverResult result = new(center.X, center.Y, lastTooltip);
             if (expectedTooltipText is not null)
             {
                 return OperationResult.FailureWith(

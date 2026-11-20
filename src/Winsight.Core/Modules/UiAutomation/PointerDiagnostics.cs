@@ -12,12 +12,51 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using Winsight.Core.Models;
 
 namespace Winsight.Core.Modules.UiAutomation;
+
+/// <summary>Abstraction over OS cursor/environment calls used by <see cref="PointerDiagnostics.RunDiagnostic"/> so unit tests can run deterministically without moving the real cursor.</summary>
+internal interface IPointerDiagnosticDriver
+{
+    InputContextSnapshot CaptureContext();
+    CursorPoint? ReadCursorPos();
+    CursorPoint? ReadPhysicalCursorPos();
+    PointerClipRect? ReadClipCursor();
+    CursorStateInfo? ReadCursorInfo();
+    IReadOnlyList<string> ReadMouseButtonsDown();
+    MouseAccelerationInfo? ReadMouseAcceleration();
+    ForegroundProcessInfo? ReadForegroundProcess();
+    VirtualDesktopBounds QueryVirtualDesktop();
+    VirtualDesktopBounds QueryPrimaryMonitor();
+    string DescribeDpiAwareness();
+    PointerMoveResult MoveWithMethod(Point target, Point current, string method);
+    void Wait(int milliseconds);
+}
+
+internal sealed class NativePointerDiagnosticDriver : IPointerDiagnosticDriver
+{
+    public static readonly NativePointerDiagnosticDriver Instance = new();
+
+    public InputContextSnapshot CaptureContext() => InputContext.Capture();
+    public CursorPoint? ReadCursorPos() => PointerDiagnostics.ReadCursorPos();
+    public CursorPoint? ReadPhysicalCursorPos() => PointerDiagnostics.ReadPhysicalCursorPos();
+    public PointerClipRect? ReadClipCursor() => PointerDiagnostics.ReadClipCursor();
+    public CursorStateInfo? ReadCursorInfo() => PointerDiagnostics.ReadCursorInfo();
+    public IReadOnlyList<string> ReadMouseButtonsDown() => PointerDiagnostics.ReadMouseButtonsDown();
+    public MouseAccelerationInfo? ReadMouseAcceleration() => PointerDiagnostics.ReadMouseAcceleration();
+    public ForegroundProcessInfo? ReadForegroundProcess() => PointerDiagnostics.ReadForegroundProcess();
+    public VirtualDesktopBounds QueryVirtualDesktop() => VirtualDesktopCoordinates.QueryCurrent();
+    public VirtualDesktopBounds QueryPrimaryMonitor() => PointerDiagnostics.QueryPrimaryMonitorBounds();
+    public string DescribeDpiAwareness() => ProcessDpiAwareness.DescribeCurrent();
+    public PointerMoveResult MoveWithMethod(Point target, Point current, string method) =>
+        PointerDiagnostics.MoveWithMethod(target, current, method);
+    public void Wait(int milliseconds) => Thread.Sleep(milliseconds);
+}
 
 /// <summary>
 /// Implements the four Windows synthetic pointer move methods and the
@@ -26,6 +65,9 @@ namespace Winsight.Core.Modules.UiAutomation;
 /// </summary>
 internal static class PointerDiagnostics
 {
+    internal const int FirstSampleDelayMs = 50;
+    internal const int SecondSampleDelayMs = 100;
+
     private const uint InputMouse = 0;
     private const uint MouseEventMove = 0x0001;
     private const uint MouseEventVirtualDesk = 0x4000;
@@ -160,9 +202,9 @@ internal static class PointerDiagnostics
     internal static MouseAccelerationInfo? ReadMouseAcceleration()
     {
         int[] mouseParams = new int[3];
-        bool gotMouse = NativeMethods.SystemParametersInfo(SpiGetMouse, 0, mouseParams, 0);
+        bool gotMouse = NativeMethods.SystemParametersInfoW(SpiGetMouse, 0, mouseParams, 0);
         int speed = 0;
-        bool gotSpeed = NativeMethods.SystemParametersInfo(SpiGetMouseSpeed, 0, ref speed, 0);
+        bool gotSpeed = NativeMethods.SystemParametersInfoW(SpiGetMouseSpeed, 0, ref speed, 0);
         if (!gotMouse && !gotSpeed)
         {
             return null;
@@ -178,7 +220,7 @@ internal static class PointerDiagnostics
             return null;
         }
         _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
-        string name = string.Empty;
+        string name = "unknown";
         if (pid > 0)
         {
             try
@@ -186,9 +228,9 @@ internal static class PointerDiagnostics
                 using Process proc = Process.GetProcessById((int)pid);
                 name = proc.ProcessName;
             }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
             {
-                name = string.Empty;
+                name = "unknown";
             }
         }
         return new ForegroundProcessInfo(hwnd.ToInt64(), (int)pid, name);
@@ -199,48 +241,40 @@ internal static class PointerDiagnostics
     /// recording immediate, 50 ms, and 150 ms positions and restoring the
     /// original cursor position after each attempt.
     /// </summary>
-    internal static PointerDiagnosticReport RunDiagnostic(Point target)
+    internal static PointerDiagnosticReport RunDiagnostic(Point target, IPointerDiagnosticDriver? driver = null)
     {
-        InputContextSnapshot context = InputContext.Capture();
-        if (!context.DesktopMatchesInput)
-        {
-            DesktopSwitchAttempt attempt = InputContext.TryAttachToInputDesktop(context);
-            if (attempt.Succeeded)
-            {
-                context = InputContext.Capture();
-            }
-        }
-
-        CursorPoint? startLogical = ReadCursorPos();
-        CursorPoint? startPhysical = ReadPhysicalCursorPos();
-        PointerClipRect? clip = ReadClipCursor();
-        CursorStateInfo? cursorInfo = ReadCursorInfo();
-        IReadOnlyList<string> buttonsDown = ReadMouseButtonsDown();
-        MouseAccelerationInfo? accel = ReadMouseAcceleration();
-        ForegroundProcessInfo? foreground = ReadForegroundProcess();
-        VirtualDesktopBounds virtualDesktop = VirtualDesktopCoordinates.QueryCurrent();
-        VirtualDesktopBounds primaryMonitor = QueryPrimaryMonitorBounds();
-        string dpiAwareness = ProcessDpiAwareness.DescribeCurrent();
+        IPointerDiagnosticDriver diag = driver ?? NativePointerDiagnosticDriver.Instance;
+        InputContextSnapshot context = diag.CaptureContext();
+        CursorPoint? startLogical = diag.ReadCursorPos();
+        CursorPoint? startPhysical = diag.ReadPhysicalCursorPos();
+        PointerClipRect? clip = diag.ReadClipCursor();
+        CursorStateInfo? cursorInfo = diag.ReadCursorInfo();
+        IReadOnlyList<string> buttonsDown = diag.ReadMouseButtonsDown();
+        MouseAccelerationInfo? accel = diag.ReadMouseAcceleration();
+        ForegroundProcessInfo? foreground = diag.ReadForegroundProcess();
+        VirtualDesktopBounds virtualDesktop = diag.QueryVirtualDesktop();
+        VirtualDesktopBounds primaryMonitor = diag.QueryPrimaryMonitor();
+        string dpiAwareness = diag.DescribeDpiAwareness();
 
         List<PointerMethodAttempt> attempts = new(PointerMoveMethods.AllOrdered.Count);
         string? firstWorking = null;
 
         foreach (string method in PointerMoveMethods.AllOrdered)
         {
-            CursorPoint? preAttempt = ReadCursorPos() ?? startLogical;
+            CursorPoint? preAttempt = diag.ReadCursorPos() ?? startLogical;
             Point currentPoint = preAttempt is not null ? new Point(preAttempt.X, preAttempt.Y) : Point.Empty;
 
-            PointerMoveResult move = MoveWithMethod(target, currentPoint, method);
-            CursorPoint? immediate = ReadCursorPos();
-            CursorPoint? physImmediate = ReadPhysicalCursorPos();
+            PointerMoveResult move = diag.MoveWithMethod(target, currentPoint, method);
+            CursorPoint? immediate = diag.ReadCursorPos();
+            CursorPoint? physImmediate = diag.ReadPhysicalCursorPos();
 
-            Thread.Sleep(50);
-            CursorPoint? after50 = ReadCursorPos();
-            CursorPoint? physAfter50 = ReadPhysicalCursorPos();
+            diag.Wait(FirstSampleDelayMs);
+            CursorPoint? after50 = diag.ReadCursorPos();
+            CursorPoint? physAfter50 = diag.ReadPhysicalCursorPos();
 
-            Thread.Sleep(100);
-            CursorPoint? after150 = ReadCursorPos();
-            CursorPoint? physAfter150 = ReadPhysicalCursorPos();
+            diag.Wait(SecondSampleDelayMs);
+            CursorPoint? after150 = diag.ReadCursorPos();
+            CursorPoint? physAfter150 = diag.ReadPhysicalCursorPos();
 
             bool reached = after150 is not null &&
                 Math.Abs(after150.X - target.X) <= PointerDispatch.CursorTolerancePx &&
@@ -250,7 +284,7 @@ internal static class PointerDiagnostics
                 firstWorking = method;
             }
 
-            bool restored = RestoreCursor(startLogical);
+            bool restored = RestoreCursor(diag, startLogical);
             attempts.Add(new PointerMethodAttempt(
                 method,
                 move.SendInputCount,
@@ -283,23 +317,24 @@ internal static class PointerDiagnostics
             firstWorking);
     }
 
-    private static bool RestoreCursor(CursorPoint? origin)
+    private static bool RestoreCursor(IPointerDiagnosticDriver diag, CursorPoint? origin)
     {
         if (origin is null)
         {
             return false;
         }
         Point target = new(origin.X, origin.Y);
-        _ = MoveSetCursorPos(target);
-        CursorPoint? now = ReadCursorPos();
+        CursorPoint? current = diag.ReadCursorPos() ?? origin;
+        _ = diag.MoveWithMethod(target, new Point(current.X, current.Y), PointerMoveMethods.SetCursorPos);
+        CursorPoint? now = diag.ReadCursorPos();
         if (now is not null &&
             Math.Abs(now.X - origin.X) <= PointerDispatch.CursorTolerancePx &&
             Math.Abs(now.Y - origin.Y) <= PointerDispatch.CursorTolerancePx)
         {
             return true;
         }
-        _ = MoveSendInputVirtualDesk(target);
-        now = ReadCursorPos();
+        _ = diag.MoveWithMethod(target, new Point(current.X, current.Y), PointerMoveMethods.SendInputVirtualDesk);
+        now = diag.ReadCursorPos();
         return now is not null &&
             Math.Abs(now.X - origin.X) <= PointerDispatch.CursorTolerancePx &&
             Math.Abs(now.Y - origin.Y) <= PointerDispatch.CursorTolerancePx;
@@ -424,13 +459,13 @@ internal static class PointerDiagnostics
         [DllImport("user32.dll")]
         public static extern short GetAsyncKeyState(int virtualKey);
 
-        [DllImport("user32.dll", SetLastError = true)]
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SystemParametersInfo(uint action, uint param, int[] pvParam, uint winIni);
+        public static extern bool SystemParametersInfoW(uint action, uint param, int[] pvParam, uint winIni);
 
-        [DllImport("user32.dll", SetLastError = true)]
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SystemParametersInfo(uint action, uint param, ref int pvParam, uint winIni);
+        public static extern bool SystemParametersInfoW(uint action, uint param, ref int pvParam, uint winIni);
 
         [DllImport("user32.dll")]
         public static extern int GetSystemMetrics(int index);
