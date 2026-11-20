@@ -31,7 +31,9 @@ L'écran peut être utilisé par une personne ou par une autre session d'agent.
 
 1. `get_user_activity` avant de prendre la souris ou le clavier; `humanIdleMs`
    est le temps écoulé depuis la dernière saisie humaine, hors saisies de
-   Winsight, et `diagnostics` fournit `inputKind`, `cursorMoved` et
+   Winsight, `sessionLockSource` (`wts`, `input_desktop`, `unknown`) confirme
+   comment `sessionLocked` a été déterminé, et `diagnostics` fournit
+   `inputKind`, `cursorMoved`, `inputHookActive`, `inputHookWarning` et
    `recentInputs`.
 2. `wait_for_user_idle` avec un vrai délai (par exemple `idleMs=3000`,
    `timeoutMs=30000`) avant un lot ou après `user_active`, puis `observe_scene`
@@ -45,10 +47,27 @@ L'écran peut être utilisé par une personne ou par une autre session d'agent.
 5. Si des entrées fantômes réinitialisent `humanIdleMs`, activez
    `WINSIGHT_INPUT_HOOK=1` dans l'environnement serveur pour séparer les
    entrées matérielles des injections tierces (`other_injected`) via
-   `LLMHF_INJECTED` / `LLKHF_INJECTED`. Pour un contournement explicite et
+   `LLMHF_INJECTED` / `LLKHF_INJECTED`. Si Windows retire silencieusement le
+   hook (par exemple après `LowLevelHooksTimeout`),
+   `diagnostics.inputHookActive` passe à `false` et
+   `diagnostics.inputHookWarning` signale la cause. Sur les postes équipés d'un
+   jiggler souris USB matériel, activez
+   `WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1` (et optionnellement
+   `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, `15` px par défaut) afin que les
+   petits mouvements souris réguliers soient classés en `periodic_micro_move`
+   sans réinitialiser `humanIdleMs`. Pour un contournement explicite et
    journalisé sur la session, seul l'utilisateur peut activer
    `WINSIGHT_YIELD_OVERRIDE=1` dans la configuration hôte (jamais via un
    argument d'outil).
+6. Pour capturer les menus, listes déroulantes ou info-bulles flottants
+   au-dessus d'une fenêtre, passez `captureSource="screen"` à
+   `capture_screenshot`, `capture_scene` ou `observe(includeScreenshot=true)`
+   (refusé si la fenêtre n'est pas visible ou est recouverte par un autre
+   processus, sauf avec `allowOccluded=true`). Pour borner les parcours UIA sur
+   les très grandes applications, configurez
+   `WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS` (`5000` ms par défaut); lorsqu'il est
+   atteint, `observe_scene`, `inspect_ui_tree` et `snapshot_ui` renvoient
+   `truncated=true` avec `truncationReason="time_budget"`.
 
 Pour les interfaces dessinées par le GPU sans arbre d'automatisation (iced,
 winit, egui), cliquez avec `click_point focusWindow=true`. Le pointeur se pose

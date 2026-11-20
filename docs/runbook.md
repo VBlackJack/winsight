@@ -27,8 +27,10 @@ use `select_item` or a `run_steps` `select` step with an explicit `itemName`.
 The screen may be in use by a person or by another agent session.
 
 1. `get_user_activity` before taking the mouse or keyboard; `humanIdleMs` is the
-   time since the last human input, Winsight's own input excluded, and
-   `diagnostics` reports `inputKind`, `cursorMoved`, and `recentInputs`.
+   time since the last human input, Winsight's own input excluded,
+   `sessionLockSource` (`wts`, `input_desktop`, `unknown`) confirms how
+   `sessionLocked` was determined, and `diagnostics` reports `inputKind`,
+   `cursorMoved`, `inputHookActive`, `inputHookWarning`, and `recentInputs`.
 2. `wait_for_user_idle` with a real timeout (for example `idleMs=3000`,
    `timeoutMs=30000`) before a batch or after `user_active`, then
    `observe_scene` before acting.
@@ -40,10 +42,23 @@ The screen may be in use by a person or by another agent session.
    a person is active.
 5. If phantom input keeps resetting `humanIdleMs`, set `WINSIGHT_INPUT_HOOK=1`
    in the server environment to distinguish real hardware input from
-   `other_injected` input via `LLMHF_INJECTED` / `LLKHF_INJECTED`. For an
-   explicit logged per-session bypass, only the human can set
-   `WINSIGHT_YIELD_OVERRIDE=1` in host configuration (never via a tool
+   `other_injected` input via `LLMHF_INJECTED` / `LLKHF_INJECTED`. If Windows
+   silently removes the hook (for example after `LowLevelHooksTimeout`),
+   `diagnostics.inputHookActive` becomes `false` and
+   `diagnostics.inputHookWarning` surfaces the cause. On hosts with a USB mouse
+   jiggler, set `WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1` (and optionally
+   `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, default `15`) so periodic small
+   mouse-only moves are classified as `periodic_micro_move` and do not reset
+   `humanIdleMs`. For an explicit logged per-session bypass, only the human can
+   set `WINSIGHT_YIELD_OVERRIDE=1` in host configuration (never via a tool
    argument).
+6. To capture floating menus, dropdowns, or tooltips over a window, pass
+   `captureSource="screen"` to `capture_screenshot`, `capture_scene`, or
+   `observe(includeScreenshot=true)` (refused when hidden or occluded by another
+   process unless `allowOccluded=true`). To bound UIA tree walks on very large
+   applications, set `WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS` (default `5000` ms);
+   when hit, `observe_scene`, `inspect_ui_tree`, and `snapshot_ui` return
+   `truncated=true` with `truncationReason="time_budget"`.
 
 For GPU-drawn UIs without an automation tree (iced, winit, egui), click with
 `click_point focusWindow=true`. The pointer rests on the point before the press

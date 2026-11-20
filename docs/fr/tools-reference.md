@@ -85,6 +85,8 @@ capture d'écran facultative.
 | `processId` | int? | cible de session | Processus cible |
 | `windowTitle` | string? | null | Limite à une sous-chaîne du titre de fenêtre |
 | `includeScreenshot` | bool | false | Inclut un chemin de capture d'écran écrit sous `WINSIGHT_OUTPUT_DIR` |
+| `captureSource` | string | `window` | Quand `includeScreenshot=true`: `window` (défaut, `PrintWindow` sur un HWND) ou `screen` (rectangle du bureau composé par DWM incluant les popups, menus et info-bulles flottants) |
+| `allowOccluded` | bool | false | Quand `includeScreenshot=true` et `captureSource="screen"`, autorise la capture même si une fenêtre d'un autre processus recouvre la cible |
 | `maxResults` | int | 100 | Nombre maximal d'éléments actionnables |
 
 La réponse est un `OperationResult` dont `data` contient `windows`, `elements`,
@@ -199,13 +201,14 @@ entrée.
 
 | Champ | Signification |
 | ----- | ------------- |
-| `humanIdleMs` | Millisecondes depuis la dernière entrée non attribuée à Winsight (et hors `other_injected` avec `WINSIGHT_INPUT_HOOK=1`); null si aucune n'a été vue |
-| `lastInputAgeMs` / `lastInputSource` | Âge de l'entrée la plus récente, de tout type, et source: `human`, `winsight` ou `other_injected` (avec `WINSIGHT_INPUT_HOOK=1`) |
+| `humanIdleMs` | Millisecondes depuis la dernière entrée non attribuée à Winsight (hors `other_injected` avec `WINSIGHT_INPUT_HOOK=1` et hors `periodic_micro_move` avec `WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1`); null si aucune n'a été vue |
+| `lastInputAgeMs` / `lastInputSource` | Âge de l'entrée la plus récente, de tout type, et source: `human`, `winsight`, `other_injected` (avec `WINSIGHT_INPUT_HOOK=1`) ou `periodic_micro_move` (avec `WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1`) |
 | `foreground` | `handle`, `processId`, `processName`; `title` seulement quand la fenêtre appartient au processus cible (`titleWithheld` l'indique) |
 | `sessionLocked` | true, false, ou null quand Windows ne le signale pas (lit `SessionFlags` dans `WTSINFOEXW` à l'offset 16 avec repli `OpenInputDesktop`) |
+| `sessionLockSource` | Méthode ayant produit `sessionLocked`: `wts`, `input_desktop` ou `unknown` |
 | `yieldToUserMs` / `userActive` | Le seuil `WINSIGHT_YIELD_TO_USER_MS`, et si une entrée humaine est plus récente que lui |
 | `yieldOverridden` | true uniquement quand l'utilisateur a activé `WINSIGHT_YIELD_OVERRIDE=1` dans l'environnement serveur (journalisé à chaque contournement, jamais paramétrable par outil) |
-| `diagnostics` | `inputKind` (`mouse`, `keyboard`, `other`, `unknown`), `cursorMoved`, `cursorPosition`, `inputHookActive`, `lastInputInjectedByOther`, et jusqu'à 8 `recentInputs` avec `ageMs` et `deltaFromPreviousMs` |
+| `diagnostics` | `inputKind` (`mouse`, `keyboard`, `other`, `unknown`), `cursorMoved`, `cursorPosition`, `inputHookActive`, `inputHookWarning` (présent si `WINSIGHT_INPUT_HOOK=1` n'a pas pu s'installer, s'est bloqué ou a été retiré silencieusement par Windows), `lastInputInjectedByOther`, `periodicMicroMoveFilterEnabled`, `periodicMicroMoveThresholdPx`, `lastInputIgnoredAsPeriodicMicroMove`, `inputContext`, et jusqu'à 8 `recentInputs` avec `ageMs` et `deltaFromPreviousMs` |
 
 Par défaut, Winsight attribue les entrées selon le temps sans installer de hook
 global de bas niveau (que les produits de sécurité des postes peuvent signaler).
@@ -217,7 +220,16 @@ entrées fantômes réinitialisent `humanIdleMs`, consultez `diagnostics`
 dans l'environnement serveur pour activer le hook optionnel `WH_MOUSE_LL` /
 `WH_KEYBOARD_LL` (vérifie `LLMHF_INJECTED` / `LLKHF_INJECTED` sans enregistrer
 les touches ni le texte) afin de classer les injections externes en
-`other_injected` et de les ignorer dans le garde-fou de courtoisie.
+`other_injected` et de les ignorer dans le garde-fou de courtoisie. Si Windows
+retire silencieusement le hook (par exemple après `LowLevelHooksTimeout`),
+`diagnostics.inputHookActive` passe à `false` et `diagnostics.inputHookWarning`
+signale l'incident au lieu de dégrader silencieusement. Sur les postes équipés
+d'un jiggler souris USB matériel, activez
+`WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1` (et optionnellement
+`WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, `15` px par défaut) pour classer les
+petits déplacements souris périodiques en `periodic_micro_move` sans
+réinitialiser `humanIdleMs`; toute frappe clavier, tout clic et tout déplacement
+plus grand comptent toujours comme `human`.
 
 ## `wait_for_user_idle`
 
@@ -507,7 +519,7 @@ Flux type: `snapshot_ui` → action → `diff_ui`. Sans instantané préalable,
 | `windowTitle` | string? | null   | Limite la capture des éléments à une fenêtre dont le titre contient ce texte |
 | `processId`   | int?    | null   | Id du processus cible; se replie sur la cible de session    |
 
-**`snapshot_ui` renvoie** - `OperationResult` avec `{ processId, windowCount, interactableCount }`.
+**`snapshot_ui` renvoie** - `OperationResult` avec `{ processId, windowCount, interactableCount, truncated, truncationReason }`. `truncated` vaut `true` avec `truncationReason="time_budget"` lorsque le parcours UIA atteint `WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS` (`5000` ms par défaut).
 
 **`diff_ui` renvoie** - `OperationResult` dont `data` est un `UiChange`:
 
@@ -1287,6 +1299,8 @@ noir.
 | `windowTitle` | string | non         | Sous-chaîne du titre de la fenêtre cible, insensible à la casse. Utilisez-la pour capturer des dialogues modaux, des fenêtres contextuelles ou des fenêtres secondaires. |
 | `includeImage` | bool  | non         | Joint le PNG capturé en image intégrée (true par défaut). Passez false pour ne renvoyer que le chemin JSON. |
 | `mainWindow`  | bool   | non         | Capture la fenêtre principale du processus même quand un dialogue ou une surcouche la recouvre; ignoré avec `windowTitle` |
+| `captureSource` | string | non       | `window` (défaut, `PrintWindow` sur un HWND) ou `screen` (rectangle du bureau composé par DWM correspondant aux bornes de la fenêtre cible, faisant apparaître les menus, listes déroulantes et info-bulles flottants tout en conservant des coordonnées relatives à la fenêtre pour `click_point`) |
+| `allowOccluded` | bool | non         | Avec `captureSource="screen"`, autorise la capture même si une fenêtre d'un autre processus recouvre la cible (`false` par défaut). Les fenêtres réduites, masquées ou cachées restent refusées. |
 
 > **Répertoire de sortie**: quand `outputPath` est omis, la capture est
 > écrite dans le répertoire désigné par la variable d'environnement
@@ -1953,4 +1967,10 @@ Liste de noms de processus séparés par des virgules ou points-virgules (sans `
 | `move_not_applied` | `click_point`, `hover_point`, `scroll_point`, clics physiques | Le pointeur est resté à sa position initiale après stabilisation (distinct de `cursor_moved`, réservé au cas où le pointeur a bougé ailleurs que le départ et la cible). Inclut le résultat `SendInput`, `attemptTraces`, `foregroundWindow`, `clipCursor`, `cursorInfo`, `integrity` et `inputContext`. |
 | `foreground_rejects_synthetic_input` | Échecs d'entrée pointeur | Le déplacement n'a pas été appliqué et soit la sonde `SetCursorPos` a renvoyé `FALSE` avec `GetLastError() == 0`, soit le processus au premier plan figure dans `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS` (par exemple VMware Workstation lorsqu'une VM allumée est affichée dans l'onglet actif; l'interface hôte VMware sans VM en cours dans l'onglet actif accepte les entrées synthétiques). |
 | `warning` (`foreground_may_reject_synthetic_input`) | `send_key_chord`, `type_keys`, repli clavier de `type_text` | Avertissement non bloquant joint aux résultats clavier réussis quand le processus au premier plan figure dans `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
+| `captureSource` / `allowOccluded` | `capture_screenshot`, `capture_scene`, `observe` | `captureSource="screen"` capture le rectangle du bureau composé par DWM aux bornes de la fenêtre cible (incluant popups, menus et info-bulles flottants avec coordonnées relatives à la fenêtre); refusé si la fenêtre n'est pas visible ou est recouverte par un autre processus sauf avec `allowOccluded=true`. `ScreenshotResult.captureSource` indique le mode utilisé. |
+| `truncationReason` | `observe_scene`, `inspect_ui_tree`, `snapshot_ui` | Explique l'arrêt anticipé d'un parcours quand `truncated=true`: `time_budget` (`WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS`, `5000` ms par défaut, plage `100..120000`), `node_limit`, `max_results` ou `com_error`. |
+| `any_change_unrelated` (`hint`) | `act_verified` | Indice non bloquant renvoyé sur `verified` quand `expect.kind=any_change` n'a vérifié que par des éléments sans lien avec la cible (ni la cible, ni ses descendants, ni une nouvelle fenêtre), recommandant un prédicat strict (`window_open`, `selected`, `value`, `toggle`, ...). |
+| `sessionLockSource` | `get_user_activity` | Indique la méthode ayant produit `sessionLocked`: `wts`, `input_desktop` ou `unknown`. |
+| `inputHookWarning` | `get_user_activity` (`diagnostics`) | Présent quand `WINSIGHT_INPUT_HOOK=1` n'a pas pu s'installer, s'est bloqué ou a été retiré silencieusement par Windows (`LowLevelHooksTimeout`), accompagné de `inputHookActive=false`. |
+| `periodic_micro_move` | `get_user_activity` (`lastInputSource`, `diagnostics`) | Filtre anti-jiggler optionnel (`WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1`, `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, `15` px par défaut): les petits déplacements souris réguliers ne réinitialisent pas `humanIdleMs`. |
 
