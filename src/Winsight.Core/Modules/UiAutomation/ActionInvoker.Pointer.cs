@@ -68,7 +68,7 @@ public sealed partial class ActionInvoker
                 (point, revalidate) =>
                 {
                     OperationResult? refusal = PointerDispatch.Click(
-                        point, style, out InputDispatchInfo? dispatch, settleMs, revalidate, integrity: integrity);
+                        point, style, out InputDispatchInfo? dispatch, settleMs, revalidate, integrity: integrity, expectedLeaseThreadId: desktopLease.LeaseThreadId);
                     return (refusal, dispatch);
                 });
         }
@@ -108,7 +108,7 @@ public sealed partial class ActionInvoker
                 (point, revalidate) =>
                 {
                     OperationResult? refusal = PointerDispatch.Scroll(
-                        point, notches, horizontal, out InputDispatchInfo? dispatch, settleMs, revalidate, integrity: integrity);
+                        point, notches, horizontal, out InputDispatchInfo? dispatch, settleMs, revalidate, integrity: integrity, expectedLeaseThreadId: desktopLease.LeaseThreadId);
                     return (refusal, dispatch);
                 });
         }
@@ -146,7 +146,7 @@ public sealed partial class ActionInvoker
                 (point, revalidate) =>
                 {
                     OperationResult? refusal = PointerDispatch.Hover(
-                        point, out InputDispatchInfo? dispatch, holdMs, settleMs, revalidate, integrity: integrity);
+                        point, out InputDispatchInfo? dispatch, holdMs, settleMs, revalidate, integrity: integrity, expectedLeaseThreadId: desktopLease.LeaseThreadId);
                     return (refusal, dispatch);
                 });
         }

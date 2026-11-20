@@ -19,6 +19,7 @@ using Xunit;
 
 namespace Winsight.Core.Tests;
 
+[Collection("DesktopInputLease")]
 public sealed class DesktopInputLeaseTests
 {
     [Fact]

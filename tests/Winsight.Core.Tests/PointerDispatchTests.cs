@@ -25,6 +25,7 @@ namespace Winsight.Core.Tests;
 /// The click helper must move, wait, verify and only then press, without a
 /// second move; a recorder stands in for the physical pointer.
 /// </summary>
+[Collection("DesktopInputLease")]
 public sealed class PointerDispatchTests
 {
     private static readonly Point Target = new(400, 300);
@@ -422,6 +423,33 @@ public sealed class PointerDispatchTests
         pointer.Position.Should().Be(target);
         dispatch!.MoveMethod.Should().Be(PointerMoveMethods.SendInputVirtualDesk);
         pointer.Calls.Should().NotContain(call => call.StartsWith("fallback", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Lease_and_dispatch_must_run_on_the_same_thread()
+    {
+        using DesktopInputLease lease = DesktopInputLease.Acquire();
+        RecordingPointer sameThreadPointer = new(new Point(100, 100));
+
+        OperationResult? sameThread = PointerDispatch.Hover(
+            Target, out InputDispatchInfo? dispatch, holdMs: 0, settleMs: 0, driver: sameThreadPointer, expectedLeaseThreadId: lease.LeaseThreadId);
+
+        sameThread.Should().BeNull();
+        dispatch!.ThreadId.Should().Be(lease.LeaseThreadId);
+
+        OperationResult? crossThread = null;
+        Thread worker = new(() =>
+        {
+            RecordingPointer otherThreadPointer = new(new Point(100, 100));
+            crossThread = PointerDispatch.Hover(
+                Target, out _, holdMs: 0, settleMs: 0, driver: otherThreadPointer, expectedLeaseThreadId: lease.LeaseThreadId);
+        });
+        worker.Start();
+        worker.Join();
+
+        crossThread.Should().NotBeNull();
+        crossThread!.Error.Should().StartWith("lease_thread_mismatch:")
+            .And.Contain(lease.LeaseThreadId.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private sealed class DelayedMovePointer : IPointerDriver

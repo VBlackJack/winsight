@@ -157,10 +157,11 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null)
+        IntegrityComparison? integrity = null,
+        uint? expectedLeaseThreadId = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity, out dispatch) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity, expectedLeaseThreadId, out dispatch) is { } refusal)
         {
             return refusal;
         }
@@ -189,10 +190,11 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null)
+        IntegrityComparison? integrity = null,
+        uint? expectedLeaseThreadId = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity, out dispatch) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity, expectedLeaseThreadId, out dispatch) is { } refusal)
         {
             return refusal;
         }
@@ -226,10 +228,11 @@ public static class PointerDispatch
         int? settleMs = null,
         Func<string?>? revalidate = null,
         IPointerDriver? driver = null,
-        IntegrityComparison? integrity = null)
+        IntegrityComparison? integrity = null,
+        uint? expectedLeaseThreadId = null)
     {
         IPointerDriver pointer = driver ?? NativePointerDriver.Instance;
-        if (Settle(pointer, point, settleMs, revalidate, integrity, out dispatch) is { } refusal)
+        if (Settle(pointer, point, settleMs, revalidate, integrity, expectedLeaseThreadId, out dispatch) is { } refusal)
         {
             return refusal;
         }
@@ -266,9 +269,26 @@ public static class PointerDispatch
         int? settleMs,
         Func<string?>? revalidate,
         IntegrityComparison? integrity,
+        uint? expectedLeaseThreadId,
         out InputDispatchInfo? dispatch)
     {
         InputContextSnapshot inputContext = InputContext.Capture();
+        uint? leaseThreadId = expectedLeaseThreadId ?? DesktopInputLease.CurrentThreadLeaseId;
+        if (leaseThreadId is uint activeLeaseTid && inputContext.ThreadId != 0 && activeLeaseTid != inputContext.ThreadId)
+        {
+            dispatch = InputContext.ToDispatchInfo(inputContext, null);
+            return OperationResult.FailureWith(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"lease_thread_mismatch: DesktopInputLease is held by thread {activeLeaseTid} but pointer dispatch ran on thread {inputContext.ThreadId}."),
+                new
+                {
+                    code = "lease_thread_mismatch",
+                    leaseThreadId = activeLeaseTid,
+                    dispatchThreadId = inputContext.ThreadId,
+                    inputContext,
+                });
+        }
         if (InputContext.EvaluateBlock(inputContext) is { } blocked)
         {
             dispatch = InputContext.ToDispatchInfo(inputContext, null);
@@ -334,7 +354,7 @@ public static class PointerDispatch
 
         dispatch = InputContext.ToDispatchInfo(inputContext, desktopSwitch, usedMethod);
         pointer.Wait(settle);
-        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch, attemptedMethods, attemptTraces) is { } moved)
+        if (CheckPosition(pointer, point, settle, startPosition, moveResult, integrity, inputContext, desktopSwitch, attemptedMethods, attemptTraces, leaseThreadId) is { } moved)
         {
             return moved;
         }
@@ -375,7 +395,8 @@ public static class PointerDispatch
         InputContextSnapshot? inputContext = null,
         DesktopSwitchAttempt? desktopSwitch = null,
         IReadOnlyList<string>? attemptedMethods = null,
-        IReadOnlyList<MoveAttemptTrace>? attemptTraces = null)
+        IReadOnlyList<MoveAttemptTrace>? attemptTraces = null,
+        uint? expectedLeaseThreadId = null)
     {
         Point actual = pointer.Position;
         if (IsNear(actual, target))
@@ -402,11 +423,18 @@ public static class PointerDispatch
                 : attemptedMethods is { Count: > 0 }
                     ? $"attemptedMethods=[{string.Join(",", attemptedMethods)}]"
                     : "attemptedMethods=[]";
+            uint? leaseThreadId = expectedLeaseThreadId ?? DesktopInputLease.CurrentThreadLeaseId;
+            ForegroundProcessInfo? foreground = PointerDiagnostics.ReadForegroundProcess();
+            PointerClipRect? clipCursor = PointerDiagnostics.ReadClipCursor();
+            CursorStateInfo? cursorInfo = PointerDiagnostics.ReadCursorInfo();
+            string threadDetail = string.Create(
+                CultureInfo.InvariantCulture,
+                $"leaseThreadId={leaseThreadId?.ToString(CultureInfo.InvariantCulture) ?? "none"}, dispatchThreadId={effectiveContext.ThreadId}, fg={foreground?.ProcessName ?? "?"}({foreground?.ProcessId ?? 0})");
             string contextDetail = InputContext.FormatSummary(effectiveContext, desktopSwitch);
 
             string message = string.Create(
                 CultureInfo.InvariantCulture,
-                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {methodsDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
+                $"{MoveNotAppliedCode}: the pointer remained at its starting position ({actual.X}, {actual.Y}) instead of moving to ({target.X}, {target.Y}) after {waitedMs} ms ({sendInputDetail}; {methodsDetail}; {threadDetail}; {integrityDetail}; {contextDetail}). The synthetic move was not applied or was dropped by the OS.");
 
             object data = new
             {
@@ -420,6 +448,11 @@ public static class PointerDispatch
                 moveMethod = moveResult?.Method,
                 attemptedMethods,
                 attemptTraces,
+                leaseThreadId,
+                dispatchThreadId = effectiveContext.ThreadId,
+                foregroundWindow = foreground,
+                clipCursor,
+                cursorInfo,
                 sendInputCount = moveResult?.SendInputCount,
                 lastWin32Error = moveResult?.LastWin32Error,
                 normalizedX = moveResult?.NormalizedX,

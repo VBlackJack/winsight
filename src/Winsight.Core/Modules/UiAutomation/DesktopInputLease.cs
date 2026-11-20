@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Winsight.Core.Modules.UserActivity;
 
 namespace Winsight.Core.Modules.UiAutomation;
@@ -27,18 +28,30 @@ public sealed class DesktopInputLease : IDisposable
 {
     private const int DefaultWaitMs = 1000;
     [ThreadStatic] private static int _depth;
+    [ThreadStatic] private static uint _currentThreadLeaseId;
     private readonly Mutex? _mutex;
     private bool _disposed;
 
-    private DesktopInputLease(Mutex? mutex) => _mutex = mutex;
+    private DesktopInputLease(Mutex? mutex, uint leaseThreadId)
+    {
+        _mutex = mutex;
+        LeaseThreadId = leaseThreadId;
+    }
+
+    /// <summary>Win32 thread ID that acquired this lease.</summary>
+    public uint LeaseThreadId { get; }
+
+    /// <summary>Win32 thread ID if the current thread holds a desktop input lease, else null.</summary>
+    internal static uint? CurrentThreadLeaseId => _depth > 0 ? _currentThreadLeaseId : null;
 
     public static DesktopInputLease Acquire(int timeoutMs = DefaultWaitMs)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(timeoutMs);
+        uint currentTid = GetCurrentThreadId();
         if (_depth > 0)
         {
             _depth++;
-            return new DesktopInputLease(null);
+            return new DesktopInputLease(null, currentTid);
         }
         using Process process = Process.GetCurrentProcess();
         Mutex mutex = new(false, $@"Local\Winsight.DesktopInput.{process.SessionId}");
@@ -76,7 +89,8 @@ public sealed class DesktopInputLease : IDisposable
             throw new InvalidOperationException(refusal);
         }
         _depth = 1;
-        return new DesktopInputLease(mutex);
+        _currentThreadLeaseId = currentTid;
+        return new DesktopInputLease(mutex, currentTid);
     }
 
     public void Dispose()
@@ -86,9 +100,13 @@ public sealed class DesktopInputLease : IDisposable
         _depth--;
         if (_mutex is not null)
         {
+            _currentThreadLeaseId = 0;
             InputLedger.MarkInjectionEnd(UserActivityMonitor.TickNow());
             _mutex.ReleaseMutex();
             _mutex.Dispose();
         }
     }
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
 }
