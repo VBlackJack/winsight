@@ -27,11 +27,28 @@ public static class UserActivityPolicy
     public const string YieldToUserVariable = "WINSIGHT_YIELD_TO_USER_MS";
     public const string YieldOverrideVariable = "WINSIGHT_YIELD_OVERRIDE";
     public const string InputHookVariable = LowLevelInputHook.InputHookVariable;
+    public const string IgnorePeriodicMicroMovesVariable = "WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES";
+    public const string PeriodicMicroMoveMaxPxVariable = "WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX";
+    public const int DefaultPeriodicMicroMoveMaxPx = 15;
+    public const int MaxPeriodicMicroMoveMaxPx = 200;
     public const string UserActiveCode = "user_active";
 
     public static int? YieldToUserMs => Parse(Environment.GetEnvironmentVariable(YieldToUserVariable));
 
     public static bool IsInputHookEnabled => LowLevelInputHook.IsEnabledByEnvironment;
+
+    public static bool IsPeriodicMicroMoveFilterEnabled =>
+        ParseBool(Environment.GetEnvironmentVariable(IgnorePeriodicMicroMovesVariable));
+
+    public static int PeriodicMicroMoveThresholdPx =>
+        ParsePeriodicMicroMoveMaxPx(Environment.GetEnvironmentVariable(PeriodicMicroMoveMaxPxVariable));
+
+    internal static int ParsePeriodicMicroMoveMaxPx(string? raw) =>
+        int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) &&
+        value >= 1 &&
+        value <= MaxPeriodicMicroMoveMaxPx
+            ? value
+            : DefaultPeriodicMicroMoveMaxPx;
 
     /// <summary>
     /// Host-configured per-session override enabled exclusively by the human

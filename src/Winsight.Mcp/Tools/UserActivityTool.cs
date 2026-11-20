@@ -36,12 +36,14 @@ public static class UserActivityTool
     [McpServerTool(Name = "get_user_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Report whether a person is using this desktop, before taking the mouse or keyboard. " +
                  "Returns humanIdleMs (time since the last input not attributed to Winsight; null if none " +
-                 "was seen), lastInputAgeMs, lastInputSource (human, winsight, or other_injected when " +
-                 "WINSIGHT_INPUT_HOOK=1 is enabled), foreground (handle, processId, processName; title only " +
+                 "was seen), lastInputAgeMs, lastInputSource (human, winsight, other_injected when " +
+                 "WINSIGHT_INPUT_HOOK=1 is enabled, or periodic_micro_move when WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1 " +
+                 "filters a hardware mouse jiggler), foreground (handle, processId, processName; title only " +
                  "for the target process), sessionLocked, yieldToUserMs, userActive, yieldOverridden (true " +
                  "only when the human enabled WINSIGHT_YIELD_OVERRIDE=1 in host config), and diagnostics " +
                  "(inputKind, cursorMoved, cursorPosition, inputHookActive, lastInputInjectedByOther, " +
-                 "recentInputs). Read-only.")]
+                 "recentInputs, periodicMicroMoveFilterEnabled, periodicMicroMoveThresholdPx, " +
+                 "lastInputIgnoredAsPeriodicMicroMove). Read-only.")]
     public static string GetUserActivity(
         UserActivityMonitor monitor,
         SessionTarget target,

@@ -29,7 +29,8 @@ internal readonly record struct HookInputState(
     bool LastEventInjected,
     bool HasHardwareEvent,
     uint LastHardwareTick,
-    string LastHardwareKind);
+    string LastHardwareKind,
+    bool LastMouseWasMoveOnly = true);
 
 /// <summary>
 /// Opt-in WH_MOUSE_LL / WH_KEYBOARD_LL observer controlled by
@@ -49,6 +50,7 @@ internal sealed class LowLevelInputHook : IDisposable
 
     private const int WhKeyboardLl = 13;
     private const int WhMouseLl = 14;
+    private const int WmMouseMove = 0x0200;
     private const uint WmQuit = 0x0012;
     private const int HookStartWaitMs = 1_000;
     private const int HookStopWaitMs = 1_000;
@@ -72,6 +74,7 @@ internal sealed class LowLevelInputHook : IDisposable
     private bool _hasHardwareEvent;
     private uint _lastHardwareTick;
     private string _lastHardwareKind = UserActivityMonitor.KindUnknown;
+    private bool _lastMouseWasMoveOnly = true;
     private bool _disposed;
 
     public static bool IsEnabledByEnvironment =>
@@ -134,7 +137,8 @@ internal sealed class LowLevelInputHook : IDisposable
                 _lastEventInjected,
                 _hasHardwareEvent,
                 _lastHardwareTick,
-                _lastHardwareKind);
+                _lastHardwareKind,
+                _lastMouseWasMoveOnly);
         }
     }
 
@@ -200,7 +204,8 @@ internal sealed class LowLevelInputHook : IDisposable
         {
             MsllHookStruct info = Marshal.PtrToStructure<MsllHookStruct>(lParam);
             uint tick = info.Time != 0 ? info.Time : UserActivityMonitor.TickNow();
-            RecordEvent(tick, UserActivityMonitor.KindMouse, IsMouseInjected(info.Flags));
+            bool moveOnly = wParam.ToInt64() == WmMouseMove;
+            RecordEvent(tick, UserActivityMonitor.KindMouse, IsMouseInjected(info.Flags), moveOnly);
         }
         return NativeMethods.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
     }
@@ -211,12 +216,12 @@ internal sealed class LowLevelInputHook : IDisposable
         {
             KbdllHookStruct info = Marshal.PtrToStructure<KbdllHookStruct>(lParam);
             uint tick = info.Time != 0 ? info.Time : UserActivityMonitor.TickNow();
-            RecordEvent(tick, UserActivityMonitor.KindKeyboard, IsKeyboardInjected(info.Flags));
+            RecordEvent(tick, UserActivityMonitor.KindKeyboard, IsKeyboardInjected(info.Flags), mouseMoveOnly: false);
         }
         return NativeMethods.CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
     }
 
-    private void RecordEvent(uint tick, string kind, bool injected)
+    private void RecordEvent(uint tick, string kind, bool injected, bool mouseMoveOnly)
     {
         lock (_stateGate)
         {
@@ -224,6 +229,7 @@ internal sealed class LowLevelInputHook : IDisposable
             _lastEventTick = tick;
             _lastInputKind = kind;
             _lastEventInjected = injected;
+            _lastMouseWasMoveOnly = mouseMoveOnly;
             if (!injected)
             {
                 _hasHardwareEvent = true;
