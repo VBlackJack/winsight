@@ -39,7 +39,8 @@ public static class UserActivityTool
                  "was seen), lastInputAgeMs, lastInputSource (human, winsight, other_injected when " +
                  "WINSIGHT_INPUT_HOOK=1 is enabled, or periodic_micro_move when WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1 " +
                  "filters a hardware mouse jiggler), foreground (handle, processId, processName; title only " +
-                 "for the target process), sessionLocked, yieldToUserMs, userActive, yieldOverridden (true " +
+                 "for the target process), sessionLocked, sessionLockSource (wts, input_desktop, unknown), " +
+                 "yieldToUserMs, userActive, yieldOverridden (true " +
                  "only when the human enabled WINSIGHT_YIELD_OVERRIDE=1 in host config), and diagnostics " +
                  "(inputKind, cursorMoved, cursorPosition, inputHookActive, lastInputInjectedByOther, " +
                  "recentInputs, periodicMicroMoveFilterEnabled, periodicMicroMoveThresholdPx, " +

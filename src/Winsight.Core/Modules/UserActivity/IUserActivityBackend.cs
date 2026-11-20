@@ -16,6 +16,8 @@ using Winsight.Core.Models;
 
 namespace Winsight.Core.Modules.UserActivity;
 
+internal readonly record struct SessionLockReading(bool? Locked, string Source);
+
 /// <summary>
 /// Platform clock, input, foreground and session queries used by
 /// <see cref="UserActivityMonitor"/>. Replaced with a deterministic fake in
@@ -36,7 +38,7 @@ internal interface IUserActivityBackend
 
     ForegroundWindowInfo? ReadForeground(IReadOnlyCollection<int>? revealTitleFor);
 
-    bool? ReadSessionLocked();
+    SessionLockReading ReadSessionLock();
 
     CursorPoint? ReadCursorPosition();
 

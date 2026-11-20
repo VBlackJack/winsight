@@ -75,7 +75,8 @@ public sealed record UserActivitySnapshot(
     int? YieldToUserMs,
     bool UserActive,
     UserActivityDiagnostics? Diagnostics = null,
-    bool YieldOverridden = false);
+    bool YieldOverridden = false,
+    string SessionLockSource = "unknown");
 
 /// <summary>Outcome of waiting for the human to stop using the desktop.</summary>
 public sealed record UserIdleWaitResult(

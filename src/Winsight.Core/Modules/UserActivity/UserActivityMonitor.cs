@@ -37,6 +37,10 @@ public sealed class UserActivityMonitor
     public const string KindOther = "other";
     public const string KindUnknown = "unknown";
 
+    public const string SessionLockSourceWts = "wts";
+    public const string SessionLockSourceInputDesktop = "input_desktop";
+    public const string SessionLockSourceUnknown = "unknown";
+
     /// <summary>Maximum number of recent distinct input timestamps retained for diagnostics.</summary>
     public const int RecentInputSampleCapacity = 8;
 
@@ -102,16 +106,18 @@ public sealed class UserActivityMonitor
         UserActivityDiagnostics diagnostics = RecordDiagnostics(sample, cursor);
         long? humanIdle = sample.HumanIdleMs;
         int? yieldMs = UserActivityPolicy.YieldToUserMs;
+        SessionLockReading sessionLock = _backend.ReadSessionLock();
         return new UserActivitySnapshot(
             InputAttributor.AgeMs(sample.Now, sample.LastInput),
             sample.Source,
             humanIdle,
             _backend.ReadForeground(revealTitleFor),
-            _backend.ReadSessionLocked(),
+            sessionLock.Locked,
             yieldMs,
             UserActivityPolicy.IsActive(humanIdle, yieldMs),
             diagnostics,
-            UserActivityPolicy.IsYieldOverridden);
+            UserActivityPolicy.IsYieldOverridden,
+            sessionLock.Source);
     }
 
     /// <summary>
@@ -476,7 +482,7 @@ public sealed class UserActivityMonitor
         public ForegroundWindowInfo? ReadForeground(IReadOnlyCollection<int>? revealTitleFor) =>
             UserActivityMonitor.ReadForeground(revealTitleFor);
 
-        public bool? ReadSessionLocked() => UserActivityMonitor.ReadSessionLocked();
+        public SessionLockReading ReadSessionLock() => UserActivityMonitor.ReadSessionLock();
 
         public CursorPoint? ReadCursorPosition() => UserActivityMonitor.ReadCursorPosition();
 
@@ -534,18 +540,17 @@ public sealed class UserActivityMonitor
         return new string(title, 0, Math.Max(0, length));
     }
 
-    internal static bool? ReadSessionLocked()
+    internal static bool? ReadSessionLocked() => ReadSessionLock().Locked;
+
+    internal static SessionLockReading ReadSessionLock()
     {
+        bool? fromWts = null;
         if (NativeMethods.WTSQuerySessionInformation(
                 IntPtr.Zero, CurrentSession, WtsSessionInfoEx, out IntPtr buffer, out uint bytes))
         {
             try
             {
-                bool? fromWts = ParseWtsSessionLocked(buffer, bytes);
-                if (fromWts.HasValue)
-                {
-                    return fromWts;
-                }
+                fromWts = ParseWtsSessionLocked(buffer, bytes);
             }
             finally
             {
@@ -553,7 +558,25 @@ public sealed class UserActivityMonitor
             }
         }
 
-        return ReadSessionLockedFromInputDesktop();
+        if (fromWts.HasValue)
+        {
+            return new SessionLockReading(fromWts, SessionLockSourceWts);
+        }
+
+        return ResolveSessionLock(fromWts: null, fromInputDesktop: ReadSessionLockedFromInputDesktop());
+    }
+
+    internal static SessionLockReading ResolveSessionLock(bool? fromWts, bool? fromInputDesktop)
+    {
+        if (fromWts.HasValue)
+        {
+            return new SessionLockReading(fromWts, SessionLockSourceWts);
+        }
+        if (fromInputDesktop.HasValue)
+        {
+            return new SessionLockReading(fromInputDesktop, SessionLockSourceInputDesktop);
+        }
+        return new SessionLockReading(null, SessionLockSourceUnknown);
     }
 
     internal static bool? ParseWtsSessionLocked(IntPtr buffer, uint bytes)

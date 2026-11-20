@@ -469,6 +469,38 @@ public sealed class UserActivityTests
         LowLevelInputHook.IsKeyboardInjected(flags).Should().Be(expectedKeyboard);
     }
 
+    [Theory]
+    [InlineData(true, false, true, UserActivityMonitor.SessionLockSourceWts)]
+    [InlineData(false, true, false, UserActivityMonitor.SessionLockSourceWts)]
+    [InlineData(null, true, true, UserActivityMonitor.SessionLockSourceInputDesktop)]
+    [InlineData(null, false, false, UserActivityMonitor.SessionLockSourceInputDesktop)]
+    [InlineData(null, null, null, UserActivityMonitor.SessionLockSourceUnknown)]
+    public void ResolveSessionLock_reports_exact_source(
+        bool? fromWts,
+        bool? fromDesktop,
+        bool? expectedLocked,
+        string expectedSource)
+    {
+        SessionLockReading reading = UserActivityMonitor.ResolveSessionLock(fromWts, fromDesktop);
+
+        reading.Locked.Should().Be(expectedLocked);
+        reading.Source.Should().Be(expectedSource);
+    }
+
+    [Fact]
+    public void Read_propagates_sessionLockSource_from_backend()
+    {
+        FakeUserActivityBackend clock = new(Now, Now - 1000, sessionLocked: true)
+        {
+            SessionLockSource = UserActivityMonitor.SessionLockSourceInputDesktop,
+        };
+        UserActivityMonitor monitor = new(clock);
+
+        UserActivitySnapshot snap = monitor.Read();
+        snap.SessionLocked.Should().BeTrue();
+        snap.SessionLockSource.Should().Be(UserActivityMonitor.SessionLockSourceInputDesktop);
+    }
+
     internal sealed class FakeUserActivityBackend : IUserActivityBackend
     {
         private uint _tick;
@@ -484,6 +516,8 @@ public sealed class UserActivityTests
         }
 
         public bool? SessionLocked { get; set; }
+
+        public string SessionLockSource { get; set; } = UserActivityMonitor.SessionLockSourceWts;
 
         public CursorPoint? Cursor { get; set; }
 
@@ -507,7 +541,7 @@ public sealed class UserActivityTests
 
         public ForegroundWindowInfo? ReadForeground(IReadOnlyCollection<int>? revealTitleFor) => null;
 
-        public bool? ReadSessionLocked() => SessionLocked;
+        public SessionLockReading ReadSessionLock() => new(SessionLocked, SessionLockSource);
 
         public CursorPoint? ReadCursorPosition() => Cursor;
 
