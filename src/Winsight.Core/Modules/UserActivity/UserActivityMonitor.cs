@@ -72,27 +72,33 @@ public sealed class UserActivityMonitor
         Marshal.OffsetOf<WtsInfoExLevel1>(nameof(WtsInfoExLevel1.SessionFlags)).ToInt32();
 
     private static readonly PeriodicMicroMoveDetector SharedMicroMoveDetector = new();
+    private static readonly InputHookHealthTracker SharedHookHealthTracker = new();
 
     private readonly IUserActivityBackend _backend;
     private readonly PeriodicMicroMoveDetector _microMoveDetector;
+    private readonly InputHookHealthTracker _hookHealthTracker;
     private readonly Lock _historyGate = new();
     private readonly List<RecordedInputTick> _recentInputs = new(RecentInputSampleCapacity);
     private CursorPoint? _lastCursor;
 
     public UserActivityMonitor()
-        : this(NativeUserActivityBackend.Instance, SharedMicroMoveDetector)
+        : this(NativeUserActivityBackend.Instance, SharedMicroMoveDetector, SharedHookHealthTracker)
     {
     }
 
     internal UserActivityMonitor(IUserActivityBackend backend, Func<PeriodicMicroMoveConfig>? microMoveConfig = null)
-        : this(backend, new PeriodicMicroMoveDetector(microMoveConfig))
+        : this(backend, new PeriodicMicroMoveDetector(microMoveConfig), new InputHookHealthTracker())
     {
     }
 
-    private UserActivityMonitor(IUserActivityBackend backend, PeriodicMicroMoveDetector microMoveDetector)
+    private UserActivityMonitor(
+        IUserActivityBackend backend,
+        PeriodicMicroMoveDetector microMoveDetector,
+        InputHookHealthTracker hookHealthTracker)
     {
         _backend = backend;
         _microMoveDetector = microMoveDetector;
+        _hookHealthTracker = hookHealthTracker;
     }
 
     /// <summary>
@@ -102,7 +108,12 @@ public sealed class UserActivityMonitor
     public UserActivitySnapshot Read(IReadOnlyCollection<int>? revealTitleFor = null)
     {
         CursorPoint? cursor = _backend.ReadCursorPosition();
-        SampleResult sample = Sample(_backend, cursor, _microMoveDetector);
+        bool cursorMoved;
+        lock (_historyGate)
+        {
+            cursorMoved = _lastCursor is not null && cursor is not null && _lastCursor != cursor;
+        }
+        SampleResult sample = Sample(_backend, cursor, cursorMoved, _microMoveDetector, _hookHealthTracker);
         UserActivityDiagnostics diagnostics = RecordDiagnostics(sample, cursor);
         long? humanIdle = sample.HumanIdleMs;
         int? yieldMs = UserActivityPolicy.YieldToUserMs;
@@ -126,18 +137,31 @@ public sealed class UserActivityMonitor
     /// not hide the human input that preceded it.
     /// </summary>
     internal static long? ReadHumanIdleMs() =>
-        Sample(NativeUserActivityBackend.Instance, NativeUserActivityBackend.Instance.ReadCursorPosition(), SharedMicroMoveDetector).HumanIdleMs;
+        Sample(
+            NativeUserActivityBackend.Instance,
+            NativeUserActivityBackend.Instance.ReadCursorPosition(),
+            cursorMoved: false,
+            SharedMicroMoveDetector,
+            SharedHookHealthTracker).HumanIdleMs;
 
     private static SampleResult Sample(
         IUserActivityBackend backend,
         CursorPoint? cursor,
-        PeriodicMicroMoveDetector microMoveDetector)
+        bool cursorMoved,
+        PeriodicMicroMoveDetector microMoveDetector,
+        InputHookHealthTracker hookHealthTracker)
     {
         uint now = backend.TickNow();
         uint lastInput = backend.LastInputTick(now);
         LedgerState ledger = backend.ReadLedger();
         InputAttribution attribution = InputAttributor.Attribute(now, lastInput, ledger);
         HookInputState hook = backend.ReadHookState();
+        (bool effectiveHookActive, string? inputHookWarning) = hookHealthTracker.Evaluate(
+            now,
+            lastInput,
+            cursorMoved,
+            attribution.LastInputIsWinsight,
+            hook);
         PeriodicMicroMoveConfig microMoveConfig = microMoveDetector.CurrentConfig;
 
         string source;
@@ -146,7 +170,7 @@ public sealed class UserActivityMonitor
         uint? humanTick;
         bool ignoredAsPeriodicMicroMove = false;
 
-        if (hook.Active)
+        if (effectiveHookActive)
         {
             bool hookMatchesLastInput = hook.HasEvent &&
                 Math.Abs((long)InputAttributor.AgeMs(now, lastInput) - InputAttributor.AgeMs(now, hook.LastEventTick)) <=
@@ -231,12 +255,13 @@ public sealed class UserActivityMonitor
             lastInput,
             source,
             inputKind,
-            hook.Active,
+            effectiveHookActive,
             injectedByOther,
             humanIdleMs,
             microMoveConfig.Enabled,
             microMoveConfig.Enabled ? microMoveConfig.MaxDisplacementPx : null,
-            ignoredAsPeriodicMicroMove);
+            ignoredAsPeriodicMicroMove,
+            inputHookWarning);
     }
 
     private static uint? ResolveHardwareHumanTick(
@@ -328,7 +353,8 @@ public sealed class UserActivityMonitor
                 UiAutomation.InputContext.Capture(),
                 sample.PeriodicMicroMoveFilterEnabled,
                 sample.PeriodicMicroMoveThresholdPx,
-                sample.IgnoredAsPeriodicMicroMove);
+                sample.IgnoredAsPeriodicMicroMove,
+                sample.InputHookWarning);
         }
     }
 
@@ -342,7 +368,8 @@ public sealed class UserActivityMonitor
         long? HumanIdleMs,
         bool PeriodicMicroMoveFilterEnabled,
         int? PeriodicMicroMoveThresholdPx,
-        bool IgnoredAsPeriodicMicroMove);
+        bool IgnoredAsPeriodicMicroMove,
+        string? InputHookWarning);
 
     private readonly record struct RecordedInputTick(
         uint Tick,

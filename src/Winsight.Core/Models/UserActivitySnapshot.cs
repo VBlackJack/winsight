@@ -56,7 +56,8 @@ public sealed record UserActivityDiagnostics(
     InputContextSnapshot? InputContext = null,
     bool PeriodicMicroMoveFilterEnabled = false,
     int? PeriodicMicroMoveThresholdPx = null,
-    bool LastInputIgnoredAsPeriodicMicroMove = false);
+    bool LastInputIgnoredAsPeriodicMicroMove = false,
+    string? InputHookWarning = null);
 
 /// <summary>
 /// Who is using the shared desktop. <see cref="HumanIdleMs"/> is the time since

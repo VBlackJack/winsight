@@ -42,9 +42,9 @@ public static class UserActivityTool
                  "for the target process), sessionLocked, sessionLockSource (wts, input_desktop, unknown), " +
                  "yieldToUserMs, userActive, yieldOverridden (true " +
                  "only when the human enabled WINSIGHT_YIELD_OVERRIDE=1 in host config), and diagnostics " +
-                 "(inputKind, cursorMoved, cursorPosition, inputHookActive, lastInputInjectedByOther, " +
-                 "recentInputs, periodicMicroMoveFilterEnabled, periodicMicroMoveThresholdPx, " +
-                 "lastInputIgnoredAsPeriodicMicroMove). Read-only.")]
+                 "(inputKind, cursorMoved, cursorPosition, inputHookActive, inputHookWarning, " +
+                 "lastInputInjectedByOther, recentInputs, periodicMicroMoveFilterEnabled, " +
+                 "periodicMicroMoveThresholdPx, lastInputIgnoredAsPeriodicMicroMove). Read-only.")]
     public static string GetUserActivity(
         UserActivityMonitor monitor,
         SessionTarget target,

@@ -30,7 +30,11 @@ internal readonly record struct HookInputState(
     bool HasHardwareEvent,
     uint LastHardwareTick,
     string LastHardwareKind,
-    bool LastMouseWasMoveOnly = true);
+    bool LastMouseWasMoveOnly = true,
+    bool Enabled = false,
+    string? Warning = null,
+    bool HasHeartbeat = false,
+    uint LastHeartbeatTick = 0);
 
 /// <summary>
 /// Opt-in WH_MOUSE_LL / WH_KEYBOARD_LL observer controlled by
@@ -52,13 +56,13 @@ internal sealed class LowLevelInputHook : IDisposable
     private const int WhMouseLl = 14;
     private const int WmMouseMove = 0x0200;
     private const uint WmQuit = 0x0012;
+    private const uint HeartbeatIntervalMs = 5_000;
     private const int HookStartWaitMs = 1_000;
     private const int HookStopWaitMs = 1_000;
 
     private static readonly Lock SingletonGate = new();
     private static LowLevelInputHook? s_shared;
 
-    private readonly Lock _stateGate = new();
     private readonly ManualResetEventSlim _started = new(false);
     private readonly LowLevelHookProc _mouseProc;
     private readonly LowLevelHookProc _keyboardProc;
@@ -66,16 +70,42 @@ internal sealed class LowLevelInputHook : IDisposable
     private uint _threadId;
     private IntPtr _mouseHook;
     private IntPtr _keyboardHook;
-    private bool _active;
-    private bool _hasEvent;
-    private uint _lastEventTick;
-    private string _lastInputKind = UserActivityMonitor.KindUnknown;
-    private bool _lastEventInjected;
-    private bool _hasHardwareEvent;
-    private uint _lastHardwareTick;
-    private string _lastHardwareKind = UserActivityMonitor.KindUnknown;
-    private bool _lastMouseWasMoveOnly = true;
+    private volatile bool _active;
+    private volatile string? _warning;
+    private int _hasHeartbeat;
+    private int _lastHeartbeatTick;
+    private EventSnapshot _latest = EventSnapshot.Empty;
     private bool _disposed;
+
+    private sealed class EventSnapshot(
+        bool hasEvent,
+        uint lastEventTick,
+        string lastInputKind,
+        bool lastEventInjected,
+        bool hasHardwareEvent,
+        uint lastHardwareTick,
+        string lastHardwareKind,
+        bool lastMouseWasMoveOnly)
+    {
+        public static readonly EventSnapshot Empty = new(
+            false,
+            0,
+            UserActivityMonitor.KindUnknown,
+            false,
+            false,
+            0,
+            UserActivityMonitor.KindUnknown,
+            true);
+
+        public bool HasEvent { get; } = hasEvent;
+        public uint LastEventTick { get; } = lastEventTick;
+        public string LastInputKind { get; } = lastInputKind;
+        public bool LastEventInjected { get; } = lastEventInjected;
+        public bool HasHardwareEvent { get; } = hasHardwareEvent;
+        public uint LastHardwareTick { get; } = lastHardwareTick;
+        public string LastHardwareKind { get; } = lastHardwareKind;
+        public bool LastMouseWasMoveOnly { get; } = lastMouseWasMoveOnly;
+    }
 
     public static bool IsEnabledByEnvironment =>
         IsTruthy(Environment.GetEnvironmentVariable(InputHookVariable));
@@ -127,19 +157,30 @@ internal sealed class LowLevelInputHook : IDisposable
 
     public HookInputState Read()
     {
-        lock (_stateGate)
+        EventSnapshot snapshot = Volatile.Read(ref _latest);
+        bool threadAlive = _thread?.IsAlive == true;
+        bool active = _active && threadAlive;
+        string? warning = _warning;
+        if (!active && warning is null)
         {
-            return new HookInputState(
-                _active,
-                _hasEvent,
-                _lastEventTick,
-                _lastInputKind,
-                _lastEventInjected,
-                _hasHardwareEvent,
-                _lastHardwareTick,
-                _lastHardwareKind,
-                _lastMouseWasMoveOnly);
+            warning = InputHookHealthTracker.WarningInstallOrInactive;
         }
+        bool hasHeartbeat = Volatile.Read(ref _hasHeartbeat) != 0;
+        uint lastHeartbeat = unchecked((uint)Volatile.Read(ref _lastHeartbeatTick));
+        return new HookInputState(
+            Active: active,
+            HasEvent: snapshot.HasEvent,
+            LastEventTick: snapshot.LastEventTick,
+            LastInputKind: snapshot.LastInputKind,
+            LastEventInjected: snapshot.LastEventInjected,
+            HasHardwareEvent: snapshot.HasHardwareEvent,
+            LastHardwareTick: snapshot.LastHardwareTick,
+            LastHardwareKind: snapshot.LastHardwareKind,
+            LastMouseWasMoveOnly: snapshot.LastMouseWasMoveOnly,
+            Enabled: true,
+            Warning: warning,
+            HasHeartbeat: hasHeartbeat,
+            LastHeartbeatTick: lastHeartbeat);
     }
 
     private void Start()
@@ -161,9 +202,14 @@ internal sealed class LowLevelInputHook : IDisposable
         _keyboardHook = NativeMethods.SetWindowsHookEx(WhKeyboardLl, _keyboardProc, module, 0);
 
         bool installed = _mouseHook != IntPtr.Zero || _keyboardHook != IntPtr.Zero;
-        lock (_stateGate)
+        _active = installed;
+        if (!installed)
         {
-            _active = installed;
+            _warning = InputHookHealthTracker.WarningInstallOrInactive;
+        }
+        else
+        {
+            RecordHeartbeat();
         }
         _started.Set();
 
@@ -172,18 +218,26 @@ internal sealed class LowLevelInputHook : IDisposable
             return;
         }
 
+        UIntPtr timerId = NativeMethods.SetTimer(IntPtr.Zero, UIntPtr.Zero, HeartbeatIntervalMs, IntPtr.Zero);
         try
         {
             while (NativeMethods.GetMessage(out Msg _, IntPtr.Zero, 0, 0) > 0)
             {
-                // Low-level hooks are dispatched during GetMessage; no window translation needed.
+                // Low-level hooks are dispatched during GetMessage; the periodic timer
+                // updates the heartbeat so a stalled pump thread is detected.
+                RecordHeartbeat();
             }
         }
         finally
         {
-            lock (_stateGate)
+            if (timerId != UIntPtr.Zero)
             {
-                _active = false;
+                NativeMethods.KillTimer(IntPtr.Zero, timerId);
+            }
+            _active = false;
+            if (!_disposed)
+            {
+                _warning = InputHookHealthTracker.WarningInstallOrInactive;
             }
             if (_mouseHook != IntPtr.Zero)
             {
@@ -198,6 +252,13 @@ internal sealed class LowLevelInputHook : IDisposable
         }
     }
 
+    private void RecordHeartbeat()
+    {
+        Volatile.Write(ref _lastHeartbeatTick, unchecked((int)UserActivityMonitor.TickNow()));
+        Volatile.Write(ref _hasHeartbeat, 1);
+    }
+
+    // Callbacks stay lock-free and minimal so they never approach LowLevelHooksTimeout.
     private IntPtr OnMouseEvent(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && lParam != IntPtr.Zero)
@@ -223,20 +284,22 @@ internal sealed class LowLevelInputHook : IDisposable
 
     private void RecordEvent(uint tick, string kind, bool injected, bool mouseMoveOnly)
     {
-        lock (_stateGate)
-        {
-            _hasEvent = true;
-            _lastEventTick = tick;
-            _lastInputKind = kind;
-            _lastEventInjected = injected;
-            _lastMouseWasMoveOnly = mouseMoveOnly;
-            if (!injected)
-            {
-                _hasHardwareEvent = true;
-                _lastHardwareTick = tick;
-                _lastHardwareKind = kind;
-            }
-        }
+        // Only invoked on the single hook pump thread; lock-free publish to readers.
+        EventSnapshot prev = _latest;
+        bool hasHardware = !injected || prev.HasHardwareEvent;
+        uint hardwareTick = !injected ? tick : prev.LastHardwareTick;
+        string hardwareKind = !injected ? kind : prev.LastHardwareKind;
+        Volatile.Write(ref _latest, new EventSnapshot(
+            hasEvent: true,
+            lastEventTick: tick,
+            lastInputKind: kind,
+            lastEventInjected: injected,
+            hasHardwareEvent: hasHardware,
+            lastHardwareTick: hardwareTick,
+            lastHardwareKind: hardwareKind,
+            lastMouseWasMoveOnly: mouseMoveOnly));
+        Volatile.Write(ref _lastHeartbeatTick, unchecked((int)tick));
+        Volatile.Write(ref _hasHeartbeat, 1);
     }
 
     public void Dispose()
@@ -318,5 +381,12 @@ internal sealed class LowLevelInputHook : IDisposable
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern UIntPtr SetTimer(IntPtr hWnd, UIntPtr nIDEvent, uint uElapse, IntPtr lpTimerFunc);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool KillTimer(IntPtr hWnd, UIntPtr uIDEvent);
     }
 }
