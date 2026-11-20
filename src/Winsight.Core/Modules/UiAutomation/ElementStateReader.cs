@@ -49,20 +49,20 @@ public sealed class ElementStateReader
     {
         AutomationElement element = match.Element;
         ElementCandidate candidate = match.Candidate;
-        System.Drawing.Rectangle rect = element.BoundingRectangle;
+        System.Drawing.Rectangle rect = SafeUiaProperties.GetBoundingRectangle(element);
 
         return new ElementState(
             AutomationId: candidate.AutomationId,
-            Name: element.Properties.Name.ValueOrDefault ?? string.Empty,
+            Name: SafeUiaProperties.GetName(element),
             ControlType: candidate.ControlType,
             ClassName: candidate.ClassName,
             WindowTitle: candidate.WindowTitle,
-            IsEnabled: element.Properties.IsEnabled.ValueOrDefault,
-            IsVisible: !element.Properties.IsOffscreen.ValueOrDefault,
-            HasKeyboardFocus: element.Properties.HasKeyboardFocus.ValueOrDefault,
-            Value: SafeRead(() => element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault),
-            ToggleState: SafeRead(() => element.Patterns.Toggle.PatternOrDefault?.ToggleState.ValueOrDefault.ToString()),
-            IsSelected: SafeRead(() => element.Patterns.SelectionItem.PatternOrDefault?.IsSelected.ValueOrDefault),
+            IsEnabled: SafeUiaProperties.GetIsEnabled(element, fallback: false),
+            IsVisible: !SafeUiaProperties.GetIsOffscreen(element, fallback: false),
+            HasKeyboardFocus: SafeUiaProperties.GetHasKeyboardFocus(element),
+            Value: SafeUiaProperties.GetValue(element),
+            ToggleState: SafeUiaProperties.GetToggleState(element),
+            IsSelected: SafeUiaProperties.GetIsSelected(element),
             SelectedItem: SafeRead(ReadSelectedItemName),
             X: rect.X,
             Y: rect.Y,
@@ -74,20 +74,10 @@ public sealed class ElementStateReader
             AutomationElement[]? selection =
                 element.Patterns.Selection.PatternOrDefault?.Selection.ValueOrDefault;
             return selection is { Length: > 0 }
-                ? selection[0].Properties.Name.ValueOrDefault
+                ? SafeUiaProperties.GetName(selection[0])
                 : null;
         }
     }
 
-    private static T? SafeRead<T>(Func<T?> read)
-    {
-        try
-        {
-            return read();
-        }
-        catch (COMException)
-        {
-            return default;
-        }
-    }
+    private static T? SafeRead<T>(Func<T?> read) => SafeUiaProperties.Read(read, default);
 }

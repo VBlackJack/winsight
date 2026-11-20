@@ -195,26 +195,17 @@ public sealed class AffordanceScanner
         try
         {
             return (
-                element.Properties.AutomationId.ValueOrDefault ?? string.Empty,
-                element.Properties.Name.ValueOrDefault ?? string.Empty,
-                element.Properties.ClassName.ValueOrDefault ?? string.Empty,
-                element.Properties.ControlType.ValueOrDefault.ToString());
+                SafeUiaProperties.GetAutomationId(element),
+                SafeUiaProperties.GetName(element),
+                SafeUiaProperties.GetClassName(element),
+                SafeUiaProperties.GetControlType(element).ToString());
         }
-        catch (COMException)
+        catch (Exception ex) when (SafeUiaProperties.IsIgnorableUiaException(ex))
         {
             return null;
         }
     }
 
-    private static AutomationElement[] SafeChildren(AutomationElement element)
-    {
-        try
-        {
-            return element.FindAllChildren();
-        }
-        catch (COMException)
-        {
-            return Array.Empty<AutomationElement>();
-        }
-    }
+    private static AutomationElement[] SafeChildren(AutomationElement element) =>
+        SafeUiaProperties.GetChildren(element);
 }

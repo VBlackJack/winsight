@@ -131,7 +131,7 @@ public sealed class UiTreeInspector
     private static UiElementNode BuildLeafSnapshot(AutomationElement element) =>
         BuildSnapshotWithChildren(element, Array.Empty<UiElementNode>());
 
-    private static UiElementNode BuildSnapshotWithChildren(
+    internal static UiElementNode BuildSnapshotWithChildren(
         AutomationElement element,
         IReadOnlyList<UiElementNode> children)
     {
@@ -153,81 +153,26 @@ public sealed class UiTreeInspector
     }
 
     private static (string AutomationId, string Name, string ControlType, string ClassName) SafeSnapshot(
-        AutomationElement element)
-    {
-        try
-        {
-            return (
-                element.Properties.AutomationId.ValueOrDefault ?? string.Empty,
-                element.Properties.Name.ValueOrDefault ?? string.Empty,
-                element.Properties.ControlType.ValueOrDefault.ToString(),
-                element.Properties.ClassName.ValueOrDefault ?? string.Empty);
-        }
-        catch (COMException)
-        {
-            return (string.Empty, string.Empty, string.Empty, string.Empty);
-        }
-    }
+        AutomationElement element) => (
+            SafeUiaProperties.GetAutomationId(element),
+            SafeUiaProperties.GetName(element),
+            SafeUiaProperties.GetControlType(element).ToString(),
+            SafeUiaProperties.GetClassName(element));
 
-    private static bool SafeReadIsEnabled(AutomationElement element)
-    {
-        try
-        {
-            return element.Properties.IsEnabled.ValueOrDefault;
-        }
-        catch (COMException)
-        {
-            return false;
-        }
-    }
+    private static bool SafeReadIsEnabled(AutomationElement element) =>
+        SafeUiaProperties.GetIsEnabled(element, fallback: false);
 
-    private static bool SafeReadIsOffscreen(AutomationElement element)
-    {
-        try
-        {
-            return element.Properties.IsOffscreen.ValueOrDefault;
-        }
-        catch (COMException)
-        {
-            return true;
-        }
-    }
+    private static bool SafeReadIsOffscreen(AutomationElement element) =>
+        SafeUiaProperties.GetIsOffscreen(element, fallback: false);
 
-    private static System.Drawing.Rectangle SafeBoundingRectangle(AutomationElement element)
-    {
-        try
-        {
-            return element.BoundingRectangle;
-        }
-        catch (COMException)
-        {
-            return System.Drawing.Rectangle.Empty;
-        }
-    }
+    private static System.Drawing.Rectangle SafeBoundingRectangle(AutomationElement element) =>
+        SafeUiaProperties.GetBoundingRectangle(element);
 
-    private static string? ReadValue(AutomationElement element)
-    {
-        try
-        {
-            return element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault;
-        }
-        catch (COMException)
-        {
-            return null;
-        }
-    }
+    private static string? ReadValue(AutomationElement element) =>
+        SafeUiaProperties.GetValue(element);
 
-    private static AutomationElement[] SafeChildren(AutomationElement element)
-    {
-        try
-        {
-            return element.FindAllChildren();
-        }
-        catch (COMException)
-        {
-            return Array.Empty<AutomationElement>();
-        }
-    }
+    private static AutomationElement[] SafeChildren(AutomationElement element) =>
+        SafeUiaProperties.GetChildren(element);
 
     /// <summary>
     /// Keep a node when it matches the filters or when any descendant does;

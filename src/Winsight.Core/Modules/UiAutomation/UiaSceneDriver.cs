@@ -70,15 +70,17 @@ public sealed class UiaSceneDriver
                 (AutomationElement element, string? parentIdentity) = queue.Dequeue();
                 try
                 {
-                    if (element.Properties.ControlType.ValueOrDefault == ControlType.Window && element.Properties.NativeWindowHandle.ValueOrDefault != root.Handle) continue;
+                    if (SafeUiaProperties.GetControlType(element) == ControlType.Window &&
+                        SafeUiaProperties.GetNativeWindowHandle(element) != root.Handle) continue;
                     SceneElement node = Read(element, window, "e" + (nodes.Count + 1).ToString(CultureInfo.InvariantCulture), parentIdentity);
                     nodes.Add(node);
                     string nodeIdentity = !string.IsNullOrEmpty(node.Identity)
                         ? node.Identity
                         : $"{node.Window.Handle}:{node.Role}:{node.Locator.AutomationId ?? node.Name}";
-                    foreach (AutomationElement child in element.FindAllChildren()) queue.Enqueue((child, nodeIdentity));
+                    foreach (AutomationElement child in SafeUiaProperties.GetChildren(element)) queue.Enqueue((child, nodeIdentity));
                 }
                 catch (COMException) { budget.MarkTruncated(TraversalTruncationReasons.ComError); }
+                catch (FlaUI.Core.Exceptions.PropertyNotSupportedException) { }
             }
             if (budget.TruncationReason is TraversalTruncationReasons.TimeBudget or TraversalTruncationReasons.NodeLimit) break;
             if (budget.IsTruncated && nodes.Count >= maximum) break;
@@ -88,32 +90,43 @@ public sealed class UiaSceneDriver
 
     public static SceneElement Read(AutomationElement element, WindowIdentity window, string reference, string? parentIdentity = null)
     {
-        string role = element.Properties.ControlType.ValueOrDefault.ToString();
-        string name = element.Properties.Name.ValueOrDefault ?? "";
-        bool password = element.Properties.IsPassword.ValueOrDefault;
-        string? value = password ? null : element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault;
-        Rectangle bounds = element.BoundingRectangle;
+        string role = SafeUiaProperties.GetControlType(element).ToString();
+        string name = SafeUiaProperties.GetName(element);
+        bool password = SafeUiaProperties.GetIsPassword(element);
+        string? value = password ? null : SafeUiaProperties.GetValue(element);
+        Rectangle bounds = SafeUiaProperties.GetBoundingRectangle(element);
+        bool isEnabled = SafeUiaProperties.GetIsEnabled(element, fallback: false);
+        bool isOffscreen = SafeUiaProperties.GetIsOffscreen(element, fallback: false);
+        bool hasKeyboardFocus = SafeUiaProperties.GetHasKeyboardFocus(element);
+        bool isKeyboardFocusable = SafeUiaProperties.GetIsKeyboardFocusable(element);
+        bool? isSelected = SafeUiaProperties.GetIsSelected(element);
+        string? toggleState = SafeUiaProperties.GetToggleState(element);
+        string? expandCollapseState = SafeUiaProperties.GetExpandCollapseState(element);
+        int[] runtimeId = SafeUiaProperties.GetRuntimeId(element);
+        string automationId = SafeUiaProperties.GetAutomationId(element);
+
         List<string> actions = new();
-        if (element.Patterns.Invoke.IsSupported || element.Patterns.Toggle.IsSupported || role is "Button" or "MenuItem" or "Hyperlink") actions.Add("activate");
-        if (element.Patterns.Value.IsSupported && !password && !element.Patterns.Value.Pattern.IsReadOnly.ValueOrDefault) actions.Add("set_value");
-        if (element.Patterns.SelectionItem.IsSupported) { actions.Add("select"); actions.Add("select_many"); }
-        if (element.Patterns.Selection.IsSupported) actions.Add("select_item");
-        if (element.Patterns.Scroll.IsSupported) actions.Add("scroll");
-        if (element.Patterns.ScrollItem.IsSupported) actions.Add("scroll_into_view");
-        if (element.Patterns.ExpandCollapse.IsSupported) { actions.Add("expand"); actions.Add("collapse"); }
-        if (element.Properties.IsKeyboardFocusable.ValueOrDefault) { actions.Add("focus"); actions.Add("key_chord"); }
+        if (SafeUiaProperties.Read(() => element.Patterns.Invoke.IsSupported) ||
+            SafeUiaProperties.Read(() => element.Patterns.Toggle.IsSupported) ||
+            role is "Button" or "MenuItem" or "Hyperlink") actions.Add("activate");
+        if (SafeUiaProperties.Read(() => element.Patterns.Value.IsSupported) && !password &&
+            !SafeUiaProperties.GetIsValueReadOnly(element)) actions.Add("set_value");
+        if (SafeUiaProperties.Read(() => element.Patterns.SelectionItem.IsSupported)) { actions.Add("select"); actions.Add("select_many"); }
+        if (SafeUiaProperties.Read(() => element.Patterns.Selection.IsSupported)) actions.Add("select_item");
+        if (SafeUiaProperties.Read(() => element.Patterns.Scroll.IsSupported)) actions.Add("scroll");
+        if (SafeUiaProperties.Read(() => element.Patterns.ScrollItem.IsSupported)) actions.Add("scroll_into_view");
+        if (SafeUiaProperties.Read(() => element.Patterns.ExpandCollapse.IsSupported)) { actions.Add("expand"); actions.Add("collapse"); }
+        if (isKeyboardFocusable) { actions.Add("focus"); actions.Add("key_chord"); }
         if (bounds.Width > 0 && bounds.Height > 0 && !password) { actions.Add("drag_to"); actions.Add("right_click"); actions.Add("double_click"); }
-        string? id = element.Properties.AutomationId.ValueOrDefault;
-        ElementLocator locator = new(AutomationId: string.IsNullOrEmpty(id) ? null : id,
-            Name: string.IsNullOrEmpty(id) ? name : null, ControlType: role);
-        return new SceneElement(reference, "uia", role, Clip(name) ?? string.Empty, Clip(value), element.IsEnabled,
-            !element.IsOffscreen, element.Properties.HasKeyboardFocus.ValueOrDefault,
-            element.Patterns.SelectionItem.PatternOrDefault?.IsSelected.ValueOrDefault,
+        ElementLocator locator = new(AutomationId: string.IsNullOrEmpty(automationId) ? null : automationId,
+            Name: string.IsNullOrEmpty(automationId) ? name : null, ControlType: role);
+        return new SceneElement(reference, "uia", role, Clip(name) ?? string.Empty, Clip(value), isEnabled,
+            !isOffscreen, hasKeyboardFocus, isSelected,
             new WindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height), actions, window, locator,
-            string.Join(".", element.Properties.RuntimeId.ValueOrDefault ?? []),
-            ToggleState: element.Patterns.Toggle.PatternOrDefault?.ToggleState.ValueOrDefault.ToString(),
+            string.Join(".", runtimeId),
+            ToggleState: toggleState,
             StateHash: Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name + "\0" + value))),
-            ExpandCollapseState: element.Patterns.ExpandCollapse.PatternOrDefault?.ExpandCollapseState.ValueOrDefault.ToString(),
+            ExpandCollapseState: expandCollapseState,
             ParentIdentity: parentIdentity);
     }
 
@@ -211,18 +224,18 @@ public sealed class UiaSceneDriver
             AutomationElement current = queue.Dequeue();
             try
             {
-                if (string.Join(".", current.Properties.RuntimeId.ValueOrDefault ?? []) == expected.Identity)
+                if (string.Join(".", SafeUiaProperties.GetRuntimeId(current)) == expected.Identity)
                 {
                     SceneElement actual = Read(current, expected.Window, expected.Ref);
                     return actual.Name == expected.Name && actual.Role == expected.Role && actual.Value == expected.Value &&
                         actual.Bounds == expected.Bounds && actual.Selected == expected.Selected &&
                         actual.ToggleState == expected.ToggleState && actual.StateHash == expected.StateHash && actual.Enabled ? current : null;
                 }
-                foreach (AutomationElement child in current.FindAllChildren()) queue.Enqueue(child);
+                foreach (AutomationElement child in SafeUiaProperties.GetChildren(current)) queue.Enqueue(child);
             }
-            catch (COMException)
+            catch (Exception ex) when (SafeUiaProperties.IsIgnorableUiaException(ex))
             {
-                // Transient element disappearance during traversal should not abort resolution.
+                // Transient element disappearance or unsupported properties during traversal should not abort resolution.
             }
         }
         return null;
