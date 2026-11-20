@@ -221,6 +221,7 @@ public static class VerifiedSceneTool
             {
                 return ResultWithHint(store.Services.Memory, "blocked", false, false, integrity.Warning!);
             }
+            if (UserActivityPolicy.CheckSessionLocked() is { } sessionLocked) return ResultWithHint(store.Services.Memory, "blocked", false, false, sessionLocked);
             if (!request.BackgroundOnly && UserActivityPolicy.CheckYield() is { } userActive) return ResultWithHint(store.Services.Memory, "blocked", false, false, userActive);
             cancellationToken.ThrowIfCancellationRequested();
 

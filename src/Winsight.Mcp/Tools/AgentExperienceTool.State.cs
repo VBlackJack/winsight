@@ -125,6 +125,7 @@ public static partial class AgentExperienceTool
                         locator_not_found = "call repair_locator with the failed label/id",
                         policy_denied = "change WINSIGHT_ALLOWED_* or choose another process",
                         user_active = "call wait_for_user_idle with a real timeout (e.g. idleMs=3000, timeoutMs=30000), then observe_scene, then act; check get_user_activity diagnostics if phantom input persists",
+                        session_locked = "the Windows desktop session is locked: unlock the session before dispatching UI input (read-only tools keep working)",
                         foreground_changed = "the batch stopped untouched: wait_for_user_idle, observe_scene, rerun the rest",
                         cursor_moved = "something moved the pointer during the settle: get_user_activity, then retry",
                         move_not_applied = "the pointer never left its start position (not human input): inspect attemptTraces, integrity and inputContext, or call diagnose_pointer",

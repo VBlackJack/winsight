@@ -91,8 +91,16 @@ internal static class ToolAccessPolicy
     /// a human is using the desktop, else null (proceed).
     /// </summary>
     public static OperationResult? GuardMutation(string action, object? preview) =>
+        GuardMutation(action, preview, UserActivityPolicy.CheckSessionLocked, UserActivityPolicy.CheckYield);
+
+    internal static OperationResult? GuardMutation(
+        string action,
+        object? preview,
+        Func<string?> checkSessionLocked,
+        Func<string?> checkYield) =>
         DryRunMutation(action, preview) ??
-        (UserActivityPolicy.CheckYield() is { } userActive ? OperationResult.Failure(userActive) : null);
+        (checkSessionLocked() is { } sessionLocked ? OperationResult.Failure(sessionLocked) : null) ??
+        (checkYield() is { } userActive ? OperationResult.Failure(userActive) : null);
 
     public static bool TryAuthorizeLaunch(string executablePath, out string error)
     {

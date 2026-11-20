@@ -501,6 +501,23 @@ public sealed class UserActivityTests
         snap.SessionLockSource.Should().Be(UserActivityMonitor.SessionLockSourceInputDesktop);
     }
 
+    [Fact]
+    public void CheckSessionLocked_refuses_when_locked_and_allows_when_unlocked_or_unknown()
+    {
+        string? lockedWts = UserActivityPolicy.CheckSessionLocked(
+            () => new SessionLockReading(true, UserActivityMonitor.SessionLockSourceWts));
+        lockedWts.Should().StartWith("session_locked:").And.Contain("source=wts");
+
+        string? lockedDesktop = UserActivityPolicy.CheckSessionLocked(
+            () => new SessionLockReading(true, UserActivityMonitor.SessionLockSourceInputDesktop));
+        lockedDesktop.Should().StartWith("session_locked:").And.Contain("source=input_desktop");
+
+        UserActivityPolicy.CheckSessionLocked(
+            () => new SessionLockReading(false, UserActivityMonitor.SessionLockSourceWts)).Should().BeNull();
+        UserActivityPolicy.CheckSessionLocked(
+            () => new SessionLockReading(null, UserActivityMonitor.SessionLockSourceUnknown)).Should().BeNull();
+    }
+
     internal sealed class FakeUserActivityBackend : IUserActivityBackend
     {
         private uint _tick;

@@ -115,6 +115,25 @@ public static class UserActivityPolicy
     public static string? CheckYield() =>
         CheckYield(YieldToUserMs, UserActivityMonitor.ReadHumanIdleMs, IsYieldOverridden, Console.Error.WriteLine);
 
+    /// <summary>
+    /// Refusal when the interactive Windows session is locked, or null when unlocked/unknown.
+    /// Never bypassed by <see cref="YieldOverrideVariable"/>.
+    /// </summary>
+    public static string? CheckSessionLocked() =>
+        CheckSessionLocked(UserActivityMonitor.ReadSessionLock);
+
+    internal static string? CheckSessionLocked(Func<SessionLockReading> readSessionLock)
+    {
+        SessionLockReading reading = readSessionLock();
+        if (reading.Locked != true)
+        {
+            return null;
+        }
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{SessionLockedCode}: Windows session is locked (source={reading.Source}). Unlock the desktop before dispatching UI input. Read-only tools remain available.");
+    }
+
     internal static string? CheckYield(int? yieldToUserMs, Func<long?> readHumanIdleMs) =>
         CheckYield(yieldToUserMs, readHumanIdleMs, IsYieldOverridden, Console.Error.WriteLine);
 

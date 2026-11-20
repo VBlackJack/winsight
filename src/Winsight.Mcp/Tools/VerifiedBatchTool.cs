@@ -94,6 +94,10 @@ public static class VerifiedBatchTool
                 });
             }
 
+            if (UserActivityPolicy.CheckSessionLocked() is { } sessionLocked)
+            {
+                return VerifiedSceneTool.Serialize(OperationResult.Failure(sessionLocked));
+            }
             if (!backgroundOnly && UserActivityPolicy.CheckYield() is { } userActive)
             {
                 return VerifiedSceneTool.Serialize(new

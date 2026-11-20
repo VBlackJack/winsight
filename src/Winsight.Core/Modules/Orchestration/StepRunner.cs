@@ -252,6 +252,11 @@ public sealed class StepRunner
             });
         }
 
+        if (IsScreenAction(action) && UserActivityPolicy.CheckSessionLocked() is { } sessionLocked)
+        {
+            return OperationResult.Failure(sessionLocked);
+        }
+
         if (IsScreenAction(action) && UserActivityPolicy.CheckYield() is { } userActive)
         {
             return OperationResult.Failure(userActive);

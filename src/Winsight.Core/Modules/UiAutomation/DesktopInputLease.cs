@@ -54,10 +54,15 @@ public sealed class DesktopInputLease : IDisposable
         string? refusal;
         try
         {
-            // Sample before marking the injection, so the input that preceded it
-            // is recorded as human even when the yield policy is off.
-            long? humanIdleMs = UserActivityMonitor.ReadHumanIdleMs();
-            refusal = UserActivityPolicy.CheckYield(UserActivityPolicy.YieldToUserMs, () => humanIdleMs);
+            // Refuse immediately when the Windows desktop session is locked.
+            refusal = UserActivityPolicy.CheckSessionLocked();
+            if (refusal is null)
+            {
+                // Sample before marking the injection, so the input that preceded it
+                // is recorded as human even when the yield policy is off.
+                long? humanIdleMs = UserActivityMonitor.ReadHumanIdleMs();
+                refusal = UserActivityPolicy.CheckYield(UserActivityPolicy.YieldToUserMs, () => humanIdleMs);
+            }
             if (refusal is null)
             {
                 InputLedger.MarkInjectionStart(UserActivityMonitor.TickNow());
