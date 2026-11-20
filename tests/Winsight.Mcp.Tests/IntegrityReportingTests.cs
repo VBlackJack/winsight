@@ -21,6 +21,7 @@ using Xunit;
 
 namespace Winsight.Mcp.Tests;
 
+[Collection("ProcessIntegrity")]
 public sealed class IntegrityReportingTests
 {
     private static readonly IntegrityComparison ElevatedMismatch = ProcessIntegrity.Compare(
@@ -133,6 +134,35 @@ public sealed class IntegrityReportingTests
         finally
         {
             ProcessIntegrity.OverrideCheck = null;
+        }
+    }
+
+    [Fact]
+    public void Diagnose_pointer_honors_dry_run_without_moving_cursor()
+    {
+        string? previous = Environment.GetEnvironmentVariable(ToolAccessPolicy.DryRunVariable);
+        Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, "1");
+        try
+        {
+            ActionInvoker invoker = new();
+            SessionTarget target = new();
+            target.Set(Environment.ProcessId);
+
+            string json = InvokeActionTool.DiagnosePointer(invoker, target, 100, 100, coordinateSpace: "screen");
+
+            using JsonDocument doc = JsonDocument.Parse(json);
+            doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
+            JsonElement data = doc.RootElement.GetProperty("data");
+            data.GetProperty("dryRun").GetBoolean().Should().BeTrue();
+            data.GetProperty("action").GetString().Should().Be("diagnose_pointer");
+            JsonElement methods = data.GetProperty("preview").GetProperty("methods");
+            methods.GetArrayLength().Should().Be(4);
+            methods[0].GetString().Should().Be(PointerMoveMethods.SendInputVirtualDesk);
+            methods[3].GetString().Should().Be(PointerMoveMethods.SetCursorPos);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ToolAccessPolicy.DryRunVariable, previous);
         }
     }
 

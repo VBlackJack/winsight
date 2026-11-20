@@ -35,6 +35,7 @@ public sealed record InputContextBlock(
 public static class InputContext
 {
     public const string InputContextBlockedCode = "input_context_blocked";
+    public const string InteractiveWindowStationName = "WinSta0";
 
     public const uint JobUiLimitHandles = 0x00000001;
     public const uint JobUiLimitReadClipboard = 0x00000002;
@@ -49,8 +50,6 @@ public static class InputContext
     private const int UserObjectFlagsIndex = 1;
     private const int UserObjectNameIndex = 2;
     private const uint DesktopReadObjects = 0x0001;
-    private const uint DesktopWriteObjects = 0x0002;
-    private const uint DesktopSwitchDesktop = 0x0100;
     private const int JobObjectBasicUiRestrictionsClass = 4;
     private const uint TokenQuery = 0x0008;
     private const int TokenHasRestrictionsClass = 21;
@@ -74,19 +73,12 @@ public static class InputContext
         new(() => QueryParentChain(Environment.ProcessId));
 
     private static readonly AsyncLocal<Func<InputContextSnapshot>?> OverrideCaptureSlot = new();
-    private static readonly AsyncLocal<Func<InputContextSnapshot, DesktopSwitchAttempt>?> OverrideDesktopSwitchSlot = new();
 
-    // Test hooks (async-local so parallel unit tests never interfere with one another).
+    // Test hook (async-local so parallel unit tests never interfere with one another).
     internal static Func<InputContextSnapshot>? OverrideCapture
     {
         get => OverrideCaptureSlot.Value;
         set => OverrideCaptureSlot.Value = value;
-    }
-
-    internal static Func<InputContextSnapshot, DesktopSwitchAttempt>? OverrideDesktopSwitch
-    {
-        get => OverrideDesktopSwitchSlot.Value;
-        set => OverrideDesktopSwitchSlot.Value = value;
     }
 
     /// <summary>Capture the current process and thread input-context diagnostics.</summary>
@@ -230,7 +222,7 @@ public static class InputContext
 
         List<string> restrictions = new();
         if (!string.IsNullOrEmpty(context.WindowStation) &&
-            !string.Equals(context.WindowStation, "WinSta0", StringComparison.OrdinalIgnoreCase))
+            !string.Equals(context.WindowStation, InteractiveWindowStationName, StringComparison.OrdinalIgnoreCase))
         {
             restrictions.Add($"non_interactive_window_station:{context.WindowStation}");
         }
@@ -263,70 +255,8 @@ public static class InputContext
         return new InputContextBlock(InputContextBlockedCode, restrictions, message, context);
     }
 
-    /// <summary>
-    /// If the current thread desktop does not match the active input desktop,
-    /// attempt SetThreadDesktop(OpenInputDesktop) on this thread before input
-    /// dispatch and return the outcome.
-    /// </summary>
-    public static DesktopSwitchAttempt TryAttachToInputDesktop(InputContextSnapshot context)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-
-        if (OverrideDesktopSwitch is { } overrideSwitch)
-        {
-            return overrideSwitch(context);
-        }
-
-        if (context.DesktopMatchesInput)
-        {
-            return new DesktopSwitchAttempt(Attempted: false, Succeeded: true, Win32Error: null, context.InputDesktop);
-        }
-
-        IntPtr inputDesktop = NativeMethods.OpenInputDesktop(
-            0,
-            false,
-            DesktopReadObjects | DesktopWriteObjects | DesktopSwitchDesktop);
-        if (inputDesktop == IntPtr.Zero)
-        {
-            inputDesktop = NativeMethods.OpenInputDesktop(0, false, DesktopReadObjects | DesktopWriteObjects);
-        }
-        if (inputDesktop == IntPtr.Zero)
-        {
-            return new DesktopSwitchAttempt(
-                Attempted: true,
-                Succeeded: false,
-                Win32Error: Marshal.GetLastWin32Error(),
-                TargetDesktop: context.InputDesktop);
-        }
-
-        try
-        {
-            string? targetName = ReadUserObjectName(inputDesktop) ?? context.InputDesktop;
-            bool ok = NativeMethods.SetThreadDesktop(inputDesktop);
-            int? error = ok ? null : Marshal.GetLastWin32Error();
-            return new DesktopSwitchAttempt(Attempted: true, Succeeded: ok, Win32Error: error, TargetDesktop: targetName);
-        }
-        finally
-        {
-            NativeMethods.CloseDesktop(inputDesktop);
-        }
-    }
-
-    /// <summary>Build a compact dispatch summary for successful pointer/keyboard responses.</summary>
-    internal static InputDispatchInfo ToDispatchInfo(
-        InputContextSnapshot context,
-        DesktopSwitchAttempt? switchAttempt,
-        string? moveMethod = null) =>
-        new(
-            context.ThreadId != 0 ? context.ThreadId : NativeMethods.GetCurrentThreadId(),
-            context.ThreadDesktop,
-            DesktopSwitchAttempted: switchAttempt is { Attempted: true },
-            DesktopSwitchSucceeded: switchAttempt is { Attempted: true } ? switchAttempt.Succeeded : null,
-            DesktopSwitchWin32Error: switchAttempt is { Attempted: true } ? switchAttempt.Win32Error : null,
-            MoveMethod: moveMethod);
-
     /// <summary>One-line summary for embedding in move_not_applied error messages.</summary>
-    internal static string FormatSummary(InputContextSnapshot context, DesktopSwitchAttempt? switchAttempt = null)
+    internal static string FormatSummary(InputContextSnapshot context)
     {
         string jobSummary = !context.InJob
             ? "inJob=false"
@@ -336,19 +266,13 @@ public static class InputContext
                     ? string.Create(CultureInfo.InvariantCulture, $"inJob=true(queryErr={jErr})")
                     : "inJob=true(uiLimits=none)";
 
-        string switchSummary = switchAttempt is { Attempted: true } attempt
-            ? string.Create(
-                CultureInfo.InvariantCulture,
-                $", setThreadDesktop={attempt.Succeeded}(err={attempt.Win32Error ?? 0})")
-            : string.Empty;
-
         string parents = context.ParentChain.Count > 0
             ? string.Join("->", context.ParentChain.Select(p => $"{p.Name}({p.ProcessId})"))
             : "none";
 
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"session={context.SessionId?.ToString(CultureInfo.InvariantCulture) ?? "?"}/console={context.ActiveConsoleSessionId}, winSta={context.WindowStation ?? "?"}(vis={context.WindowStationVisible?.ToString() ?? "?"}), desktop={context.ThreadDesktop ?? "?"}/input={context.InputDesktop ?? "?"}{switchSummary}, {jobSummary}, restricted={context.IsRestrictedToken?.ToString() ?? "?"}, appContainer={context.IsAppContainer?.ToString() ?? "?"}, parents={parents}");
+            $"session={context.SessionId?.ToString(CultureInfo.InvariantCulture) ?? "?"}/console={context.ActiveConsoleSessionId}, winSta={context.WindowStation ?? "?"}(vis={context.WindowStationVisible?.ToString() ?? "?"}), desktop={context.ThreadDesktop ?? "?"}/input={context.InputDesktop ?? "?"}, {jobSummary}, restricted={context.IsRestrictedToken?.ToString() ?? "?"}, appContainer={context.IsAppContainer?.ToString() ?? "?"}, parents={parents}");
     }
 
     private static string? ReadUserObjectName(IntPtr handle)
@@ -540,10 +464,6 @@ public static class InputContext
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr OpenInputDesktop(uint flags, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint desiredAccess);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SetThreadDesktop(IntPtr desktop);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

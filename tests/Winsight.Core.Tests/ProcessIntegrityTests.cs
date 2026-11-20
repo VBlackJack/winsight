@@ -18,6 +18,7 @@ using Xunit;
 
 namespace Winsight.Core.Tests;
 
+[Collection("ProcessIntegrity")]
 public sealed class ProcessIntegrityTests
 {
     [Fact]

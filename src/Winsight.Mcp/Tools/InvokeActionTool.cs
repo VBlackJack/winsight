@@ -281,14 +281,15 @@ public static class InvokeActionTool
         });
     }
 
-    [McpServerTool(Name = "diagnose_pointer", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read-only-safe pointer movement diagnostic for a point inside an authorized target window. " +
+    [McpServerTool(Name = "diagnose_pointer", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Pointer movement diagnostic for a point inside an authorized target window. " +
                  "Tries four pointer move methods in order (SendInput ABSOLUTE|VIRTUALDESK, SendInput ABSOLUTE " +
                  "primary monitor, SendInput relative, SetCursorPos), measures GetCursorPos and " +
                  "GetPhysicalCursorPos immediately and after 50 ms and 150 ms, and restores the original " +
-                 "cursor position after each attempt without clicking. Also reports ClipCursor, GetCursorInfo " +
-                 "flags (showing/suppressed), mouse buttons down, SPI_GETMOUSE / SPI_GETMOUSESPEED, foreground " +
-                 "process, and input context.")]
+                 "cursor position after each attempt without clicking. Honors WINSIGHT_DRY_RUN (reports what " +
+                 "would be tried without moving the cursor) and the yield-to-user guard. Also reports " +
+                 "ClipCursor, GetCursorInfo flags (showing/suppressed), mouse buttons down, " +
+                 "SPI_GETMOUSE / SPI_GETMOUSESPEED, foreground process, and input context.")]
     public static string DiagnosePointer(
         ActionInvoker invoker,
         SessionTarget target,
@@ -308,6 +309,21 @@ public static class InvokeActionTool
             if (!TryPointTarget(target, processId, coordinateSpace, out int pid, out bool windowRelative, out string? error))
             {
                 return Serialize(OperationResult.Failure(error!));
+            }
+            if (ToolAccessPolicy.GuardMutation(
+                    "diagnose_pointer",
+                    new
+                    {
+                        processId = pid,
+                        x,
+                        y,
+                        windowTitle,
+                        coordinateSpace = windowRelative ? "window" : "screen",
+                        methods = PointerMoveMethods.AllOrdered,
+                    })
+                is { } gated)
+            {
+                return Serialize(gated);
             }
             return Serialize(invoker.DiagnosePointer(pid, x, y, windowTitle, windowRelative));
         });

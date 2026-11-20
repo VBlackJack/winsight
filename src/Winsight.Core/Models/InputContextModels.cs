@@ -17,26 +17,10 @@ namespace Winsight.Core.Models;
 /// <summary>One process in the parent chain of Winsight.</summary>
 public sealed record ProcessChainEntry(int ProcessId, string Name);
 
-/// <summary>Outcome of attempting SetThreadDesktop(OpenInputDesktop) on the input thread.</summary>
-public sealed record DesktopSwitchAttempt(
-    bool Attempted,
-    bool Succeeded,
-    int? Win32Error,
-    string? TargetDesktop);
-
-/// <summary>Compact diagnostics captured on the dispatching thread for a synthetic input call.</summary>
-public sealed record InputDispatchInfo(
-    uint ThreadId,
-    string? ThreadDesktop,
-    bool DesktopSwitchAttempted,
-    bool? DesktopSwitchSucceeded = null,
-    int? DesktopSwitchWin32Error = null,
-    string? MoveMethod = null);
-
 /// <summary>
-/// Execution-context diagnostics for synthetic desktop input: session, window
-/// station, thread vs input desktop, job object UI restrictions, token
-/// restriction/AppContainer flags, and parent process chain.
+/// Read-only execution-context diagnostics for synthetic desktop input:
+/// session, window station, thread vs input desktop, job object UI
+/// restrictions, token restriction/AppContainer flags, and parent process chain.
 /// </summary>
 public sealed record InputContextSnapshot(
     uint? SessionId,

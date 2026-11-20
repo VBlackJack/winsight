@@ -54,8 +54,15 @@ public static class ProcessIntegrity
     private const int ErrorAccessDenied = 5;
     private const int ErrorInsufficientBuffer = 122;
 
-    // Test hook to deterministically exercise UIPI handling without launching an elevated process.
-    internal static Func<int, IntegrityComparison>? OverrideCheck { get; set; }
+    private static readonly AsyncLocal<Func<int, IntegrityComparison>?> OverrideCheckSlot = new();
+    private static readonly Lazy<ProcessIntegrityInfo> CachedCurrent = new(QueryCurrentUncached);
+
+    // Test hook (async-local so parallel unit tests never interfere with one another).
+    internal static Func<int, IntegrityComparison>? OverrideCheck
+    {
+        get => OverrideCheckSlot.Value;
+        set => OverrideCheckSlot.Value = value;
+    }
 
     /// <summary>Compare the current process integrity level against <paramref name="targetProcessId"/>.</summary>
     public static IntegrityComparison CheckTarget(int targetProcessId)
@@ -70,8 +77,10 @@ public static class ProcessIntegrity
         return Compare(current, target);
     }
 
-    /// <summary>Query the integrity level of the current Winsight process.</summary>
-    public static ProcessIntegrityInfo QueryCurrent()
+    /// <summary>Query the integrity level of the current Winsight process (cached for process lifetime).</summary>
+    public static ProcessIntegrityInfo QueryCurrent() => CachedCurrent.Value;
+
+    private static ProcessIntegrityInfo QueryCurrentUncached()
     {
         IntPtr currentProcess = NativeMethods.GetCurrentProcess();
         return QueryProcessHandle(currentProcess);
@@ -213,7 +222,7 @@ public static class ProcessIntegrity
             IntPtr countPtr = NativeMethods.GetSidSubAuthorityCount(label.Sid);
             if (countPtr == IntPtr.Zero)
             {
-                return new ProcessIntegrityInfo(null, "invalid_sid", AccessDenied: false, Marshal.GetLastWin32Error());
+                return new ProcessIntegrityInfo(null, "invalid_sid", AccessDenied: false, null);
             }
 
             byte subAuthorityCount = Marshal.ReadByte(countPtr);
@@ -225,7 +234,7 @@ public static class ProcessIntegrity
             IntPtr ridPtr = NativeMethods.GetSidSubAuthority(label.Sid, (uint)(subAuthorityCount - 1));
             if (ridPtr == IntPtr.Zero)
             {
-                return new ProcessIntegrityInfo(null, "invalid_rid", AccessDenied: false, Marshal.GetLastWin32Error());
+                return new ProcessIntegrityInfo(null, "invalid_rid", AccessDenied: false, null);
             }
 
             uint rid = unchecked((uint)Marshal.ReadInt32(ridPtr));
@@ -269,10 +278,10 @@ public static class ProcessIntegrity
             uint tokenInformationLength,
             out uint returnLength);
 
-        [DllImport("advapi32.dll", SetLastError = true)]
+        [DllImport("advapi32.dll")]
         public static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
 
-        [DllImport("advapi32.dll", SetLastError = true)]
+        [DllImport("advapi32.dll")]
         public static extern IntPtr GetSidSubAuthority(IntPtr sid, uint subAuthorityIndex);
     }
 }
