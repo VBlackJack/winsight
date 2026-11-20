@@ -89,6 +89,7 @@ public sealed class ForegroundInputPolicyTests
             warning.Should().StartWith($"{ForegroundInputPolicy.ForegroundMayRejectSyntheticInputCode}:")
                 .And.Contain("vmware")
                 .And.Contain("11152")
+                .And.Contain("powered-on VM")
                 .And.Contain("vmsight")
                 .And.Contain("act_verified")
                 .And.NotContain("Preferences > Input")

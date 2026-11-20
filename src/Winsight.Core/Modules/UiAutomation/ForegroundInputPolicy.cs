@@ -32,15 +32,15 @@ public static class ForegroundInputPolicy
     private static readonly char[] ListSeparators = { ',', ';' };
 
     private const string ConfiguredHostHint =
-        "This foreground host rejects synthetic pointer moves while it is the foreground window, regardless of " +
-        "how it became foreground or where the cursor is; no known host preference fixes it. " +
-        "Recommended workarounds: bring another window to the foreground first when targeting another app, " +
+        "This foreground host rejects synthetic input while a powered-on VM is shown in the active tab " +
+        "(host UI with no running VM in the active tab accepts it; no known host preference fixes it). " +
+        "Recommended workarounds: switch to another tab or bring another window to the foreground, " +
         "use UI Automation patterns (click_element / select_item / act_verified with UIA actions) for host UI, " +
-        "and use a dedicated guest input tool (such as vmsight for VMs) instead of physical desktop input.";
+        "and use a dedicated guest input tool (such as vmsight for VMs) for guest input.";
 
     private const string GenericForegroundHint =
         "The foreground process rejected synthetic pointer input (SetCursorPos returned FALSE with error 0). " +
-        "Bring another window to the foreground first when the target is not that process, or use " +
+        "Switch to another tab or bring another window to the foreground, or use " +
         "UI Automation patterns (click_element / select_item / act_verified with UIA actions) instead of physical input.";
 
     private static readonly AsyncLocal<Func<ForegroundProcessInfo?>?> OverrideForegroundReaderSlot = new();

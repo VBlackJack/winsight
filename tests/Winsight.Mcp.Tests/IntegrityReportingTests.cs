@@ -167,6 +167,18 @@ public sealed class IntegrityReportingTests
     }
 
     [Fact]
+    public void Winsight_guide_error_policy_documents_new_input_error_codes()
+    {
+        string json = AgentExperienceTool.GetWinsightGuide();
+
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement policy = doc.RootElement.GetProperty("data").GetProperty("errorPolicy");
+        policy.GetProperty("foreground_rejects_synthetic_input").GetString().Should().Contain("powered-on VM").And.Contain("vmsight");
+        policy.GetProperty("move_not_applied").GetString().Should().Contain("diagnose_pointer");
+        policy.GetProperty("uipi_blocked").GetString().Should().Contain("integrity level");
+    }
+
+    [Fact]
     public void Agent_failure_classifies_uipi_blocked_and_move_not_applied()
     {
         object uipiHint = AgentFailure.BuildHint("click_point", "blocked", "uipi_blocked: target higher");
