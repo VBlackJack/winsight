@@ -55,6 +55,8 @@ public static class PerceiveChangesTool
                     processId = pid,
                     windowCount = snapshot.Windows.Count,
                     interactableCount = snapshot.Interactables.Count,
+                    truncated = snapshot.Truncated,
+                    truncationReason = snapshot.TruncationReason,
                 }),
                 JsonOptions.Default);
         });

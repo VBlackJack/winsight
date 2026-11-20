@@ -32,4 +32,6 @@ public sealed record UiElementNode(
     int Y,
     int Width,
     int Height,
-    IReadOnlyList<UiElementNode> Children);
+    IReadOnlyList<UiElementNode> Children,
+    bool Truncated = false,
+    string? TruncationReason = null);

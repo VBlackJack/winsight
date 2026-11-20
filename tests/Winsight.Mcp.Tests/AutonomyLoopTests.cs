@@ -386,22 +386,25 @@ public sealed class AutonomyLoopTests
             actionableOnly: true, filterText: "VM", maxResults: 40);
         underCap.Elements.Should().HaveCount(5);
         underCap.Truncated.Should().BeFalse();
+        underCap.TruncationReason.Should().BeNull();
 
-        // 5 matching elements with maxResults=3 => cut to 3 and truncated=true.
+        // 5 matching elements with maxResults=3 => cut to 3 and truncated=true (max_results).
         SceneCapture overCap = VerifiedSceneTool.EnrichCapture(
             SceneServices.Default, self.Id, null,
             new SceneCapture([win], rawElements, false, "uia"),
             actionableOnly: true, filterText: "VM", maxResults: 3);
         overCap.Elements.Should().HaveCount(3);
         overCap.Truncated.Should().BeTrue();
+        overCap.TruncationReason.Should().Be(TraversalTruncationReasons.MaxResults);
 
-        // If the underlying UIA traversal itself was truncated, truncated stays true.
+        // If the underlying UIA traversal itself was truncated by time_budget, truncated and reason stay intact.
         SceneCapture sourceTruncated = VerifiedSceneTool.EnrichCapture(
             SceneServices.Default, self.Id, null,
-            new SceneCapture([win], rawElements, true, "uia"),
+            new SceneCapture([win], rawElements, true, "uia", TruncationReason: TraversalTruncationReasons.TimeBudget),
             actionableOnly: true, filterText: "VM", maxResults: 40);
         sourceTruncated.Elements.Should().HaveCount(5);
         sourceTruncated.Truncated.Should().BeTrue();
+        sourceTruncated.TruncationReason.Should().Be(TraversalTruncationReasons.TimeBudget);
     }
 
     [Fact]

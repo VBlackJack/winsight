@@ -53,7 +53,7 @@ public sealed record SceneCapture(
     IReadOnlyList<WindowDescriptor> Windows, IReadOnlyList<SceneElement> Elements,
     bool Truncated, string Source, string? DocumentIdentity = null,
     string? SurfaceHint = null, IReadOnlyList<string>? MatchingProfiles = null,
-    string? IntegrityWarning = null);
+    string? IntegrityWarning = null, string? TruncationReason = null);
 
 /// <summary>Filter parameters used to produce a <see cref="SceneCapture"/>.</summary>
 public sealed record SceneCaptureFilter(

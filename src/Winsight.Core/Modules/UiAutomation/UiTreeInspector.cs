@@ -44,7 +44,9 @@ public sealed class UiTreeInspector
         string? windowTitle = null,
         string? controlTypeFilter = null,
         string? nameContainsFilter = null,
-        bool mainWindow = false)
+        bool mainWindow = false,
+        TimeSpan? timeBudget = null,
+        TimeProvider? timeProvider = null)
     {
         if (maxDepth < 0 || maxDepth > MaxAllowedDepth)
         {
@@ -70,46 +72,69 @@ public sealed class UiTreeInspector
         IntPtr chosen = (mainWindow && string.IsNullOrEmpty(windowTitle)
             ? NativeWindowEnumerator.PreferMainWindow(processId, handles)
             : NativeWindowEnumerator.PreferPrimary(handles))[0].Handle;
-        var visited = 0;
+        TraversalBudget budget = timeBudget is TimeSpan explicitBudget
+            ? new TraversalBudget(explicitBudget, UiaDefaults.MaxTraversalNodes, timeProvider)
+            : TraversalBudget.FromEnvironment(UiaDefaults.MaxTraversalNodes, timeProvider);
         UiElementNode root = BuildNode(
-            windows.First(w => w.Handle == chosen).Element, depth: 0, maxDepth, ref visited);
+            windows.First(w => w.Handle == chosen).Element, depth: 0, maxDepth, budget);
 
         bool hasFilter = !string.IsNullOrEmpty(controlTypeFilter)
             || !string.IsNullOrEmpty(nameContainsFilter);
-        return hasFilter
+        UiElementNode result = hasFilter
             ? Prune(root, controlTypeFilter, nameContainsFilter) ?? root with { Children = Array.Empty<UiElementNode>() }
             : root;
+        return budget.IsTruncated
+            ? result with { Truncated = true, TruncationReason = budget.TruncationReason }
+            : result;
     }
 
     private static UiElementNode BuildNode(
         AutomationElement element,
         int depth,
         int maxDepth,
-        ref int visited)
+        TraversalBudget budget)
     {
-        if (++visited > UiaDefaults.MaxTraversalNodes)
+        if (!budget.TryStep())
         {
-            throw new InvalidOperationException(
-                $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while inspecting the tree. " +
-                "Use maxDepth, controlType, nameContains, or windowTitle to narrow the request.");
+            if (budget.TruncationReason == TraversalTruncationReasons.NodeLimit)
+            {
+                throw new InvalidOperationException(
+                    $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while inspecting the tree. " +
+                    "Use maxDepth, controlType, nameContains, or windowTitle to narrow the request.");
+            }
+            return BuildLeafSnapshot(element);
         }
 
         IReadOnlyList<UiElementNode> children;
-        if (depth >= maxDepth)
+        if (depth >= maxDepth || budget.IsTimeExceeded())
         {
             children = Array.Empty<UiElementNode>();
         }
         else
         {
             AutomationElement[] childElements = SafeChildren(element);
-            var childNodes = new UiElementNode[childElements.Length];
+            List<UiElementNode> childNodes = new(childElements.Length);
             for (var i = 0; i < childElements.Length; i++)
             {
-                childNodes[i] = BuildNode(childElements[i], depth + 1, maxDepth, ref visited);
+                if (budget.IsTimeExceeded())
+                {
+                    break;
+                }
+                childNodes.Add(BuildNode(childElements[i], depth + 1, maxDepth, budget));
             }
             children = childNodes;
         }
 
+        return BuildSnapshotWithChildren(element, children);
+    }
+
+    private static UiElementNode BuildLeafSnapshot(AutomationElement element) =>
+        BuildSnapshotWithChildren(element, Array.Empty<UiElementNode>());
+
+    private static UiElementNode BuildSnapshotWithChildren(
+        AutomationElement element,
+        IReadOnlyList<UiElementNode> children)
+    {
         (string automationId, string name, string controlType, string className) = SafeSnapshot(element);
         System.Drawing.Rectangle rect = SafeBoundingRectangle(element);
         return new UiElementNode(

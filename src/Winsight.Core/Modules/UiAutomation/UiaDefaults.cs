@@ -43,6 +43,18 @@ public static class UiaDefaults
     /// <summary>Maximum descendant depth inspected for semantic descendant text locators.</summary>
     public const int MaxDescendantTextDepth = 5;
 
+    /// <summary>Name of the environment variable overriding the UIA scene traversal time budget.</summary>
+    public const string SceneTraversalBudgetEnvironmentVariable = "WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS";
+
+    /// <summary>Default wall-clock budget for a single UIA tree traversal.</summary>
+    public const int DefaultSceneTraversalBudgetMs = 5_000;
+
+    /// <summary>Lower bound accepted for the UIA traversal time budget.</summary>
+    public const int MinSceneTraversalBudgetMs = 100;
+
+    /// <summary>Upper bound accepted for the UIA traversal time budget.</summary>
+    public const int MaxSceneTraversalBudgetMs = 120_000;
+
     /// <summary>Hard cap for a single UIA breadth-first walk.</summary>
     public const int MaxTraversalNodes = 10_000;
 
@@ -64,5 +76,23 @@ public static class UiaDefaults
             return parsed;
         }
         return FallbackWaitTimeoutMs;
+    }
+
+    /// <summary>
+    /// Resolve the effective UIA traversal time budget in milliseconds:
+    /// environment override when set and within [MinSceneTraversalBudgetMs, MaxSceneTraversalBudgetMs],
+    /// default constant otherwise.
+    /// </summary>
+    public static int ResolveSceneTraversalBudgetMs(Func<string, string?>? getEnvironmentVariable = null)
+    {
+        string? raw = (getEnvironmentVariable ?? Environment.GetEnvironmentVariable)(
+            SceneTraversalBudgetEnvironmentVariable);
+        if (int.TryParse(raw, out int parsed) &&
+            parsed >= MinSceneTraversalBudgetMs &&
+            parsed <= MaxSceneTraversalBudgetMs)
+        {
+            return parsed;
+        }
+        return DefaultSceneTraversalBudgetMs;
     }
 }

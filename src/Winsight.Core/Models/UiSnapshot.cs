@@ -21,4 +21,6 @@ namespace Winsight.Core.Models;
 /// </summary>
 public sealed record UiSnapshot(
     IReadOnlyList<WindowDescriptor> Windows,
-    IReadOnlyList<UiInteractable> Interactables);
+    IReadOnlyList<UiInteractable> Interactables,
+    bool Truncated = false,
+    string? TruncationReason = null);

@@ -36,7 +36,12 @@ public sealed class UiSnapshotter
     public UiSnapshot Capture(int processId, string? windowTitle = null)
     {
         IReadOnlyList<WindowDescriptor> windows = _discovery.List(processId);
-        IReadOnlyList<UiInteractable> interactables = _scanner.Describe(processId, windowTitle);
-        return new UiSnapshot(windows, interactables);
+        IReadOnlyList<UiInteractable> interactables = _scanner.DescribeWithBudget(
+            processId,
+            windowTitle,
+            AffordanceScanner.DefaultMaxResults,
+            out bool truncated,
+            out string? truncationReason);
+        return new UiSnapshot(windows, interactables, truncated, truncationReason);
     }
 }

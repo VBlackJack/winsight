@@ -61,7 +61,17 @@ public sealed class AffordanceScanner
     public IReadOnlyList<UiInteractable> Describe(
         int processId,
         string? windowTitle = null,
-        int maxResults = DefaultMaxResults)
+        int maxResults = DefaultMaxResults) =>
+        DescribeWithBudget(processId, windowTitle, maxResults, out _, out _);
+
+    public IReadOnlyList<UiInteractable> DescribeWithBudget(
+        int processId,
+        string? windowTitle,
+        int maxResults,
+        out bool truncated,
+        out string? truncationReason,
+        TimeSpan? timeBudget = null,
+        TimeProvider? timeProvider = null)
     {
         int cap = maxResults > 0
             ? Math.Min(maxResults, UiaDefaults.MaxDescribeResults)
@@ -71,18 +81,28 @@ public sealed class AffordanceScanner
         IReadOnlyList<WindowRoot> windows = ElementFinder.ResolveWindows(automation, processId, windowTitle);
 
         List<ElementState> states = new();
-        var visited = 0;
+        TraversalBudget budget = timeBudget is TimeSpan explicitBudget
+            ? new TraversalBudget(explicitBudget, UiaDefaults.MaxTraversalNodes, timeProvider)
+            : TraversalBudget.FromEnvironment(UiaDefaults.MaxTraversalNodes, timeProvider);
         foreach (WindowRoot window in windows)
         {
+            if (budget.IsTimeExceeded())
+            {
+                break;
+            }
             Queue<AutomationElement> queue = new();
             queue.Enqueue(window.Element);
             while (queue.Count > 0 && states.Count < cap)
             {
-                if (++visited > UiaDefaults.MaxTraversalNodes)
+                if (!budget.TryStep())
                 {
-                    throw new InvalidOperationException(
-                        $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while describing process {processId}. " +
-                        "Pass windowTitle or a smaller maxResults.");
+                    if (budget.TruncationReason == TraversalTruncationReasons.NodeLimit)
+                    {
+                        throw new InvalidOperationException(
+                            $"UI Automation traversal exceeded {UiaDefaults.MaxTraversalNodes} nodes while describing process {processId}. " +
+                            "Pass windowTitle or a smaller maxResults.");
+                    }
+                    break;
                 }
 
                 AutomationElement current = queue.Dequeue();
@@ -108,7 +128,14 @@ public sealed class AffordanceScanner
                     queue.Enqueue(child);
                 }
             }
+            if (budget.IsTruncated)
+            {
+                break;
+            }
         }
+
+        truncated = budget.IsTruncated;
+        truncationReason = budget.TruncationReason;
 
         List<AffordanceRecommender.Candidate> candidates = states
             .Select(s => new AffordanceRecommender.Candidate(

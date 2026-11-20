@@ -37,15 +37,22 @@ public sealed class UiaSceneDriver
         _discovery = discovery ?? new WindowDiscovery();
     }
 
-    public SceneCapture Capture(int processId, string? title, int maximum)
+    public SceneCapture Capture(
+        int processId,
+        string? title,
+        int maximum,
+        TimeSpan? timeBudget = null,
+        TimeProvider? timeProvider = null)
     {
         using UIA3Automation automation = new();
         IReadOnlyList<WindowDescriptor> windows = _discovery.List(processId);
         List<SceneElement> nodes = new();
-        int visited = 0;
-        bool truncated = false;
+        TraversalBudget budget = timeBudget is TimeSpan explicitBudget
+            ? new TraversalBudget(explicitBudget, UiaDefaults.MaxTraversalNodes, timeProvider)
+            : TraversalBudget.FromEnvironment(UiaDefaults.MaxTraversalNodes, timeProvider);
         foreach (WindowRoot root in ElementFinder.ResolveWindows(automation, processId, title))
         {
+            if (budget.IsTimeExceeded()) break;
             WindowDescriptor? descriptor = windows.FirstOrDefault(w => w.WindowHandle == root.Handle.ToInt64());
             if (descriptor is null) continue;
             WindowIdentity window = new(processId, descriptor.WindowHandle,
@@ -54,7 +61,12 @@ public sealed class UiaSceneDriver
             queue.Enqueue(root.Element);
             while (queue.Count > 0)
             {
-                if (++visited > UiaDefaults.MaxTraversalNodes || nodes.Count >= maximum) { truncated = true; break; }
+                if (!budget.TryStep()) break;
+                if (nodes.Count >= maximum)
+                {
+                    budget.MarkTruncated(TraversalTruncationReasons.MaxResults);
+                    break;
+                }
                 AutomationElement element = queue.Dequeue();
                 try
                 {
@@ -63,11 +75,12 @@ public sealed class UiaSceneDriver
                     nodes.Add(node);
                     foreach (AutomationElement child in element.FindAllChildren()) queue.Enqueue(child);
                 }
-                catch (COMException) { truncated = true; }
+                catch (COMException) { budget.MarkTruncated(TraversalTruncationReasons.ComError); }
             }
-            if (truncated && nodes.Count >= maximum) break;
+            if (budget.TruncationReason is TraversalTruncationReasons.TimeBudget or TraversalTruncationReasons.NodeLimit) break;
+            if (budget.IsTruncated && nodes.Count >= maximum) break;
         }
-        return new SceneCapture(windows, nodes, truncated, "uia");
+        return new SceneCapture(windows, nodes, budget.IsTruncated, "uia", TruncationReason: budget.TruncationReason);
     }
 
     public static SceneElement Read(AutomationElement element, WindowIdentity window, string reference)
