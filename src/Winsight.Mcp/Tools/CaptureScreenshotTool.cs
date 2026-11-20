@@ -31,15 +31,19 @@ public static class CaptureScreenshotTool
     [McpServerTool(Name = "capture_screenshot", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Capture a PNG screenshot of the target process's topmost visible window that is not a " +
                  "transient overlay (an open tooltip or menu is skipped), its main window when mainWindow=true, " +
-                 "or the first " +
-                 "visible window whose title contains windowTitle, using PrintWindow with " +
-                 "PW_RENDERFULLCONTENT (so DirectX-composed WPF and accelerated surfaces render correctly). " +
+                 "or the first visible window whose title contains windowTitle. " +
+                 "With captureSource='window' (default), uses PrintWindow with PW_RENDERFULLCONTENT on the " +
+                 "single HWND (separate top-level popups such as menus, dropdowns, and tooltips do not appear). " +
+                 "With captureSource='screen', captures the DWM-composited desktop rectangle matching the target " +
+                 "window bounds so floating popups over the window appear while keeping window-relative coordinates " +
+                 "for click_point; refuses if the target window is not visible or is occluded by another process " +
+                 "window unless allowOccluded=true. " +
                  "Use windowTitle to target modal dialogs, popups, and secondary windows. " +
                  "If outputPath is omitted, the file is written under WINSIGHT_OUTPUT_DIR " +
                  "(default %TEMP%\\winsight) with a timestamped name. " +
                  "Returns a text block with the OperationResult JSON (success/error; on success, data " +
-                 "carries { path, width, height, capturedAtUtc }) and, unless includeImage=false, the " +
-                 "captured PNG as an inline image so you can see the UI directly without reading the file.")]
+                 "carries { path, width, height, capturedAtUtc, window, captureSource }) and, unless includeImage=false, " +
+                 "the captured PNG as an inline image so you can see the UI directly without reading the file.")]
     public static CallToolResult CaptureScreenshot(
         WindowCapture capture,
         SessionTarget target,
@@ -55,11 +59,32 @@ public static class CaptureScreenshotTool
         [Description("Capture the process main window even when a dialog or overlay is on top of it. " +
                      "Ignored when windowTitle is set.")]
         bool mainWindow = false,
+        [Description("Capture source: 'window' (default, PrintWindow on one HWND) or 'screen' " +
+                     "(DWM-composited desktop rectangle of the target window bounds, showing popups/menus/tooltips).")]
+        string captureSource = CaptureSourceParser.WindowName,
+        [Description("When captureSource='screen', allow capturing even when another process window " +
+                     "occludes the target window (default false). Minimized or invisible targets are still refused.")]
+        bool allowOccluded = false,
         [Description("Target process id (from list_windows). Optional; falls back to the session default set by set_target.")]
         int? processId = null)
     {
         return ToolSafety.SafeInvokeContent(() =>
         {
+            if (!CaptureSourceParser.TryParse(captureSource, out CaptureSource parsedSource, out string? sourceError))
+            {
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content =
+                    {
+                        new TextContentBlock
+                        {
+                            Text = JsonSerializer.Serialize(
+                                OperationResult.Failure(sourceError!), JsonOptions.Default),
+                        },
+                    },
+                };
+            }
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 return new CallToolResult
@@ -78,7 +103,13 @@ public static class CaptureScreenshotTool
             var resolvedPath = string.IsNullOrWhiteSpace(outputPath)
                 ? ScreenshotOutput.BuildTimestampedPath(ScreenshotPrefix)
                 : outputPath;
-            ScreenshotResult screenshot = capture.Capture(pid, resolvedPath, windowTitle, mainWindow);
+            ScreenshotResult screenshot = capture.Capture(
+                pid,
+                resolvedPath,
+                windowTitle,
+                mainWindow,
+                parsedSource,
+                allowOccluded);
             string json = JsonSerializer.Serialize(OperationResult.OkWith(screenshot), JsonOptions.Default);
 
             CallToolResult result = new()

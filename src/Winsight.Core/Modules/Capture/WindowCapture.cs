@@ -28,6 +28,16 @@ public sealed class WindowCapture
     // PW_RENDERFULLCONTENT (Windows 8.1+) renders accelerated surfaces correctly,
     // including DirectX-composed WPF windows. Without it the bitmap may come back black.
     private const uint PW_RENDERFULLCONTENT = 0x00000002;
+    private const uint SRCCOPY = 0x00CC0020;
+    private const uint CAPTUREBLT = 0x40000000;
+    private const uint GW_HWNDPREV = 3;
+    private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_LAYERED = 0x00080000L;
+    private const uint LWA_ALPHA = 0x00000002;
+    private const uint DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+    private const uint DWMWA_CLOAKED = 14;
+    private const int MaxTitleLength = 256;
+    private const int MaxZOrderWalk = 4096;
 
     /// <summary>
     /// Capture a process window. Without <paramref name="windowTitle"/> this is
@@ -39,7 +49,9 @@ public sealed class WindowCapture
         int processId,
         string outputPath,
         string? windowTitle = null,
-        bool mainWindow = false)
+        bool mainWindow = false,
+        CaptureSource captureSource = CaptureSource.Window,
+        bool allowOccluded = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
@@ -62,24 +74,21 @@ public sealed class WindowCapture
                 $"Window has invalid dimensions: {width}x{height}.");
         }
 
+        if (captureSource == CaptureSource.Screen)
+        {
+            ValidateScreenCapture(hwnd, processId, allowOccluded);
+        }
+
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         using (var graphics = Graphics.FromImage(bitmap))
         {
-            var hdc = graphics.GetHdc();
-            try
+            if (captureSource == CaptureSource.Screen)
             {
-                if (!NativeMethods.PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT))
-                {
-                    var win32Error = Marshal.GetLastWin32Error();
-                    throw new InvalidOperationException(
-                        $"PrintWindow returned false (Win32 error 0x{win32Error:x8}={win32Error}). " +
-                        "Window may be minimized, occluded, or use a composition surface that does not " +
-                        "support PrintWindow (e.g. WinUI3 with DesktopChildSiteBridge).");
-                }
+                CaptureScreenRect(graphics, rect.Left, rect.Top, width, height);
             }
-            finally
+            else
             {
-                graphics.ReleaseHdc(hdc);
+                CaptureWindowHwnd(graphics, hwnd);
             }
         }
 
@@ -95,7 +104,177 @@ public sealed class WindowCapture
             Width: width,
             Height: height,
             CapturedAtUtc: DateTime.UtcNow,
-            Window: new WindowIdentity(processId, hwnd.ToInt64(), new WindowBounds(rect.Left, rect.Top, width, height)));
+            Window: new WindowIdentity(processId, hwnd.ToInt64(), new WindowBounds(rect.Left, rect.Top, width, height)),
+            CaptureSource: CaptureSourceParser.ToWireValue(captureSource));
+    }
+
+    private static void CaptureWindowHwnd(Graphics graphics, IntPtr hwnd)
+    {
+        var hdc = graphics.GetHdc();
+        try
+        {
+            if (!NativeMethods.PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT))
+            {
+                var win32Error = Marshal.GetLastWin32Error();
+                throw new InvalidOperationException(
+                    $"PrintWindow returned false (Win32 error 0x{win32Error:x8}={win32Error}). " +
+                    "Window may be minimized, occluded, or use a composition surface that does not " +
+                    "support PrintWindow (e.g. WinUI3 with DesktopChildSiteBridge).");
+            }
+        }
+        finally
+        {
+            graphics.ReleaseHdc(hdc);
+        }
+    }
+
+    private static void CaptureScreenRect(Graphics graphics, int left, int top, int width, int height)
+    {
+        IntPtr screenHdc = NativeMethods.GetDC(IntPtr.Zero);
+        if (screenHdc == IntPtr.Zero)
+        {
+            int win32Error = Marshal.GetLastWin32Error();
+            throw new InvalidOperationException(
+                $"GetDC(NULL) failed (Win32 error 0x{win32Error:x8}={win32Error}).");
+        }
+
+        try
+        {
+            IntPtr destHdc = graphics.GetHdc();
+            try
+            {
+                if (!NativeMethods.BitBlt(
+                        destHdc,
+                        0,
+                        0,
+                        width,
+                        height,
+                        screenHdc,
+                        left,
+                        top,
+                        SRCCOPY | CAPTUREBLT))
+                {
+                    int win32Error = Marshal.GetLastWin32Error();
+                    throw new InvalidOperationException(
+                        $"BitBlt from screen DC failed (Win32 error 0x{win32Error:x8}={win32Error}).");
+                }
+            }
+            finally
+            {
+                graphics.ReleaseHdc(destHdc);
+            }
+        }
+        finally
+        {
+            _ = NativeMethods.ReleaseDC(IntPtr.Zero, screenHdc);
+        }
+    }
+
+    private static void ValidateScreenCapture(IntPtr targetHwnd, int targetProcessId, bool allowOccluded)
+    {
+        OcclusionWindow target = ReadOcclusionWindow(targetHwnd, targetProcessId);
+        List<OcclusionWindow> above = new();
+
+        if (!allowOccluded && target.IsVisible && !target.IsMinimized && !target.IsCloaked)
+        {
+            HashSet<IntPtr> visited = new() { targetHwnd };
+            IntPtr current = NativeMethods.GetWindow(targetHwnd, GW_HWNDPREV);
+            int steps = 0;
+            while (current != IntPtr.Zero && steps < MaxZOrderWalk && visited.Add(current))
+            {
+                steps++;
+                uint threadId = NativeMethods.GetWindowThreadProcessId(current, out uint ownerPid);
+                if (threadId != 0 && NativeMethods.IsWindowVisible(current))
+                {
+                    above.Add(ReadOcclusionWindow(current, unchecked((int)ownerPid)));
+                }
+                current = NativeMethods.GetWindow(current, GW_HWNDPREV);
+            }
+        }
+
+        OcclusionCheckResult check = ScreenCapturePolicy.Evaluate(target, above, allowOccluded);
+        if (!check.Allowed)
+        {
+            throw new InvalidOperationException(check.Reason);
+        }
+    }
+
+    private static OcclusionWindow ReadOcclusionWindow(IntPtr hwnd, int processId)
+    {
+        bool isVisible = NativeMethods.IsWindowVisible(hwnd);
+        bool isMinimized = NativeMethods.IsIconic(hwnd);
+        bool isCloaked = IsWindowCloaked(hwnd);
+        bool isZeroAlpha = IsZeroAlphaLayered(hwnd);
+        WindowBounds bounds = ReadVisibleBounds(hwnd);
+        string title = ReadWindowTitle(hwnd);
+        return new OcclusionWindow(
+            Handle: hwnd.ToInt64(),
+            ProcessId: processId,
+            Title: title,
+            Bounds: bounds,
+            IsVisible: isVisible,
+            IsMinimized: isMinimized,
+            IsCloaked: isCloaked,
+            IsZeroAlpha: isZeroAlpha);
+    }
+
+    private static WindowBounds ReadVisibleBounds(IntPtr hwnd)
+    {
+        // Use DWM extended frame bounds when available so invisible Win10/11 drop-shadow
+        // borders of neighboring windows do not trigger false occlusion errors.
+        if (NativeMethods.DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                out Rect dwmRect,
+                Marshal.SizeOf<Rect>()) == 0)
+        {
+            return new WindowBounds(
+                dwmRect.Left,
+                dwmRect.Top,
+                dwmRect.Right - dwmRect.Left,
+                dwmRect.Bottom - dwmRect.Top);
+        }
+
+        if (NativeMethods.GetWindowRect(hwnd, out Rect rect))
+        {
+            return new WindowBounds(
+                rect.Left,
+                rect.Top,
+                rect.Right - rect.Left,
+                rect.Bottom - rect.Top);
+        }
+
+        return new WindowBounds(0, 0, 0, 0);
+    }
+
+    private static bool IsWindowCloaked(IntPtr hwnd)
+    {
+        return NativeMethods.DwmGetWindowAttribute(
+                   hwnd,
+                   DWMWA_CLOAKED,
+                   out int cloaked,
+                   sizeof(int)) == 0 &&
+               cloaked != 0;
+    }
+
+    private static bool IsZeroAlphaLayered(IntPtr hwnd)
+    {
+        long exStyle = NativeMethods.GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
+        if ((exStyle & WS_EX_LAYERED) == 0)
+        {
+            return false;
+        }
+
+        return NativeMethods.GetLayeredWindowAttributes(hwnd, out _, out byte alpha, out uint flags) &&
+               (flags & LWA_ALPHA) != 0 &&
+               alpha == 0;
+    }
+
+    private static string ReadWindowTitle(IntPtr hwnd)
+    {
+        char[] buffer = new char[MaxTitleLength];
+        int length = NativeMethods.GetWindowText(hwnd, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : string.Empty;
     }
 
     /// <summary>
@@ -317,6 +496,67 @@ public sealed class WindowCapture
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool ClientToScreen(IntPtr hwnd, ref Point lpPoint);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr GetDC(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        public static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool BitBlt(
+            IntPtr hdcDest,
+            int xDest,
+            int yDest,
+            int width,
+            int height,
+            IntPtr hdcSrc,
+            int xSrc,
+            int ySrc,
+            uint rop);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsWindowVisible(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsIconic(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr hwnd, uint uCmd);
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetWindowText(IntPtr hwnd, [Out] char[] lpString, int nMaxCount);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+        public static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetLayeredWindowAttributes(
+            IntPtr hwnd,
+            out uint pcrKey,
+            out byte pbAlpha,
+            out uint pdwFlags);
+
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmGetWindowAttribute(
+            IntPtr hwnd,
+            uint dwAttribute,
+            out Rect pvAttribute,
+            int cbAttribute);
+
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmGetWindowAttribute(
+            IntPtr hwnd,
+            uint dwAttribute,
+            out int pvAttribute,
+            int cbAttribute);
     }
 
     [StructLayout(LayoutKind.Sequential)]

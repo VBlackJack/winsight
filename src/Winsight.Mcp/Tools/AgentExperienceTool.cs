@@ -55,6 +55,12 @@ public static partial class AgentExperienceTool
         string? windowTitle = null,
         [Description("Include a screenshot path in the response. The image is written to WINSIGHT_OUTPUT_DIR.")]
         bool includeScreenshot = false,
+        [Description("Capture source when includeScreenshot=true: 'window' (default, PrintWindow on one HWND) or 'screen' " +
+                     "(DWM-composited desktop rectangle of the target window bounds, showing popups/menus/tooltips).")]
+        string captureSource = CaptureSourceParser.WindowName,
+        [Description("When includeScreenshot=true and captureSource='screen', allow capturing even when another process window " +
+                     "occludes the target window (default false). Minimized or invisible targets are still refused.")]
+        bool allowOccluded = false,
         [Description("Maximum actionable elements to return. Default 100.")]
         int maxResults = 100,
         [Description("Target process id. Optional; falls back to set_target.")]
@@ -62,6 +68,17 @@ public static partial class AgentExperienceTool
     {
         return ToolSafety.SafeInvoke(() =>
         {
+            if (!CaptureSourceParser.TryParse(captureSource, out CaptureSource parsedSource, out string? sourceError))
+            {
+                return JsonSerializer.Serialize(
+                    AgentFailure.Repairable(
+                        "invalid_argument",
+                        sourceError!,
+                        cause: "argument_validation",
+                        suggestedTool: "observe",
+                        suggestedArgs: new { captureSource = CaptureSourceParser.WindowName }),
+                    JsonOptions.Default);
+            }
             if (!target.TryResolve(processId, out int pid, out string targetError))
             {
                 memory.RecordFailure(nameof(Observe), "missing_target", targetError, "set_target");
@@ -94,7 +111,13 @@ public static partial class AgentExperienceTool
             ScreenshotResult? screenshot = null;
             if (includeScreenshot)
             {
-                screenshot = capture.Capture(pid, ScreenshotOutput.BuildTimestampedPath(ObservePrefix), windowTitle);
+                screenshot = capture.Capture(
+                    pid,
+                    ScreenshotOutput.BuildTimestampedPath(ObservePrefix),
+                    windowTitle,
+                    mainWindow: false,
+                    captureSource: parsedSource,
+                    allowOccluded: allowOccluded);
             }
 
             var response = new
