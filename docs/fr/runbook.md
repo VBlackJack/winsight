@@ -53,12 +53,17 @@ L'écran peut être utilisé par une personne ou par une autre session d'agent.
    `diagnostics.inputHookWarning` signale la cause. Sur les postes équipés d'un
    jiggler souris USB matériel, activez
    `WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1` (et optionnellement
-   `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, `15` px par défaut) afin que les
+   `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, `15` px par défaut, et
+   `WINSIGHT_PERIODIC_MICRO_MOVE_TOLERANCE_PCT`, `25`% par défaut) afin que les
    petits mouvements souris réguliers soient classés en `periodic_micro_move`
-   sans réinitialiser `humanIdleMs`. Pour un contournement explicite et
-   journalisé sur la session, seul l'utilisateur peut activer
-   `WINSIGHT_YIELD_OVERRIDE=1` dans la configuration hôte (jamais via un
-   argument d'outil).
+   sans réinitialiser `humanIdleMs`. Un échantillonneur léger en arrière-plan
+   (`WINSIGHT_ACTIVITY_SAMPLE_MS`, `250` ms par défaut, `0` désactive) alimente
+   le détecteur et `recentInputs` entre les appels d'outils. Tant que
+   `sessionLocked` vaut `true`, tous les outils d'entrée UI refusent avec
+   `session_locked` tandis que les outils en lecture seule restent disponibles.
+   Pour un contournement explicite et journalisé sur la session, seul
+   l'utilisateur peut activer `WINSIGHT_YIELD_OVERRIDE=1` dans la configuration
+   hôte (jamais via un argument d'outil).
 6. Pour capturer les menus, listes déroulantes ou info-bulles flottants
    au-dessus d'une fenêtre, passez `captureSource="screen"` à
    `capture_screenshot`, `capture_scene` ou `observe(includeScreenshot=true)`

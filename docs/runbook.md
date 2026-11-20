@@ -47,11 +47,15 @@ The screen may be in use by a person or by another agent session.
    `diagnostics.inputHookActive` becomes `false` and
    `diagnostics.inputHookWarning` surfaces the cause. On hosts with a USB mouse
    jiggler, set `WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES=1` (and optionally
-   `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, default `15`) so periodic small
+   `WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX`, default `15`, and
+   `WINSIGHT_PERIODIC_MICRO_MOVE_TOLERANCE_PCT`, default `25`) so periodic small
    mouse-only moves are classified as `periodic_micro_move` and do not reset
-   `humanIdleMs`. For an explicit logged per-session bypass, only the human can
-   set `WINSIGHT_YIELD_OVERRIDE=1` in host configuration (never via a tool
-   argument).
+   `humanIdleMs`. A lightweight background sampler (`WINSIGHT_ACTIVITY_SAMPLE_MS`,
+   default `250` ms, `0` disables) feeds the detector and `recentInputs` between
+   tool calls. While `sessionLocked` is `true`, all UI input tools refuse with
+   `session_locked` while read-only tools keep working. For an explicit logged
+   per-session bypass, only the human can set `WINSIGHT_YIELD_OVERRIDE=1` in
+   host configuration (never via a tool argument).
 6. To capture floating menus, dropdowns, or tooltips over a window, pass
    `captureSource="screen"` to `capture_screenshot`, `capture_scene`, or
    `observe(includeScreenshot=true)` (refused when hidden or occluded by another
