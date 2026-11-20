@@ -18,33 +18,33 @@ using Winsight.Core.Models;
 namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>
-/// Detects foreground processes whose input drivers or grabs reject synthetic
-/// Win32 input (SendInput / SetCursorPos), such as VMware Workstation's
-/// enhanced virtual keyboard driver and input grab.
+/// Configurable policy for foreground hosts known to reject synthetic Win32
+/// input (such as VMware Workstation, where SetCursorPos returns FALSE with
+/// GetLastError == 0 whenever VMware is the foreground window).
 /// </summary>
 public static class ForegroundInputPolicy
 {
     public const string ForegroundRejectsSyntheticInputCode = "foreground_rejects_synthetic_input";
+    public const string ForegroundMayRejectSyntheticInputCode = "foreground_may_reject_synthetic_input";
+    public const string RejectingHostsEnvVar = "WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS";
+    public const string DefaultRejectingHosts = "vmware,vmware-vmx,vmplayer";
+
+    private static readonly char[] ListSeparators = { ',', ';' };
 
     private const string VmwareHint =
-        "VMware Workstation rejects synthetic mouse and keyboard input while its window is in the foreground " +
-        "(enhanced virtual keyboard driver or input grab). Check VMware Edit > Preferences > Input " +
-        "(or disable Enhanced Virtual Keyboard), or use UI Automation patterns (click_element / select_item) " +
-        "for VMware host UI and vmsight for guest VM input instead of physical input.";
+        "VMware Workstation rejects synthetic pointer moves while it is the foreground window, regardless of " +
+        "how it became foreground or where the cursor is; no known VMware preference fixes it. " +
+        "Recommended workarounds: bring another window to the foreground first when the target is not VMware, " +
+        "use UI Automation patterns (click_element / select_item / act_verified with UIA actions) for VMware " +
+        "host UI, and use vmsight for guest VM input.";
 
     private const string GenericForegroundHint =
-        "The foreground process is rejecting synthetic Win32 input (SetCursorPos returned FALSE). " +
-        "Check whether the foreground application installs a low-level input driver or grab, or use " +
-        "UI Automation patterns instead of physical input.";
-
-    private static readonly Dictionary<string, string> KnownHostHints = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["vmware"] = VmwareHint,
-        ["vmware-vmx"] = VmwareHint,
-        ["vmplayer"] = VmwareHint,
-    };
+        "The foreground process rejected synthetic pointer input (SetCursorPos returned FALSE). " +
+        "Bring another window to the foreground first when the target is not that process, or use " +
+        "UI Automation patterns (click_element / select_item / act_verified with UIA actions) instead of physical input.";
 
     private static readonly AsyncLocal<Func<ForegroundProcessInfo?>?> OverrideForegroundReaderSlot = new();
+    private static readonly AsyncLocal<Func<string?>?> OverrideEnvReaderSlot = new();
 
     internal static Func<ForegroundProcessInfo?>? OverrideForegroundReader
     {
@@ -52,58 +52,85 @@ public static class ForegroundInputPolicy
         set => OverrideForegroundReaderSlot.Value = value;
     }
 
+    internal static Func<string?>? OverrideEnvReader
+    {
+        get => OverrideEnvReaderSlot.Value;
+        set => OverrideEnvReaderSlot.Value = value;
+    }
+
     /// <summary>Read the current foreground process (or test override).</summary>
     internal static ForegroundProcessInfo? ReadForeground() =>
         OverrideForegroundReader is { } reader ? reader() : PointerDiagnostics.ReadForegroundProcess();
 
-    /// <summary>Return the actionable hint if <paramref name="processName"/> is a known synthetic-input-rejecting host.</summary>
-    public static string? TryGetKnownHostHint(string? processName)
+    /// <summary>
+    /// Resolve the configured rejecting host names from
+    /// <see cref="RejectingHostsEnvVar"/>, falling back to
+    /// <see cref="DefaultRejectingHosts"/> when the variable is unset.
+    /// </summary>
+    public static IReadOnlySet<string> ConfiguredRejectingHosts()
+    {
+        string? raw = OverrideEnvReader is { } envReader
+            ? envReader()
+            : Environment.GetEnvironmentVariable(RejectingHostsEnvVar);
+        string effective = raw ?? DefaultRejectingHosts;
+        HashSet<string> hosts = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string token in effective.Split(ListSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string normalized = NormalizeProcessName(token);
+            if (!string.IsNullOrEmpty(normalized))
+            {
+                hosts.Add(normalized);
+            }
+        }
+        return hosts;
+    }
+
+    /// <summary>True when <paramref name="processName"/> is listed in the configured rejecting hosts.</summary>
+    public static bool IsKnownRejectingHost(string? processName)
+    {
+        string normalized = NormalizeProcessName(processName);
+        return !string.IsNullOrEmpty(normalized) && ConfiguredRejectingHosts().Contains(normalized);
+    }
+
+    /// <summary>
+    /// Return a non-blocking warning for keyboard tools (<c>send_key_chord</c>,
+    /// <c>type_keys</c>, <c>type_text</c> fallback) when the foreground process
+    /// is listed as a synthetic-input-rejecting host, or null otherwise.
+    /// </summary>
+    internal static string? BuildKeyboardWarning(string action)
+    {
+        ForegroundProcessInfo? foreground = ReadForeground();
+        if (foreground is null || !IsKnownRejectingHost(foreground.ProcessName))
+        {
+            return null;
+        }
+
+        string hint = HintFor(foreground);
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{ForegroundMayRejectSyntheticInputCode}: foreground process {foreground.ProcessName} (PID {foreground.ProcessId}) is listed as a host that may reject synthetic input during {action}. {hint}");
+    }
+
+    /// <summary>
+    /// Build the hint string for a rejected pointer move or keyboard warning.
+    /// </summary>
+    internal static string HintFor(ForegroundProcessInfo? foreground)
+    {
+        string normalized = NormalizeProcessName(foreground?.ProcessName);
+        return normalized is "vmware" or "vmware-vmx" or "vmplayer"
+            ? VmwareHint
+            : GenericForegroundHint;
+    }
+
+    private static string NormalizeProcessName(string? processName)
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
-            return null;
+            return string.Empty;
         }
-        string normalized = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? processName[..^4]
-            : processName;
-        return KnownHostHints.TryGetValue(normalized, out string? hint) ? hint : null;
+        string trimmed = processName.Trim();
+        return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[..^4]
+            : trimmed;
     }
-
-    /// <summary>True when <paramref name="processName"/> is known to drop synthetic input when foreground.</summary>
-    public static bool IsKnownRejectingHost(string? processName) => TryGetKnownHostHint(processName) is not null;
-
-    /// <summary>
-    /// Check the current foreground process before keyboard dispatch
-    /// (send_key_chord / type_keys). Returns a failure result when the
-    /// foreground host is known to silently drop synthetic input, else null.
-    /// </summary>
-    internal static OperationResult? CheckForegroundForKeyboardInput(string action)
-    {
-        ForegroundProcessInfo? foreground = ReadForeground();
-        if (foreground is null || TryGetKnownHostHint(foreground.ProcessName) is not { } hint)
-        {
-            return null;
-        }
-
-        string message = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{ForegroundRejectsSyntheticInputCode}: foreground process {foreground.ProcessName} (PID {foreground.ProcessId}) drops synthetic keyboard input for {action}. {hint}");
-
-        return OperationResult.FailureWith(
-            message,
-            new
-            {
-                code = ForegroundRejectsSyntheticInputCode,
-                action,
-                foregroundWindow = foreground,
-                hint,
-            });
-    }
-
-    /// <summary>
-    /// Build the hint string for a rejected pointer move when SetCursorPos
-    /// returned FALSE or the foreground process is a known rejecting host.
-    /// </summary>
-    internal static string HintFor(ForegroundProcessInfo? foreground) =>
-        TryGetKnownHostHint(foreground?.ProcessName) ?? GenericForegroundHint;
 }

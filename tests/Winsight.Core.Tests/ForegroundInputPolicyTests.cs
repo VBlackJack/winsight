@@ -29,51 +29,82 @@ public sealed class ForegroundInputPolicyTests
     [InlineData("VMWARE")]
     [InlineData("vmware-vmx")]
     [InlineData("vmplayer")]
-    public void Recognizes_vmware_processes_as_known_rejecting_hosts(string processName)
+    public void Recognizes_default_rejecting_hosts_when_env_is_unset(string processName)
     {
-        ForegroundInputPolicy.IsKnownRejectingHost(processName).Should().BeTrue();
-        ForegroundInputPolicy.TryGetKnownHostHint(processName)
-            .Should().Contain("Edit > Preferences > Input")
-            .And.Contain("vmsight");
+        ForegroundInputPolicy.OverrideEnvReader = () => null;
+        try
+        {
+            ForegroundInputPolicy.IsKnownRejectingHost(processName).Should().BeTrue();
+        }
+        finally
+        {
+            ForegroundInputPolicy.OverrideEnvReader = null;
+        }
     }
 
-    [Theory]
-    [InlineData("notepad")]
-    [InlineData("brave")]
-    [InlineData("")]
-    [InlineData(null)]
-    public void Does_not_flag_ordinary_hosts(string? processName)
+    [Fact]
+    public void Honors_custom_WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS_env_override()
     {
-        ForegroundInputPolicy.IsKnownRejectingHost(processName).Should().BeFalse();
+        ForegroundInputPolicy.OverrideEnvReader = () => "custom-host.exe, another_app";
+        try
+        {
+            ForegroundInputPolicy.IsKnownRejectingHost("custom-host").Should().BeTrue();
+            ForegroundInputPolicy.IsKnownRejectingHost("another_app.exe").Should().BeTrue();
+            ForegroundInputPolicy.IsKnownRejectingHost("vmware").Should().BeFalse();
+        }
+        finally
+        {
+            ForegroundInputPolicy.OverrideEnvReader = null;
+        }
+    }
+
+    [Fact]
+    public void Explicit_empty_env_override_disables_default_rejecting_host_list()
+    {
+        ForegroundInputPolicy.OverrideEnvReader = () => string.Empty;
+        try
+        {
+            ForegroundInputPolicy.ConfiguredRejectingHosts().Should().BeEmpty();
+            ForegroundInputPolicy.IsKnownRejectingHost("vmware").Should().BeFalse();
+        }
+        finally
+        {
+            ForegroundInputPolicy.OverrideEnvReader = null;
+        }
     }
 
     [Theory]
     [InlineData("send_key_chord")]
     [InlineData("type_keys")]
-    public void Keyboard_check_rejects_vmware_foreground_instead_of_silently_succeeding(string action)
+    [InlineData("type_text")]
+    public void Keyboard_warning_is_non_blocking_and_reports_proven_workarounds(string action)
     {
+        ForegroundInputPolicy.OverrideEnvReader = () => null;
         ForegroundInputPolicy.OverrideForegroundReader = () => new ForegroundProcessInfo(0x1234, 11152, "vmware");
         try
         {
-            OperationResult? result = ForegroundInputPolicy.CheckForegroundForKeyboardInput(action);
+            string? warning = ForegroundInputPolicy.BuildKeyboardWarning(action);
 
-            result.Should().NotBeNull();
-            result!.Success.Should().BeFalse();
-            result.Error.Should().StartWith($"{ForegroundInputPolicy.ForegroundRejectsSyntheticInputCode}:")
+            warning.Should().NotBeNull();
+            warning.Should().StartWith($"{ForegroundInputPolicy.ForegroundMayRejectSyntheticInputCode}:")
                 .And.Contain("vmware")
                 .And.Contain("11152")
-                .And.Contain("Edit > Preferences > Input")
-                .And.Contain("vmsight");
+                .And.Contain("vmsight")
+                .And.Contain("act_verified")
+                .And.NotContain("Preferences > Input")
+                .And.NotContain("Enhanced Virtual Keyboard");
         }
         finally
         {
             ForegroundInputPolicy.OverrideForegroundReader = null;
+            ForegroundInputPolicy.OverrideEnvReader = null;
         }
     }
 
     [Fact]
-    public void Pointer_dispatch_returns_foreground_rejects_synthetic_input_when_set_cursor_pos_returns_false()
+    public void Pointer_dispatch_returns_foreground_rejects_synthetic_input_with_proven_facts_only()
     {
+        ForegroundInputPolicy.OverrideEnvReader = () => null;
         ForegroundInputPolicy.OverrideForegroundReader = () => new ForegroundProcessInfo(0x1234, 11152, "vmware");
         try
         {
@@ -85,12 +116,15 @@ public sealed class ForegroundInputPolicyTests
             refusal!.Error.Should().StartWith($"{ForegroundInputPolicy.ForegroundRejectsSyntheticInputCode}:")
                 .And.Contain("vmware")
                 .And.Contain("set_cursor_pos res=0, err=0")
-                .And.Contain("Edit > Preferences > Input")
-                .And.Contain("vmsight");
+                .And.Contain("no known VMware preference fixes it")
+                .And.Contain("vmsight")
+                .And.NotContain("Preferences > Input")
+                .And.NotContain("Enhanced Virtual Keyboard");
         }
         finally
         {
             ForegroundInputPolicy.OverrideForegroundReader = null;
+            ForegroundInputPolicy.OverrideEnvReader = null;
         }
     }
 

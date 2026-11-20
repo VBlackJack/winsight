@@ -211,15 +211,20 @@ include a unique suffix so rapid batch captures do not overwrite each other.
 
 ## Known hosts that reject synthetic input
 
-Some Windows host applications install low-level keyboard/mouse drivers or input
-grabs that cause Windows to reject or silently drop synthetic Win32 input
-(`SendInput` and `SetCursorPos`, where `SetCursorPos` returns `FALSE` with
-`GetLastError() == 0`) whenever their window is in the foreground, even at
-matching Medium integrity levels.
+Some Windows host applications cause Windows to reject synthetic Win32 pointer
+moves (`SendInput` and `SetCursorPos`, where `SetCursorPos` returns `FALSE`
+with `GetLastError() == 0`) whenever their window is in the foreground,
+regardless of how it became foreground or whether the cursor is inside or
+outside that window, even at matching Medium integrity levels.
 
-| Process | Symptom | Recommended workaround |
+The host list is configured via `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`
+(comma-separated process names without `.exe`, default
+`vmware,vmware-vmx,vmplayer`; set to an empty value to disable the default
+list).
+
+| Process | Observed behavior | Recommended workarounds |
 |---|---|---|
-| `vmware.exe`, `vmware-vmx.exe`, `vmplayer.exe` (VMware Workstation / Player) | Pointer moves (`click_point`, `hover_point`, `scroll_point`) fail with `foreground_rejects_synthetic_input` (`SetCursorPos` returns `FALSE`, `err=0`) and keyboard tools (`send_key_chord`, `type_keys`) are rejected instead of being silently dropped. | Check VMware `Edit > Preferences > Input` (or disable the Enhanced Virtual Keyboard driver), use UI Automation patterns (`click_element`, `select_item`) for VMware host controls, and use `vmsight` for guest VM input instead of physical desktop input. |
+| `vmware`, `vmware-vmx`, `vmplayer` (VMware Workstation / Player) | While VMware is the foreground window, all synthetic pointer moves fail (`SetCursorPos` returns `FALSE`, `err=0`) and pointer tools report `foreground_rejects_synthetic_input`. No known VMware preference fixes this. Keyboard tools (`send_key_chord`, `type_keys`, `type_text` fallback) still dispatch normally and attach a `foreground_may_reject_synthetic_input` warning. | Bring another window to the foreground first when the target is not VMware. Use UI Automation patterns (`click_element`, `select_item`, `act_verified` with UIA actions) for VMware host UI, and `vmsight` for guest VM input. |
 
 Use `diagnose_pointer` to compare all four pointer move methods against the
 current foreground window, `ClipCursor`, `GetCursorInfo`, and process input

@@ -234,15 +234,21 @@ unique pour que des captures rapides en lot ne s'écrasent pas mutuellement.
 
 ## Hôtes connus qui rejettent les entrées synthétiques
 
-Certaines applications hôtes Windows installent des pilotes clavier/souris bas
-niveau ou des captures d'entrées qui amènent Windows à rejeter ou ignorer
-silencieusement les entrées Win32 synthétiques (`SendInput` et `SetCursorPos`,
-où `SetCursorPos` renvoie `FALSE` avec `GetLastError() == 0`) dès que leur
-fenêtre est au premier plan, même à niveau d'intégrité Medium identique.
+Certaines applications hôtes Windows amènent Windows à rejeter les déplacements
+de pointeur Win32 synthétiques (`SendInput` et `SetCursorPos`, où
+`SetCursorPos` renvoie `FALSE` avec `GetLastError() == 0`) dès que leur fenêtre
+est au premier plan, quelle que soit la façon dont elle a pris le premier plan
+et que le curseur soit dans la fenêtre ou en dehors, même à niveau d'intégrité
+Medium identique.
 
-| Processus | Symptôme | Contournement recommandé |
+La liste des hôtes est configurable via
+`WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS` (noms de processus séparés par des
+virgules, sans `.exe`, valeur par défaut `vmware,vmware-vmx,vmplayer`; une
+valeur vide désactive la liste par défaut).
+
+| Processus | Comportement observé | Contournements recommandés |
 |---|---|---|
-| `vmware.exe`, `vmware-vmx.exe`, `vmplayer.exe` (VMware Workstation / Player) | Les déplacements de pointeur (`click_point`, `hover_point`, `scroll_point`) échouent avec `foreground_rejects_synthetic_input` (`SetCursorPos` renvoie `FALSE`, `err=0`) et les outils clavier (`send_key_chord`, `type_keys`) sont refusés au lieu d'être ignorés silencieusement. | Vérifiez dans VMware `Edit > Preferences > Input` (ou désactivez le pilote Enhanced Virtual Keyboard), utilisez les patrons UI Automation (`click_element`, `select_item`) pour l'interface hôte de VMware, et utilisez `vmsight` pour les entrées dans la VM invitée plutôt que les entrées physiques. |
+| `vmware`, `vmware-vmx`, `vmplayer` (VMware Workstation / Player) | Tant que VMware est la fenêtre de premier plan, tous les déplacements synthétiques de pointeur échouent (`SetCursorPos` renvoie `FALSE`, `err=0`) et les outils pointeur renvoient `foreground_rejects_synthetic_input`. Aucune préférence connue de VMware ne corrige ce comportement. Les outils clavier (`send_key_chord`, `type_keys`, repli clavier de `type_text`) s'exécutent normalement et joignent un avertissement `foreground_may_reject_synthetic_input`. | Mettre une autre fenêtre au premier plan avant d'agir quand la cible n'est pas VMware. Utiliser les patrons UI Automation (`click_element`, `select_item`, `act_verified` avec actions UIA) pour l'interface hôte de VMware, et `vmsight` pour les entrées dans la VM invitée. |
 
 Utilisez `diagnose_pointer` pour comparer les quatre méthodes de déplacement du
 pointeur face à la fenêtre de premier plan courante, `ClipCursor`,

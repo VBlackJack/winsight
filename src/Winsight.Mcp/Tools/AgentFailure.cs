@@ -56,7 +56,7 @@ internal static class AgentFailure
         string code = ClassifyCode(status, message);
         (string suggestedTool, string guidance) = code switch
         {
-            "foreground_rejects_synthetic_input" => ("observe_scene", "The foreground application rejects synthetic Win32 input (for example VMware Workstation's enhanced virtual keyboard or input grab). Use UI Automation patterns (click_element / select_item) for host UI or vmsight for guest VM input."),
+            "foreground_rejects_synthetic_input" => ("observe_scene", "The foreground application rejects synthetic pointer moves while it is foreground (for example VMware Workstation; no known VMware preference fixes it). Bring another window to the foreground when targeting another app, use UI Automation patterns (click_element / select_item / act_verified with UIA actions) for host UI, or vmsight for guest VM input."),
             "input_context_blocked" => ("get_user_activity", "Winsight is running in a restricted job object or non-interactive window station that blocks synthetic input. Launch winsight-mcp in an interactive desktop session without job UI restrictions."),
             "uipi_blocked" => ("set_target", "Target process runs at a higher integrity level than Winsight. Windows UIPI silently drops synthetic input; restart Winsight at the same integrity level."),
             "move_not_applied" => ("observe_scene", "The synthetic pointer move did not move the cursor (not caused by user input). Inspect SendInput error, integrity levels, and virtual desktop coordinates in the failure data."),

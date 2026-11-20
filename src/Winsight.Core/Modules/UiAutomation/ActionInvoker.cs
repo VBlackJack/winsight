@@ -149,17 +149,14 @@ public sealed partial class ActionInvoker
                 return OperationResult.Ok();
             }
 
-            if (ForegroundInputPolicy.CheckForegroundForKeyboardInput("type_text") is { } fgRejected)
-            {
-                return fgRejected;
-            }
+            string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("type_text");
             if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;
             }
             element.Focus();
             Keyboard.Type(text);
-            return OperationResult.OkWith(new { dispatch });
+            return OperationResult.OkWith(new { dispatch, warning = foregroundWarning });
         }
     }
 
@@ -211,10 +208,7 @@ public sealed partial class ActionInvoker
                 return OperationResult.Failure(
                     $"{TextTyper.ForegroundChangedCode}: the target window lost the foreground before the chord \"{chord}\" was sent.");
             }
-            if (ForegroundInputPolicy.CheckForegroundForKeyboardInput("send_key_chord") is { } fgRejected)
-            {
-                return fgRejected;
-            }
+            string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("send_key_chord");
             if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;
@@ -232,7 +226,8 @@ public sealed partial class ActionInvoker
                 focus.WindowTitle,
                 focus.WindowHandle.ToInt64(),
                 focused,
-                dispatch));
+                dispatch,
+                foregroundWarning));
         }
     }
 
@@ -294,10 +289,7 @@ public sealed partial class ActionInvoker
                     focused);
             }
 
-            if (ForegroundInputPolicy.CheckForegroundForKeyboardInput("type_keys") is { } fgRejected)
-            {
-                return fgRejected;
-            }
+            string? foregroundWarning = ForegroundInputPolicy.BuildKeyboardWarning("type_keys");
             if (PrepareInputContext(out InputDispatchInfo dispatch) is { } contextBlocked)
             {
                 return contextBlocked;
@@ -309,7 +301,8 @@ public sealed partial class ActionInvoker
                 focus.WindowHandle.ToInt64(),
                 focus.WindowTitle,
                 focused,
-                Dispatch: dispatch);
+                Dispatch: dispatch,
+                Warning: foregroundWarning);
             if (!paste)
             {
                 try
