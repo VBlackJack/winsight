@@ -133,6 +133,7 @@ public static partial class AgentExperienceTool
                         clipboard_disabled = "set WINSIGHT_ALLOW_CLIPBOARD=1 in the server environment, or use type_keys mode=keys",
                         ocr_unavailable = "pass language with one of the installed OCR languages listed in the error",
                         timed_out = "the condition never held: observe or capture, then adjust the wait or the action",
+                        any_change_unrelated = "act_verified with expect.kind=any_change verified only via elements unrelated to the target (not the target, not its descendants, not a new window): replace any_change with a strict kind (window_open, selected, value, toggle, name, exists, absent) for deterministic verification",
                     },
                     recipes = AgentRecipeCatalog.All,
                 }),

@@ -175,8 +175,13 @@ only to the completed run; it does not guarantee all future runs.
   state); if none appears before timeout, `act_verified` returns
   `dispatched_unconfirmed` with a `click_point` hint centered on the element's
   bounds (handling Win32 custom menubars such as `wui.unibar` that ignore UIA
-  `Invoke`). Repeated failures emit a structured `hint` with a `loopWarning`
-  pivot suggestion.
+  `Invoke`). For non-menu controls, `any_change` keeps its exploratory semantics
+  and still verifies on any structural diff, but returns a `hint`
+  (`code="any_change_unrelated"`) suggesting strict kinds (`window_open`,
+  `selected`, `value`, `toggle`, ...) whenever verification matched only
+  elements unrelated to the target (not the target itself, not its descendants,
+  and not a new window). Repeated failures emit a structured `hint` with a
+  `loopWarning` pivot suggestion.
 - **Verified multi-step batch (`run_verified_steps`)**: runs 1..20 semantic steps
   in a single call with fresh `observe_scene` + `act_verified` per step, stops on
   the first unverified step with a fresh `recovery` observation, and reports MCP

@@ -202,8 +202,14 @@ ne garantit pas toutes les exécutions futures.
   `Menu`/`MenuItem` ou état `Expanded`) ; sans preuve avant expiration,
   `act_verified` renvoie `dispatched_unconfirmed` avec un indice `click_point`
   centré sur les bornes de l'élément (utile sur les barres de menus Win32
-  personnalisées comme `wui.unibar` qui ignorent UIA `Invoke`). Les échecs
-  répétés incluent un `hint` structuré avec `loopWarning` et suggestion de pivot.
+  personnalisées comme `wui.unibar` qui ignorent UIA `Invoke`). Pour les autres
+  contrôles, `any_change` conserve sa sémantique exploratoire et vérifie sur
+  tout changement structurel, mais renvoie un `hint`
+  (`code="any_change_unrelated"`) recommandant un prédicat strict (`window_open`,
+  `selected`, `value`, `toggle`, ...) lorsque la vérification ne repose que sur
+  des éléments sans lien avec la cible (ni la cible, ni ses descendants, ni une
+  nouvelle fenêtre). Les échecs répétés incluent un `hint` structuré avec
+  `loopWarning` et suggestion de pivot.
 - **Lot vérifié multi-étapes (`run_verified_steps`)** : exécute 1..20 étapes
   sémantiques en un seul appel avec `observe_scene` + `act_verified` à chaque
   étape, s'arrête au premier échec avec une observation `recovery` fraîche, et

@@ -255,9 +255,9 @@ public static class VerifiedSceneTool
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != entry.ProcessStart) break;
-                (bool passed, object? observed) = node.Source == "dom"
-                    ? await DomSceneTool.Check(entry, request.Expect, cancellationToken).ConfigureAwait(false)
-                    : Check(store.Services, entry, request.Expect, beforeVisual, node, request.Action);
+                (bool passed, object? observed, object? verifiedHint) = node.Source == "dom"
+                    ? WrapCheck(await DomSceneTool.Check(entry, request.Expect, cancellationToken).ConfigureAwait(false))
+                    : CheckWithHint(store.Services, entry, request.Expect, beforeVisual, node, request.Action);
                 evidence = observed;
                 if (passed)
                 {
@@ -272,7 +272,7 @@ public static class VerifiedSceneTool
                     }
                     return Serialize(new VerifiedActionResult(
                         "verified", true, true, "Expected state observed after dispatch.",
-                        entry.Id, evidence, NextObservation: nextObservation, Diff: diff));
+                        entry.Id, evidence, NextObservation: nextObservation, Diff: diff, Hint: verifiedHint));
                 }
                 await Task.Delay(Math.Min(100, request.TimeoutMs), cancellationToken).ConfigureAwait(false);
             } while (timer.ElapsedMilliseconds < request.TimeoutMs);
@@ -325,6 +325,154 @@ public static class VerifiedSceneTool
         if (expect.Kind is not ("exists" or "absent") && expect.Expected is null) return "Expectation requires expected.";
         if (expect.Kind is "selected" or "focused" or "visible" && expect.Expected is not ("true" or "false")) return "Boolean expectation must be true or false.";
         return null;
+    }
+
+    private static (bool Passed, object? Evidence, object? Hint) WrapCheck((bool Passed, object? Evidence) result) =>
+        (result.Passed, result.Evidence, null);
+
+    internal static (bool Passed, object? Evidence, object? Hint) CheckWithHint(
+        SceneServices services,
+        SceneStore.Entry entry,
+        SceneExpectation expect,
+        CapturedFrame? beforeVisual = null,
+        SceneElement? targetNode = null,
+        string? action = null)
+    {
+        if (expect.Kind == "any_change" && !IsMenuItemActivation(targetNode, action))
+        {
+            SceneCaptureFilter filter = entry.EffectiveFilter;
+            string? windowTitle = expect.WindowTitle ?? filter.WindowTitle;
+            SceneCapture rawCurrent = services.Driver.Capture(entry.ProcessId, windowTitle, CaptureLimitFor(filter));
+            SceneCapture filteredCurrent = EnrichCapture(
+                services, entry.ProcessId, windowTitle, rawCurrent,
+                filter.ActionableOnly, filter.FilterText, filter.IncludeOcr, filter.MaxResults);
+            SceneDiff diff = ComputeDiff(entry.Capture, filteredCurrent);
+            object? hint = diff.HasChanges && targetNode is not null
+                ? BuildAnyChangeUnrelatedHint(entry.Capture, filteredCurrent, targetNode, diff)
+                : null;
+            return (diff.HasChanges, diff, hint);
+        }
+
+        (bool passed, object? evidence) = Check(services, entry, expect, beforeVisual, targetNode, action);
+        return (passed, evidence, null);
+    }
+
+    internal static object? BuildAnyChangeUnrelatedHint(
+        SceneCapture before,
+        SceneCapture after,
+        SceneElement targetNode,
+        SceneDiff diff)
+    {
+        if (!diff.HasChanges || diff.WindowsAdded.Count > 0)
+        {
+            return null;
+        }
+
+        string targetKey = ElementKeyFor(targetNode);
+
+        Dictionary<string, SceneElement> beforeByKey = new(StringComparer.Ordinal);
+        foreach (SceneElement e in before.Elements) beforeByKey.TryAdd(ElementKeyFor(e), e);
+
+        Dictionary<string, SceneElement> afterByKey = new(StringComparer.Ordinal);
+        foreach (SceneElement e in after.Elements) afterByKey.TryAdd(ElementKeyFor(e), e);
+
+        bool hasRelatedChange = false;
+
+        foreach ((string key, SceneElement current) in afterByKey)
+        {
+            bool isAdded = !beforeByKey.TryGetValue(key, out SceneElement? prior);
+            bool isChanged = !isAdded && HasStateChanged(prior!, current);
+            if ((isAdded || isChanged) && IsTargetOrDescendant(current, key, targetKey, afterByKey))
+            {
+                hasRelatedChange = true;
+                break;
+            }
+        }
+
+        if (!hasRelatedChange)
+        {
+            foreach ((string key, SceneElement prior) in beforeByKey)
+            {
+                if (!afterByKey.ContainsKey(key) && IsTargetOrDescendant(prior, key, targetKey, beforeByKey))
+                {
+                    hasRelatedChange = true;
+                    break;
+                }
+            }
+        }
+
+        if (hasRelatedChange)
+        {
+            return null;
+        }
+
+        return new
+        {
+            code = "any_change_unrelated",
+            guidance = "any_change verified only through elements unrelated to the target (not the target, " +
+                       "not its descendants, and not a new window). Prefer a strict expect.kind such as " +
+                       "window_open, window_closed, selected, value, toggle, name, focused, visible, " +
+                       "selected_item, exists, or absent for deterministic verification.",
+            recommendedExpectKinds = new[]
+            {
+                "window_open",
+                "window_closed",
+                "selected",
+                "value",
+                "toggle",
+                "name",
+                "focused",
+                "visible",
+                "selected_item",
+                "exists",
+                "absent",
+            },
+        };
+    }
+
+    private static bool HasStateChanged(SceneElement prior, SceneElement current) =>
+        prior.Name != current.Name ||
+        prior.Value != current.Value ||
+        prior.Enabled != current.Enabled ||
+        prior.Visible != current.Visible ||
+        prior.Selected != current.Selected ||
+        prior.ToggleState != current.ToggleState ||
+        prior.ExpandCollapseState != current.ExpandCollapseState;
+
+    private static bool IsTargetOrDescendant(
+        SceneElement element,
+        string elementKey,
+        string targetKey,
+        Dictionary<string, SceneElement> elementsByKey)
+    {
+        if (string.Equals(elementKey, targetKey, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string? parentKey = element.ParentIdentity;
+        HashSet<string>? visited = null;
+        int depth = 0;
+        while (!string.IsNullOrEmpty(parentKey) && depth < 64)
+        {
+            if (string.Equals(parentKey, targetKey, StringComparison.Ordinal))
+            {
+                return true;
+            }
+            visited ??= new HashSet<string>(StringComparer.Ordinal) { elementKey };
+            if (!visited.Add(parentKey))
+            {
+                break;
+            }
+            if (!elementsByKey.TryGetValue(parentKey, out SceneElement? parent))
+            {
+                break;
+            }
+            parentKey = parent.ParentIdentity;
+            depth++;
+        }
+
+        return false;
     }
 
     internal static (bool Passed, object? Evidence) Check(

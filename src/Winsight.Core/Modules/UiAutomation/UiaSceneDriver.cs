@@ -57,8 +57,8 @@ public sealed class UiaSceneDriver
             if (descriptor is null) continue;
             WindowIdentity window = new(processId, descriptor.WindowHandle,
                 new WindowBounds(descriptor.X, descriptor.Y, descriptor.Width, descriptor.Height));
-            Queue<AutomationElement> queue = new();
-            queue.Enqueue(root.Element);
+            Queue<(AutomationElement Element, string? ParentIdentity)> queue = new();
+            queue.Enqueue((root.Element, null));
             while (queue.Count > 0)
             {
                 if (!budget.TryStep()) break;
@@ -67,13 +67,16 @@ public sealed class UiaSceneDriver
                     budget.MarkTruncated(TraversalTruncationReasons.MaxResults);
                     break;
                 }
-                AutomationElement element = queue.Dequeue();
+                (AutomationElement element, string? parentIdentity) = queue.Dequeue();
                 try
                 {
                     if (element.Properties.ControlType.ValueOrDefault == ControlType.Window && element.Properties.NativeWindowHandle.ValueOrDefault != root.Handle) continue;
-                    SceneElement node = Read(element, window, "e" + (nodes.Count + 1).ToString(CultureInfo.InvariantCulture));
+                    SceneElement node = Read(element, window, "e" + (nodes.Count + 1).ToString(CultureInfo.InvariantCulture), parentIdentity);
                     nodes.Add(node);
-                    foreach (AutomationElement child in element.FindAllChildren()) queue.Enqueue(child);
+                    string nodeIdentity = !string.IsNullOrEmpty(node.Identity)
+                        ? node.Identity
+                        : $"{node.Window.Handle}:{node.Role}:{node.Locator.AutomationId ?? node.Name}";
+                    foreach (AutomationElement child in element.FindAllChildren()) queue.Enqueue((child, nodeIdentity));
                 }
                 catch (COMException) { budget.MarkTruncated(TraversalTruncationReasons.ComError); }
             }
@@ -83,7 +86,7 @@ public sealed class UiaSceneDriver
         return new SceneCapture(windows, nodes, budget.IsTruncated, "uia", TruncationReason: budget.TruncationReason);
     }
 
-    public static SceneElement Read(AutomationElement element, WindowIdentity window, string reference)
+    public static SceneElement Read(AutomationElement element, WindowIdentity window, string reference, string? parentIdentity = null)
     {
         string role = element.Properties.ControlType.ValueOrDefault.ToString();
         string name = element.Properties.Name.ValueOrDefault ?? "";
@@ -110,7 +113,8 @@ public sealed class UiaSceneDriver
             string.Join(".", element.Properties.RuntimeId.ValueOrDefault ?? []),
             ToggleState: element.Patterns.Toggle.PatternOrDefault?.ToggleState.ValueOrDefault.ToString(),
             StateHash: Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name + "\0" + value))),
-            ExpandCollapseState: element.Patterns.ExpandCollapse.PatternOrDefault?.ExpandCollapseState.ValueOrDefault.ToString());
+            ExpandCollapseState: element.Patterns.ExpandCollapse.PatternOrDefault?.ExpandCollapseState.ValueOrDefault.ToString(),
+            ParentIdentity: parentIdentity);
     }
 
     /// <summary>Validation and dispatch share the desktop lease. The callback precedes any mutation.</summary>
