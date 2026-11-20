@@ -1808,3 +1808,43 @@ output), the tool returns an `OperationResult` failure object instead:
 `WINSIGHT_VISION_BACKEND=anthropic`. `WINSIGHT_VISION_BACKEND=onnx` runs a local
 Qwen2.5-VL model fully on-host and never falls back to Anthropic; see
 [docs/local-onnx-grounder.md](local-onnx-grounder.md) for provisioning.
+
+---
+
+## Input diagnostics, integrity, and foreground host policy
+
+### `diagnose_pointer`
+
+Diagnostic tool (`ReadOnly=false`, `Idempotent=false`, guarded by `ToolAccessPolicy.GuardMutation`) that tests four Windows pointer movement methods in order against a point inside an authorized target window, restoring the original cursor position after each attempt without clicking:
+
+1. `send_input_virtual_desk` (`SendInput` `MOUSEEVENTF_MOVE | ABSOLUTE | VIRTUALDESK`)
+2. `send_input_primary_absolute` (`SendInput` `MOUSEEVENTF_MOVE | ABSOLUTE` normalized to the primary monitor)
+3. `send_input_relative` (`SendInput` relative `MOUSEEVENTF_MOVE`)
+4. `set_cursor_pos` (`SetCursorPos` BOOL + `GetLastError`)
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `x` | int | required | X coordinate inside the target window |
+| `y` | int | required | Y coordinate inside the target window |
+| `windowTitle` | string? | null | Optional window title substring |
+| `coordinateSpace` | string? | `window` | `window` (default) or `screen` |
+| `processId` | int? | session target | Target process id |
+
+Honors `WINSIGHT_DRY_RUN=1` (returns `{ dryRun: true, action: "diagnose_pointer", preview: { ..., methods } }` without moving the cursor) and the yield-to-user guard. On live execution, returns `attempts` (immediate, 50 ms, and 150 ms `GetCursorPos` and `GetPhysicalCursorPos` readings, API result, `lastWin32Error`, `reachedTarget`, `restored`), `clipCursor`, `cursorInfo` (`flags`, `showing`, `suppressed`), `mouseButtonsDown`, `mouseAcceleration` (`SPI_GETMOUSE`, `SPI_GETMOUSESPEED`), `foregroundWindow`, `virtualDesktop`, `primaryMonitor`, `dpiAwareness`, `inputContext`, and `firstWorkingMethod`.
+
+### Environment variable: `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`
+
+Comma- or semicolon-separated list of process names (without `.exe`) whose foreground window is known to reject synthetic Win32 pointer input. Defaults to `vmware,vmware-vmx,vmplayer` when unset; set to an empty value to disable the default list.
+
+### Error codes, warning codes, and response fields
+
+| Code / Field | Where returned | Meaning |
+| ------------ | -------------- | ------- |
+| `integrity` | `set_target`, `switch_target` | `{ current, currentRid, target, targetRid, uipiBlocked }` comparing Winsight's token integrity level against the target process. |
+| `integrityWarning` | `set_target`, `switch_target`, `observe_scene` | Present when target integrity is strictly higher than Winsight (`uipi_blocked: ...`). |
+| `uipi_blocked` | All input tools, `act_verified` | Target process has a higher integrity level than Winsight; synthetic input would be silently dropped by Windows UIPI. |
+| `input_context_blocked` | Pointer and keyboard input failures | Winsight is running in a non-interactive window station or a job object with `JOB_OBJECT_UILIMIT_*` restrictions. |
+| `move_not_applied` | `click_point`, `hover_point`, `scroll_point`, physical clicks | Pointer remained at its pre-move starting position after settle (distinct from `cursor_moved`, which now means the pointer moved somewhere else than both start and target). Includes `SendInput` result, `attemptTraces`, `foregroundWindow`, `clipCursor`, `cursorInfo`, `integrity`, and `inputContext`. |
+| `foreground_rejects_synthetic_input` | Pointer input failures | Move was not applied and either a `SetCursorPos` probe returned `FALSE` with `GetLastError() == 0` or the foreground process is listed in `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
+| `warning` (`foreground_may_reject_synthetic_input`) | `send_key_chord`, `type_keys`, `type_text` keyboard fallback | Non-blocking warning attached to successful keyboard results when the foreground process is listed in `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
+

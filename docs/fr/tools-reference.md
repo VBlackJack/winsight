@@ -1914,3 +1914,43 @@ illisible), l'outil renvoie à la place un objet d'échec `OperationResult`:
 un modèle Qwen2.5-VL local entièrement sur l'hôte et ne se replie jamais sur
 Anthropic; voir [docs/local-onnx-grounder.md](local-onnx-grounder.md) pour
 le provisionnement.
+
+---
+
+## Diagnostics d'entrée, intégrité et politique d'hôte au premier plan
+
+### `diagnose_pointer`
+
+Outil de diagnostic (`ReadOnly=false`, `Idempotent=false`, protégé par `ToolAccessPolicy.GuardMutation`) qui teste quatre méthodes Windows de déplacement du pointeur dans l'ordre sur un point à l'intérieur d'une fenêtre cible autorisée, en restaurant la position d'origine du curseur après chaque essai sans cliquer:
+
+1. `send_input_virtual_desk` (`SendInput` `MOUSEEVENTF_MOVE | ABSOLUTE | VIRTUALDESK`)
+2. `send_input_primary_absolute` (`SendInput` `MOUSEEVENTF_MOVE | ABSOLUTE` normalisé sur le moniteur principal)
+3. `send_input_relative` (`SendInput` relatif `MOUSEEVENTF_MOVE`)
+4. `set_cursor_pos` (`SetCursorPos` BOOL + `GetLastError`)
+
+| Nom | Type | Défaut | Description |
+| --- | ---- | ------ | ----------- |
+| `x` | int | requis | Coordonnée X dans la fenêtre cible |
+| `y` | int | requis | Coordonnée Y dans la fenêtre cible |
+| `windowTitle` | string? | null | Sous-chaîne facultative du titre de fenêtre |
+| `coordinateSpace` | string? | `window` | `window` (défaut) ou `screen` |
+| `processId` | int? | cible de session | Identifiant du processus cible |
+
+Respecte `WINSIGHT_DRY_RUN=1` (renvoie `{ dryRun: true, action: "diagnose_pointer", preview: { ..., methods } }` sans déplacer le curseur) ainsi que la garde de cession à l'utilisateur. En exécution réelle, renvoie `attempts` (mesures `GetCursorPos` et `GetPhysicalCursorPos` immédiates, à 50 ms et à 150 ms, résultat d'API, `lastWin32Error`, `reachedTarget`, `restored`), `clipCursor`, `cursorInfo` (`flags`, `showing`, `suppressed`), `mouseButtonsDown`, `mouseAcceleration` (`SPI_GETMOUSE`, `SPI_GETMOUSESPEED`), `foregroundWindow`, `virtualDesktop`, `primaryMonitor`, `dpiAwareness`, `inputContext` et `firstWorkingMethod`.
+
+### Variable d'environnement: `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`
+
+Liste de noms de processus séparés par des virgules ou points-virgules (sans `.exe`) dont la fenêtre au premier plan est connue pour rejeter les déplacements de pointeur Win32 synthétiques. Valeur par défaut: `vmware,vmware-vmx,vmplayer` si non définie; définir une valeur vide pour désactiver la liste par défaut.
+
+### Codes d'erreur, codes d'avertissement et champs de réponse
+
+| Code / Champ | Où renvoyé | Signification |
+| ------------ | ---------- | ------------- |
+| `integrity` | `set_target`, `switch_target` | `{ current, currentRid, target, targetRid, uipiBlocked }` comparant le niveau d'intégrité du jeton Winsight à celui du processus cible. |
+| `integrityWarning` | `set_target`, `switch_target`, `observe_scene` | Présent quand l'intégrité cible est strictement supérieure à Winsight (`uipi_blocked: ...`). |
+| `uipi_blocked` | Tous les outils d'entrée, `act_verified` | Le processus cible s'exécute à un niveau d'intégrité supérieur à Winsight; Windows UIPI ignorerait silencieusement les entrées synthétiques. |
+| `input_context_blocked` | Échecs d'entrée pointeur et clavier | Winsight s'exécute dans une station de fenêtres non interactive ou un objet de travail avec restrictions `JOB_OBJECT_UILIMIT_*`. |
+| `move_not_applied` | `click_point`, `hover_point`, `scroll_point`, clics physiques | Le pointeur est resté à sa position initiale après stabilisation (distinct de `cursor_moved`, réservé au cas où le pointeur a bougé ailleurs que le départ et la cible). Inclut le résultat `SendInput`, `attemptTraces`, `foregroundWindow`, `clipCursor`, `cursorInfo`, `integrity` et `inputContext`. |
+| `foreground_rejects_synthetic_input` | Échecs d'entrée pointeur | Le déplacement n'a pas été appliqué et soit la sonde `SetCursorPos` a renvoyé `FALSE` avec `GetLastError() == 0`, soit le processus au premier plan figure dans `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
+| `warning` (`foreground_may_reject_synthetic_input`) | `send_key_chord`, `type_keys`, repli clavier de `type_text` | Avertissement non bloquant joint aux résultats clavier réussis quand le processus au premier plan figure dans `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
+

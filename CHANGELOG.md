@@ -7,6 +7,21 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Per-Monitor V2 DPI awareness at startup (`ProcessDpiAwareness.TryEnablePerMonitorV2`) and multi-monitor virtual-desktop coordinate normalization (`SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN`/`SM_CXVIRTUALSCREEN`/`SM_CYVIRTUALSCREEN` with `MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK`).
+- Process integrity level inspection (`GetTokenInformation(TokenIntegrityLevel)`): `set_target` and `switch_target` return `integrity` and `integrityWarning`, `observe_scene` attaches `integrityWarning`, and input tools fail fast with `uipi_blocked` when target integrity is strictly higher than Winsight (returning `"unknown"` and allowing input on `ERROR_ACCESS_DENIED`).
+- `diagnose_pointer` MCP tool (guarded by `ToolAccessPolicy.GuardMutation`, honoring `WINSIGHT_DRY_RUN=1`) to test all four Windows pointer movement methods (`send_input_virtual_desk`, `send_input_primary_absolute`, `send_input_relative`, `set_cursor_pos`) with immediate, 50 ms, and 150 ms `GetCursorPos`/`GetPhysicalCursorPos` readings, cursor restore, `ClipCursor`, `GetCursorInfo`, mouse buttons, mouse acceleration, foreground process, and read-only `inputContext`.
+- Read-only `inputContext` diagnostics in `get_user_activity`, `diagnose_pointer`, and input failure paths (session vs console session, window station visibility, thread vs input desktop, job object `JOB_OBJECT_UILIMIT_*` flags, token flags, parent process chain) with `input_context_blocked` classification.
+- Configurable foreground rejecting-host policy via `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS` (default `vmware,vmware-vmx,vmplayer`), reporting `foreground_rejects_synthetic_input` on rejected pointer moves and attaching non-blocking `warning` (`foreground_may_reject_synthetic_input`) on keyboard tools (`send_key_chord`, `type_keys`, `type_text` keyboard fallback).
+- Structured stderr logging (`[winsight] ...`) for `uipi_blocked`, `input_context_blocked`, and `foreground_rejects_synthetic_input`.
+
+### Fixed
+
+- `PointerDispatch` now distinguishes `move_not_applied` (cursor stayed at start position) and `foreground_rejects_synthetic_input` (single `SetCursorPos` failure probe returned `FALSE` with error 0 or configured rejecting foreground host) from `cursor_moved` (cursor moved elsewhere than both start and target).
+- `drag` and `hover_element` now route pointer moves through `NativePointerDriver` (`SendInput` with virtual-desktop normalization) instead of FlaUI `Mouse.Position`/`Mouse.MoveTo`.
+- `send_key_chord`, `type_keys`, and `type_text` keyboard fallback now report `SendInput` count and Win32 error in structured failures, re-verify foreground window before chord dispatch, and compute keyboard warnings after focus.
+
 ## [0.2.2] - 2026-11-19
 
 ### Fixed
