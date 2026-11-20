@@ -25,7 +25,7 @@ namespace Winsight.Core.Modules.UserActivity;
 /// foreground window and whether the session is locked. Every read refreshes
 /// the session-wide record of the last human input.
 /// </summary>
-public sealed class UserActivityMonitor
+public sealed class UserActivityMonitor : IDisposable
 {
     public const string SourceHuman = "human";
     public const string SourceWinsight = "winsight";
@@ -77,28 +77,65 @@ public sealed class UserActivityMonitor
     private readonly IUserActivityBackend _backend;
     private readonly PeriodicMicroMoveDetector _microMoveDetector;
     private readonly InputHookHealthTracker _hookHealthTracker;
+    private readonly ActivityBackgroundSampler _backgroundSampler;
     private readonly Lock _historyGate = new();
     private readonly List<RecordedInputTick> _recentInputs = new(RecentInputSampleCapacity);
     private CursorPoint? _lastCursor;
 
     public UserActivityMonitor()
-        : this(NativeUserActivityBackend.Instance, SharedMicroMoveDetector, SharedHookHealthTracker)
+        : this(
+            NativeUserActivityBackend.Instance,
+            SharedMicroMoveDetector,
+            SharedHookHealthTracker,
+            UserActivityPolicy.ActivitySampleMs,
+            TimeProvider.System)
     {
     }
 
-    internal UserActivityMonitor(IUserActivityBackend backend, Func<PeriodicMicroMoveConfig>? microMoveConfig = null)
-        : this(backend, new PeriodicMicroMoveDetector(microMoveConfig), new InputHookHealthTracker())
+    internal UserActivityMonitor(
+        IUserActivityBackend backend,
+        Func<PeriodicMicroMoveConfig>? microMoveConfig = null,
+        int backgroundSampleMs = 0,
+        TimeProvider? timerProvider = null)
+        : this(
+            backend,
+            new PeriodicMicroMoveDetector(microMoveConfig),
+            new InputHookHealthTracker(),
+            backgroundSampleMs,
+            timerProvider)
     {
     }
 
     private UserActivityMonitor(
         IUserActivityBackend backend,
         PeriodicMicroMoveDetector microMoveDetector,
-        InputHookHealthTracker hookHealthTracker)
+        InputHookHealthTracker hookHealthTracker,
+        int backgroundSampleMs,
+        TimeProvider? timerProvider)
     {
         _backend = backend;
         _microMoveDetector = microMoveDetector;
         _hookHealthTracker = hookHealthTracker;
+        _backgroundSampler = new ActivityBackgroundSampler(SampleTick, backgroundSampleMs, timerProvider);
+    }
+
+    public void Dispose() => _backgroundSampler.Dispose();
+
+    /// <summary>
+    /// Lightweight background tick: samples <c>GetLastInputInfo</c> and cursor
+    /// position, feeds the periodic micro-move detector and hook health tracker,
+    /// and updates <c>recentInputs</c> without querying foreground or session lock.
+    /// </summary>
+    internal void SampleTick()
+    {
+        CursorPoint? cursor = _backend.ReadCursorPosition();
+        bool cursorMoved;
+        lock (_historyGate)
+        {
+            cursorMoved = _lastCursor is not null && cursor is not null && _lastCursor != cursor;
+        }
+        SampleResult sample = Sample(_backend, cursor, cursorMoved, _microMoveDetector, _hookHealthTracker);
+        RecordHistory(sample, cursor);
     }
 
     /// <summary>
@@ -293,46 +330,61 @@ public sealed class UserActivityMonitor
         return ledger.HasHuman ? ledger.HumanTick : null;
     }
 
+    private (bool CursorMoved, string ResolvedKind) RecordHistory(SampleResult sample, CursorPoint? cursor)
+    {
+        lock (_historyGate)
+        {
+            return RecordHistoryLocked(sample, cursor);
+        }
+    }
+
+    private (bool CursorMoved, string ResolvedKind) RecordHistoryLocked(SampleResult sample, CursorPoint? cursor)
+    {
+        bool cursorMoved = _lastCursor is not null && cursor is not null && _lastCursor != cursor;
+        if (cursor is not null)
+        {
+            _lastCursor = cursor;
+        }
+
+        string resolvedKind = sample.InputKind == KindUnknown && cursorMoved
+            ? KindMouse
+            : sample.InputKind;
+
+        if (_recentInputs.Count == 0 || _recentInputs[^1].Tick != sample.LastInput)
+        {
+            long? deltaMs = _recentInputs.Count > 0
+                ? InputAttributor.AgeMs(sample.LastInput, _recentInputs[^1].Tick)
+                : null;
+            if (_recentInputs.Count >= RecentInputSampleCapacity)
+            {
+                _recentInputs.RemoveAt(0);
+            }
+            _recentInputs.Add(new RecordedInputTick(
+                sample.LastInput,
+                deltaMs,
+                sample.Source,
+                resolvedKind,
+                cursorMoved,
+                sample.InjectedByOther));
+        }
+        else if (cursorMoved && !_recentInputs[^1].CursorMoved)
+        {
+            RecordedInputTick latest = _recentInputs[^1];
+            _recentInputs[^1] = latest with
+            {
+                CursorMoved = true,
+                InputKind = latest.InputKind == KindUnknown ? KindMouse : latest.InputKind,
+            };
+        }
+
+        return (cursorMoved, resolvedKind);
+    }
+
     private UserActivityDiagnostics RecordDiagnostics(SampleResult sample, CursorPoint? cursor)
     {
         lock (_historyGate)
         {
-            bool cursorMoved = _lastCursor is not null && cursor is not null && _lastCursor != cursor;
-            if (cursor is not null)
-            {
-                _lastCursor = cursor;
-            }
-
-            string resolvedKind = sample.InputKind == KindUnknown && cursorMoved
-                ? KindMouse
-                : sample.InputKind;
-
-            if (_recentInputs.Count == 0 || _recentInputs[^1].Tick != sample.LastInput)
-            {
-                long? deltaMs = _recentInputs.Count > 0
-                    ? InputAttributor.AgeMs(sample.LastInput, _recentInputs[^1].Tick)
-                    : null;
-                if (_recentInputs.Count >= RecentInputSampleCapacity)
-                {
-                    _recentInputs.RemoveAt(0);
-                }
-                _recentInputs.Add(new RecordedInputTick(
-                    sample.LastInput,
-                    deltaMs,
-                    sample.Source,
-                    resolvedKind,
-                    cursorMoved,
-                    sample.InjectedByOther));
-            }
-            else if (cursorMoved && !_recentInputs[^1].CursorMoved)
-            {
-                RecordedInputTick latest = _recentInputs[^1];
-                _recentInputs[^1] = latest with
-                {
-                    CursorMoved = true,
-                    InputKind = latest.InputKind == KindUnknown ? KindMouse : latest.InputKind,
-                };
-            }
+            (bool cursorMoved, string resolvedKind) = RecordHistoryLocked(sample, cursor);
 
             List<InputSample> snapshot = new(_recentInputs.Count);
             foreach (RecordedInputTick entry in _recentInputs)

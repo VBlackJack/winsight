@@ -30,12 +30,17 @@ public static class UserActivityPolicy
     public const string IgnorePeriodicMicroMovesVariable = "WINSIGHT_IGNORE_PERIODIC_MICRO_MOVES";
     public const string PeriodicMicroMoveMaxPxVariable = "WINSIGHT_PERIODIC_MICRO_MOVE_MAX_PX";
     public const string PeriodicMicroMoveTolerancePctVariable = "WINSIGHT_PERIODIC_MICRO_MOVE_TOLERANCE_PCT";
+    public const string ActivitySampleMsVariable = "WINSIGHT_ACTIVITY_SAMPLE_MS";
     public const int DefaultPeriodicMicroMoveMaxPx = 15;
     public const int MaxPeriodicMicroMoveMaxPx = 200;
     public const int DefaultPeriodicMicroMoveTolerancePct = 25;
     public const int MinPeriodicMicroMoveTolerancePct = 5;
     public const int MaxPeriodicMicroMoveTolerancePct = 50;
+    public const int DefaultActivitySampleMs = 250;
+    public const int MinActivitySampleMs = 50;
+    public const int MaxActivitySampleMs = 10_000;
     public const string UserActiveCode = "user_active";
+    public const string SessionLockedCode = "session_locked";
 
     public static int? YieldToUserMs => Parse(Environment.GetEnvironmentVariable(YieldToUserVariable));
 
@@ -50,6 +55,9 @@ public static class UserActivityPolicy
     public static double PeriodicMicroMoveRelativeTolerance =>
         ParsePeriodicMicroMoveTolerancePct(Environment.GetEnvironmentVariable(PeriodicMicroMoveTolerancePctVariable)) / 100.0;
 
+    public static int ActivitySampleMs =>
+        ParseActivitySampleMs(Environment.GetEnvironmentVariable(ActivitySampleMsVariable));
+
     internal static int ParsePeriodicMicroMoveMaxPx(string? raw) =>
         int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) &&
         value >= 1 &&
@@ -63,6 +71,22 @@ public static class UserActivityPolicy
         value <= MaxPeriodicMicroMoveTolerancePct
             ? value
             : DefaultPeriodicMicroMoveTolerancePct;
+
+    internal static int ParseActivitySampleMs(string? raw)
+    {
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+        {
+            if (value == 0)
+            {
+                return 0;
+            }
+            if (value >= MinActivitySampleMs && value <= MaxActivitySampleMs)
+            {
+                return value;
+            }
+        }
+        return DefaultActivitySampleMs;
+    }
 
     /// <summary>
     /// Host-configured per-session override enabled exclusively by the human
