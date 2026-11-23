@@ -21,7 +21,13 @@ internal static class JsonOptions
 {
     public static readonly JsonSerializerOptions Default = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true,
+        WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    /// <summary>Same settings as <see cref="Default"/> but indented, for files that people read.</summary>
+    public static readonly JsonSerializerOptions Indented = new(Default)
+    {
+        WriteIndented = true,
     };
 }

@@ -30,7 +30,7 @@ public sealed class SceneServices
     public static SceneServices Default { get; } = CreateDefault();
 
     public SceneServices(
-        UiaSceneDriver driver,
+        ISceneDriver driver,
         WindowDiscovery windows,
         ManagedStateReader managedState,
         ElementStateReader elementState,
@@ -55,7 +55,7 @@ public sealed class SceneServices
         Memory = memory;
     }
 
-    public UiaSceneDriver Driver { get; }
+    public ISceneDriver Driver { get; }
     public WindowDiscovery Windows { get; }
     public ManagedStateReader ManagedState { get; }
     public ElementStateReader ElementState { get; }

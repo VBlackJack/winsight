@@ -115,6 +115,6 @@ public sealed class SceneContractTests
     {
         string response = await VerifiedSceneTool.Act(new SceneStore(), new SceneAction("missing", "e1", "activate",
             new SceneExpectation("exists", Locator: new ElementLocator(AutomationId: "x"))), TestContext.Current.CancellationToken);
-        response.Should().Contain("\"dispatched\": false").And.Contain("stale");
+        response.Should().Contain("\"dispatched\":false").And.Contain("stale");
     }
 }
