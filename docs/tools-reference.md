@@ -52,7 +52,7 @@ on every tool, and exposes read-only MCP resources (`winsight://guide`,
 `winsight://state`, `winsight://windows`, `winsight://scene/latest`) plus MCP
 prompts (`explore_app`, `verify_flow`, `diagnose_ui_bug`). Set
 `WINSIGHT_TOOL_PROFILE=compact` to expose a focused 33-tool autonomous subset
-instead of all 70 tools.
+instead of all 71 tools.
 
 These original convenience tools remain available. The lower-level tools remain
 available, but agents should start here because the responses are oriented around

@@ -56,7 +56,7 @@ cette boucle, déclare les annotations MCP (`ReadOnly`, `Destructive`, `Idempote
 (`winsight://guide`, `winsight://state`, `winsight://windows`,
 `winsight://scene/latest`) ainsi que les prompts MCP (`explore_app`,
 `verify_flow`, `diagnose_ui_bug`). Définir `WINSIGHT_TOOL_PROFILE=compact` pour
-exposer un jeu réduit de 33 outils autonomes au lieu des 70 outils complets.
+exposer un jeu réduit de 33 outils autonomes au lieu des 71 outils complets.
 
 Ces outils de commodité d'origine restent disponibles. Les outils de plus bas
 niveau restent disponibles, mais les agents devraient commencer ici, car les
