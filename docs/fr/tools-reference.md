@@ -13,6 +13,9 @@ de défaillance connu ou d'une exception inattendue dans le corps de l'outil, so
 uniformément remontées dans une forme `OperationResult`
 (`{ "success": false, "error": "..." }`) plutôt que sous forme d'exceptions MCP,
 afin qu'un agent puisse les lire et s'en remettre.
+La sortie des outils est du JSON compact (sans indentation ni espace après
+`:`) ; les noms de champs et l'omission des champs nuls sont inchangés. Les
+exemples JSON de ce document restent indentés pour la lisibilité.
 Une garde universelle `ToolSafety` à la frontière de l'outil intercepte tout ce
 que l'implémentation lève et le convertit dans cette forme: une seule exception
 incontrôlée ne peut donc ni abattre le processus hôte ni tuer le reste de la
@@ -1243,7 +1246,7 @@ délai.
 **Artefacts de rejeu**: définissez `traceRun: true`, `WINSIGHT_TRACE=1` ou
 `WINSIGHT_TRACE_DIR` pour écrire un fichier JSON de rejeu.
 `BatchResult.tracePath` pointe vers lui. Utilisez `replay_steps` pour
-l'inspecter ou le rejouer.
+l'inspecter ou le rejouer. Le fichier de rejeu reste indenté pour la lecture.
 
 **Oracle causal des exceptions**: avec `captureExceptions: true`, une
 session EventPipe s'exécute autour du lot entier et le résultat gagne un
@@ -1350,6 +1353,11 @@ coordonnées relatives à la fenêtre. Quand le cadre DWM est indisponible ou
 n'est pas inclus dans le rectangle de la fenêtre, le rectangle complet est
 copié. Limite connue: les coins arrondis de Windows 11 peuvent encore laisser
 apparaître quelques pixels étrangers.
+
+Quand la cible est recouverte par une fenêtre d'un autre processus et que
+`allowOccluded` n'est pas défini, le message de refus désigne la fenêtre
+recouvrante par son handle et son identifiant de processus. Il n'inclut pas le
+titre de cette fenêtre.
 
 Quand la zone capturée est d'une seule couleur (échantillonnage), le
 `ScreenshotResult` porte un `warning` qui commence par `region_uniform:`.
@@ -1550,7 +1558,7 @@ existante, y compris quand `updateBaseline=true`.
 | `WINSIGHT_VISUAL_PIXEL_THRESHOLD` | `0.005`                                      | Ratio de différence maximal pour réussir |
 | `WINSIGHT_VISUAL_COLOR_THRESHOLD` | `0.1`                                        | Sensibilité couleur de pixelmatch (0..1) |
 | `WINSIGHT_OUTPUT_DIR`             | `%TEMP%\winsight`                            | Captures candidates et cartes de chaleur |
-| `WINSIGHT_TRACE`                  | non définie                                  | `1`/`true` active les traces JSONL des outils et les artefacts de rejeu |
+| `WINSIGHT_TRACE`                  | non définie                                  | `1`/`true` active les traces JSONL des outils (un enregistrement par ligne dans le fichier `.jsonl` quotidien) et les artefacts de rejeu |
 | `WINSIGHT_TRACE_DIR`              | `%TEMP%\winsight\traces` quand le traçage est actif | Répertoire des traces et des artefacts de rejeu |
 
 Par défaut, les références sont stockées hors du dépôt. `baselineKey` doit

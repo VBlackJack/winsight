@@ -497,7 +497,10 @@ des alias nommés optionnels (`set_target` / `switch_target` / `get_target` /
 sans manipuler des PIDs bruts. Les outils de scène vérifiée partagent les
 singletons injectés via `SceneServices` (`UiaSceneDriver`, `VisualTextReader`,
 `WebView2Detector`, `ApplicationProfiles` et `SessionMemory` avec détection de
-boucles d'échec). `UiEventWatcher` expose des hooks d'événements UIA temps réel
+boucles d'échec). `ISceneDriver` est la couture entre les outils de scène et
+UI Automation (capture de scène et envoi des actions) ; `UiaSceneDriver` en est
+l'implémentation réelle, et les tests lui substituent un faux pilote.
+`UiEventWatcher` expose des hooks d'événements UIA temps réel
 bornés et `UiAccessibilityAuditor` effectue des contrôles QA déterministes sur
 les scènes UIA capturées.
 
@@ -537,7 +540,7 @@ garde:
 - Reproduit l'exception d'origine (avec la pile complète) sur **stderr** pour
   qu'une personne qui s'attache au processus hôte puisse voir ce qui s'est
   passé. Stdout reste réservé au trafic du protocole MCP.
-- Enregistre un événement d'outil JSONL compact quand `WINSIGHT_TRACE` ou
+- Enregistre un événement d'outil JSONL compact (un enregistrement par ligne) quand `WINSIGHT_TRACE` ou
   `WINSIGHT_TRACE_DIR` est défini: nom de l'outil, durée, succès/erreur et
   nombre d'octets de la charge utile.
 - Laisse se propager les exceptions réellement fatales

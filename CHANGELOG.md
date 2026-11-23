@@ -7,6 +7,23 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `tools/release-preflight.ps1`: read-only pre-release check that the working tree is clean, `HEAD` equals `origin/main`, release notes and a dated changelog entry exist for the version, the tag is absent locally and on `origin`, and the CI run for `HEAD` succeeded. Exit codes: `0` ok, `2` prerequisite missing, `3` a check failed.
+- `FieldReportScenarioTests` in `tests/Winsight.E2E`: live-window scenarios for the 0.5.0 fixes (screen-capture border mask, OCR language fallback, title withholding, strict `actionableOnly`, `region_uniform`).
+- `ISceneDriver` seam between the scene tools and UI Automation, so tools can run against a fake driver in tests; `UiaSceneDriver` is the live implementation.
+
+### Changed
+
+- Tool output is compact JSON (no indentation, no space after `:`). Field names and null omission are unchanged. The daily `.jsonl` trace stays one record per line; the `run_steps` replay file stays indented.
+- The installer closes running Winsight servers itself on update (`CloseApplications=force`), so files in use no longer block it. The client applications that started them must be restarted afterwards; the setup introduction text says so.
+- `tools/smoke-mcp.ps1` derives the expected tool count from the sources. `-ExpectedToolCount N` still overrides it.
+- The `captureSource="screen"` occlusion refusal names the occluding window by handle and process id and no longer includes that window's title.
+
+### Fixed
+
+- The daily `.jsonl` trace wrote records across several lines; each record is now a single line.
+
 ## [0.5.0] - 2026-11-23
 
 ### Added

@@ -11,6 +11,9 @@ Every tool returns a JSON string. Errors (whether from a known failure mode
 or an unexpected exception inside the tool body) are uniformly surfaced
 inside an `OperationResult` shape (`{ "success": false, "error": "..." }`)
 rather than as MCP exceptions, so an agent can read and recover from them.
+Tool output is compact JSON (no indentation, no space after `:`); field names
+and the omission of null fields are unchanged. The sample JSON blocks in this
+document stay pretty-printed for readability.
 A universal `ToolSafety` guard at the tool boundary catches anything the
 implementation throws and converts it into that shape, so a single rogue
 exception cannot tear down the host process or kill the rest of the agent's
@@ -1167,7 +1170,8 @@ person used the desktop more recently than that.
 
 **Replay artifacts**: set `traceRun: true`, `WINSIGHT_TRACE=1`, or
 `WINSIGHT_TRACE_DIR` to write a replay JSON file. `BatchResult.tracePath` points
-to it. Use `replay_steps` to inspect or replay it.
+to it. Use `replay_steps` to inspect or replay it. The replay file stays
+indented for reading.
 
 **Causal exception oracle**: with `captureExceptions: true`, an EventPipe
 session runs around the whole batch and the result gains an `exceptions` array
@@ -1266,6 +1270,10 @@ pixels leak in. The image keeps the size of the window rectangle, so pixels
 still equal window-relative coordinates. When the DWM frame is unavailable or
 not inside the window rectangle, the full rectangle is copied. Known limit:
 Windows 11 rounded corners can still show a few foreign pixels.
+
+When the target is occluded by a window of another process and `allowOccluded`
+is not set, the refusal message names the occluding window by handle and
+process id. It does not include that window's title.
 
 When the captured area is a single color (sampled), the `ScreenshotResult`
 carries a `warning` starting with `region_uniform:`. Check the application
@@ -1450,7 +1458,7 @@ when `updateBaseline=true`.
 | `WINSIGHT_VISUAL_PIXEL_THRESHOLD` | `0.005`                                      | Maximum passing diff ratio |
 | `WINSIGHT_VISUAL_COLOR_THRESHOLD` | `0.1`                                        | pixelmatch color sensitivity (0..1) |
 | `WINSIGHT_OUTPUT_DIR`             | `%TEMP%\winsight`                            | Candidate captures and heatmaps |
-| `WINSIGHT_TRACE`                  | unset                                       | `1`/`true` enables JSONL tool traces and run replay artifacts |
+| `WINSIGHT_TRACE`                  | unset                                       | `1`/`true` enables JSONL tool traces (one record per line in the daily `.jsonl` file) and run replay artifacts |
 | `WINSIGHT_TRACE_DIR`              | `%TEMP%\winsight\traces` when tracing is enabled | Trace and replay artifact directory |
 
 Baselines live outside the repository by default. `baselineKey` must be a

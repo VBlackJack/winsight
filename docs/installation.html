@@ -5,9 +5,9 @@
 <h1>Winsight est prêt à vous aider</h1>
 <p>Winsight permet à votre assistant d'inspecter et de piloter vos applications Windows.</p>
 <h2>Installation en trois étapes</h2>
-<ol><li>Fermez Codex, Claude Desktop, Claude Code et Gemini CLI.</li>
-<li>Lancez <strong>Winsight Setup</strong>, puis cochez les applications que vous utilisez.</li>
-<li>Rouvrez ces applications et acceptez la connexion à Winsight si elles vous le demandent.</li></ol>
+<ol><li>Lancez <strong>Winsight Setup</strong>, puis cochez les applications que vous utilisez (Codex, Claude Desktop, Claude Code, Gemini CLI). Lors d'une mise à jour, le setup ferme lui-même les serveurs Winsight en cours d'exécution.</li>
+<li>Redémarrez les applications qui avaient lancé Winsight, ou ouvrez celles que vous venez de cocher.</li>
+<li>Acceptez la connexion à Winsight si elles vous le demandent.</li></ol>
 <p>Aucune commande, clé API ou installation de .NET n'est nécessaire pour les outils de base.
 Les applications clientes doivent déjà être installées. Le setup détecte leurs dossiers de
 configuration ; vous pouvez aussi cocher manuellement une application.</p>
@@ -26,8 +26,9 @@ fichiers de configuration ; les journaux sont dans <code>%LOCALAPPDATA%\Winsight
 <p>La reconnaissance visuelle par modèle est facultative et nécessite une configuration
 supplémentaire, décrite dans <a href="tools-reference.md">la référence des outils</a>.</p>
 <hr><h2 lang="en">English quick start</h2>
-<p lang="en">Close your clients, run Winsight Setup, select Codex, Claude Desktop, Claude Code
-and/or Gemini CLI, then restart them. No terminal command or .NET installation is required.
+<p lang="en">Run Winsight Setup, select Codex, Claude Desktop, Claude Code
+and/or Gemini CLI, then restart them. When updating, setup closes any running Winsight
+servers itself, so restart the clients that started them. No terminal command or .NET installation is required.
 Ask your assistant to list open windows with Winsight. Rerun setup to add a client. Uninstall
 through Windows Settings. Existing conflicting Winsight registrations are preserved: remove
 them in the client's MCP settings before retrying. Backups remain beside client settings.</p>

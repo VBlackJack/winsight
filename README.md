@@ -12,10 +12,12 @@ development, going beyond what UI Automation alone can do.
 ## Get started in 60 seconds
 
 **Recommended:** download `Winsight-Setup-0.2.2-win-x64.exe` from
-[v0.2.2](https://github.com/VBlackJack/winsight/releases/tag/v0.2.2), close your
-clients, and follow the wizard. Select **Codex, Claude Desktop, Claude Code,
-and/or Gemini CLI**, then restart them. No terminal command or .NET installation
-is needed. The clients themselves must already be installed.
+[v0.2.2](https://github.com/VBlackJack/winsight/releases/tag/v0.2.2) and follow the
+wizard. Select **Codex, Claude Desktop, Claude Code, and/or Gemini CLI**, then
+restart them. No terminal command or .NET installation is needed. The clients
+themselves must already be installed. When updating, setup closes any running
+Winsight servers itself, so files in use no longer block it; restart the client
+applications that started them afterwards.
 See the [installation guide](docs/installation.html).
 
 For the portable Windows x64 build, download `winsight-0.2.2-win-x64.zip` and
@@ -32,7 +34,7 @@ To build from source:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 71 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 71 tools (count derived from the sources)
 ```
 
 Then in Claude Code, the `.mcp.json` at the repository root registers the
@@ -140,6 +142,7 @@ winsight/
 │   └── Winsight.E2E        End-to-end scenarios on SampleWpfApp and WpfLabApp
 ├── tools/
 │   ├── Winsight.Eval/      Model-neutral evaluation runner
+│   ├── release-preflight.ps1 Pre-release checks (clean tree, notes, tag, CI)
 │   ├── run-mcp.ps1         Runs a copy of the built server, so the build stays unlocked
 │   └── smoke-mcp.ps1       JSON-RPC smoke test for the stdio server
 └── docs/                   English documentation; docs/fr/ holds the French versions
@@ -168,6 +171,18 @@ The E2E suite launches `SampleWpfApp.exe`, exercises the desktop-facing
 workflow, and asserts the results. It requires an unlocked interactive desktop
 with focus available to the test process; Windows foreground-window restrictions
 can make focus-dependent cases fail in background or remote sessions.
+`FieldReportScenarioTests` covers the 0.5.0 field-report fixes on live windows:
+the screen-capture border mask, the OCR language fallback, title withholding,
+strict `actionableOnly`, and `region_uniform`.
+
+### Release checklist
+
+Before tagging, run `tools\release-preflight.ps1` from the repository root. It
+changes nothing and checks that the working tree is clean, `HEAD` equals
+`origin/main`, the release notes and a dated changelog entry exist for the
+version in `Directory.Build.props`, the tag is absent locally and on `origin`,
+and the CI run for `HEAD` succeeded. Exit code `0` means ready, `2` means a
+prerequisite (`git` or `gh`) is missing, `3` means a check failed.
 
 ## Running the MCP server
 
@@ -229,6 +244,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-mcp.ps1
 The process should remain open waiting for stdio input. Press
 `Ctrl+C` to exit. Logs go to stderr; stdout is reserved for MCP
 protocol traffic.
+
+To run the JSON-RPC smoke test, use `tools\smoke-mcp.ps1`. It derives the
+expected tool count from the sources; pass `-ExpectedToolCount N` to override it.
 
 ### Optional: enable visual grounding
 

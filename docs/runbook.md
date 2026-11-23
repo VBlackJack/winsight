@@ -197,6 +197,9 @@ Configuration formats were checked against the official
 and [Gemini CLI documentation](https://geminicli.com/docs/tools/mcp-server/).
 
 Run `dotnet test Winsight.slnx -c Release` on an interactive Windows desktop.
+`FieldReportScenarioTests` cover the 0.5.0 field-report fixes on live windows
+(screen-capture border mask, OCR language fallback, title withholding, strict
+`actionableOnly`, `region_uniform`).
 `AuditSafetyRegressionTests` and `AuditSafetyScenarioTests` cover process policy,
 non-forced closure, dry-run baselines, trace failures, unique artifacts, occlusion,
 and stale visual captures. The sample's `--refuse-close` flag is a test fixture
