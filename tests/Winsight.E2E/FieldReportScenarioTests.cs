@@ -254,11 +254,11 @@ public class FieldReportScenarioTests
     [Fact]
     public void A_focused_element_outside_the_target_has_its_name_and_window_title_withheld()
     {
-        // Start the lab first: a failure here must not leave a launched sample behind.
-        using WpfLabSession other = WpfLabSession.Start();
-        using Process target = LaunchSample();
+        // Launch the target first and the lab second: the last launched process takes the keyboard focus, which must land outside the target.
+        Process target = LaunchSample();
         try
         {
+            using WpfLabSession other = WpfLabSession.Start();
             Thread.Sleep(FocusSettleMs);
             SessionTarget session = new();
             session.Set(target.Id);
@@ -285,6 +285,7 @@ public class FieldReportScenarioTests
         finally
         {
             Kill(target);
+            target.Dispose();
         }
     }
 
