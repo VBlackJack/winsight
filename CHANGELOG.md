@@ -7,6 +7,23 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `list_windows` parameter `includeTitles` (default `false`) and `titleWithheld` on every entry; `get_focused_element` also reports `titleWithheld`.
+- `read_text_visually(language=...)` same-script fallback: when the requested language has no OCR component, an installed recognizer of the same script is used (same primary language, then the user-profile recognizer, then the first of that script). The result carries `language` (the recognizer used), `requestedLanguage`, and a `warning` starting with `ocr_language_fallback:`. With no same-script recognizer the call still fails with `ocr_unavailable`; a malformed tag fails with `ocr_language_invalid`.
+- Uniform capture warning: `capture_screenshot` and `capture_scene` screenshot data and `read_text_visually` results carry a `warning` starting with `region_uniform:` when the captured area is a single color (sampled), prompting a check of the application (stale or disconnected session) before concluding nothing is displayed. A legitimately blank window also triggers it. Two warnings are joined with `" | "`.
+
+### Changed
+
+- **Breaking:** `observe_scene` elements no longer carry a `window` object. Each element has `windowHandle` (omitted for DOM elements) and window bounds are sent once in `windows[]`. Clients reading `element.window` must read `windows[]` through `windowHandle`.
+- **Breaking:** `list_windows` without `processId` (desktop-wide mode) now returns `title: ""` and `titleWithheld: true` for every process other than the session target, also when no target is set. Pass `includeTitles=true` to get all titles, or discover targets by `processName`, `className`, and bounds. Per-process mode is unchanged. The `winsight://windows` resource follows the same default and has no opt-in.
+- **Breaking:** `get_focused_element` (and results embedding the focus information, such as `send_key_chord` and clipboard results) returns `topLevelWindowTitle: ""` with `titleWithheld: true` when the focused window does not belong to the target; the focused element `name` is also returned empty then (a focused browser tab or chat item exposes the page title or message text).
+- `observe_scene(actionableOnly=true)` is now strict: an element is kept only if it has at least one action other than `drag_to`, `right_click`, and `double_click`, and is visible or supports `scroll_into_view`. Separators, static texts, and invisible menu items are dropped. The same rule drives the `surfaceHint` sparse-UIA detection and the labels drawn by `capture_scene`. `any_change` verification under `actionableOnly` is unchanged and still sees static text changes.
+
+### Fixed
+
+- `captureSource="screen"` copies only the DWM extended frame of the window, so the invisible resize-border strips stay transparent instead of showing foreign pixels; the image keeps the window-rectangle size, so pixels still equal window-relative coordinates. Falls back to the full rectangle when the DWM frame is unavailable or not inside the window rectangle. Known limit: Windows 11 rounded corners can still show a few foreign pixels.
+
 ## [0.4.0] - 2026-11-20
 
 ### Added

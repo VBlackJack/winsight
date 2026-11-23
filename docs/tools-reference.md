@@ -70,6 +70,20 @@ repairable action.
 | `get_session_memory` / `clear_session_memory` | Inspect or reset observed locators and recent repairable failures |
 | `get_winsight_guide` | Return the embedded playbook for agents |
 
+### `observe_scene` perception contract
+
+- `actionableOnly=true` is strict: an element is kept only when it has at least
+  one action other than `drag_to`, `right_click`, and `double_click`, **and** it
+  is visible or supports `scroll_into_view`. Separators, static texts, and
+  invisible menu items are dropped. The same rule drives the sparse-UIA
+  detection behind `surfaceHint` and the labels drawn by `capture_scene`.
+  `any_change` verification under `actionableOnly` is unchanged and still sees
+  static text changes.
+- Scene elements no longer carry a `window` object (breaking change for clients
+  that read `element.window`). Each element has `windowHandle`, matching
+  `windows[].windowHandle` and omitted for DOM elements; window bounds are sent
+  once in `windows[]`.
+
 ### `observe`
 
 Use `observe` before acting on an unfamiliar UI. It combines `list_windows`,
@@ -304,7 +318,8 @@ dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
 
 | Name        | Type | Default | Description                                                                 |
 | ----------- | ---- | ------- | --------------------------------------------------------------------------- |
-| `processId` | int? | null    | When set, return that process's **full** window stack exhaustively (including untitled dialogs, popups, and menus). When omitted, return every **named** top-level window on the desktop (discovery; avoids helper-window noise). |
+| `processId` | int? | null    | When set, return that process's **full** window stack exhaustively (including untitled dialogs, popups, and menus), with full titles. When omitted, return every **named** top-level window on the desktop (discovery; avoids helper-window noise), with the titles of non-target processes withheld unless `includeTitles=true`. |
+| `includeTitles` | bool | false | Desktop-wide mode only (`processId` omitted): return the title of every window, including processes that are not the session target. Use it only when you must locate an app by window title. |
 
 **Returns**: JSON array of `WindowDescriptor`:
 
@@ -314,6 +329,7 @@ dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
     "processId": 14820,
     "windowHandle": 1247868,
     "title": "Winsight Sample - Counter",
+    "titleWithheld": false,
     "processName": "SampleWpfApp",
     "isForeground": true,
     "x": 750, "y": 400, "width": 420, "height": 280,
@@ -324,6 +340,15 @@ dropdown menus, flyouts, tooltips) are discoverable, not just reachable.
   }
 ]
 ```
+
+**Title withholding** (breaking change in the default behaviour): in desktop-wide
+mode (no `processId`), every process other than the session target gets
+`title: ""` and `titleWithheld: true`, also when no target is set, because
+desktop titles can expose unrelated documents, chats, and browser tabs. Every
+entry carries `titleWithheld`. Discover targets by `processName`, `className`,
+and bounds, or pass `includeTitles=true` when a title is needed. Per-process
+mode (`processId` set) is unchanged and always returns full titles. The
+`winsight://windows` resource follows the same default and has no opt-in.
 
 `kind` is one of `main`, `dialog` (owned captioned window or Win32 `#32770`,
 including MessageBox), `popup` (captionless overlay: dropdown, flyout, context
@@ -750,10 +775,20 @@ optional `processId`.
     "win32FocusClassName": "Chrome_WidgetWin_1",
     "topLevelWindowHandle": 25827204,
     "topLevelWindowTitle": "Heimdall - Remote Access Control Center",
-    "x": 1984, "y": 497, "width": 7, "height": 17
+    "x": 1984, "y": 497, "width": 7, "height": 17,
+    "titleWithheld": false
   }
 }
 ```
+
+When the focused window does not belong to the target (`belongsToTarget` is
+false), `topLevelWindowTitle` is `""` and `titleWithheld` is `true`, so the
+title of someone else's window never reaches the agent; the element `name` is
+also `""` then, because a focused browser tab or chat item exposes the page
+title or message text as its name. The same applies to the
+focus information embedded in other results, such as the `focus` of
+`send_key_chord` and the `focusedElement` of the clipboard and `type_keys`
+results. (Breaking change for clients that read the title of a non-target window.)
 
 `isWebView2` is true when any signal places the focus in WebView2: a Chromium
 `frameworkId`, an element owned by `msedgewebview2`, a Chromium window class
@@ -1225,6 +1260,20 @@ result is often a black rectangle.
 | `captureSource` | string | no     | `window` (default, `PrintWindow` on one HWND) or `screen` (DWM-composited desktop rectangle of the target window bounds, so floating popups, menus, dropdowns, and tooltips appear while keeping window-relative coordinates for `click_point`) |
 | `allowOccluded` | bool | no       | When `captureSource="screen"`, allow capturing even when another process window occludes the target window (default `false`). Minimized, cloaked, or hidden targets are still refused. |
 
+With `captureSource="screen"`, only the DWM extended frame of the window is
+copied: the invisible resize-border strips stay transparent, so no foreign
+pixels leak in. The image keeps the size of the window rectangle, so pixels
+still equal window-relative coordinates. When the DWM frame is unavailable or
+not inside the window rectangle, the full rectangle is copied. Known limit:
+Windows 11 rounded corners can still show a few foreign pixels.
+
+When the captured area is a single color (sampled), the `ScreenshotResult`
+carries a `warning` starting with `region_uniform:`. Check the application
+itself (a stale or disconnected session, a surface that has not painted yet)
+before concluding nothing is displayed; a legitimately blank window also
+triggers it. The same warning is attached to the `capture_scene` screenshot
+data. When two warnings apply they are joined with `" | "`.
+
 > **Output directory**: when `outputPath` is omitted, the capture is written
 > under the directory named by the `WINSIGHT_OUTPUT_DIR` environment variable,
 > falling back to `%TEMP%\winsight`. Set it to redirect captures into a folder a
@@ -1347,14 +1396,21 @@ nothing leaves the machine and nothing needs installing beyond an OCR language
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `region` | object? | no | `{ x, y, width, height }` in window coordinates |
-| `language` | string? | no | BCP-47 tag such as `en-US`; default the user profile languages |
+| `language` | string? | no | BCP-47 tag such as `en-US`; default the user profile languages. A malformed tag fails with `ocr_language_invalid` |
 | `scale` | int | no | Enlargement before recognition, 1 to 4, default 2 |
 | `windowTitle`, `processId` | | no | Window selection |
 
-**Returns** - `{ language, text, lines: [{ text, bounds, words: [{ text, bounds }] }], region, scale }`.
+**Returns** - `{ language, text, lines: [{ text, bounds, words: [{ text, bounds }] }], region, scale, requestedLanguage?, warning? }`.
 Every `bounds` is in window coordinates, the same space as window-relative
-`click_point`. Without a matching OCR language the call fails with
-`ocr_unavailable` and lists the installed ones. Inside a batch, assert with
+`click_point`. When the requested language has no OCR component, an installed
+recognizer of the same script is used (order: same primary language, the
+user-profile recognizer, the first of that script): `language` is then the
+recognizer actually used, `requestedLanguage` the requested tag, and `warning`
+starts with `ocr_language_fallback:`. When no recognizer of the same script is
+installed the call fails with `ocr_unavailable` and lists the installed ones.
+`warning` also starts with `region_uniform:` when the read area is a single
+color (sampled): check the application (stale or disconnected session) before
+concluding nothing is displayed. Two warnings are joined with `" | "`. Inside a batch, assert with
 `{ "action": "assert", "operator": "text_visible", "expectedValue": "...", "region": {...} }`:
 the comparison ignores case and collapses spacing.
 
@@ -1859,7 +1915,10 @@ Comma- or semicolon-separated list of process names (without `.exe`) whose foreg
 | `move_not_applied` | `click_point`, `hover_point`, `scroll_point`, physical clicks | Pointer remained at its pre-move starting position after settle (distinct from `cursor_moved`, which now means the pointer moved somewhere else than both start and target). Includes `SendInput` result, `attemptTraces`, `foregroundWindow`, `clipCursor`, `cursorInfo`, `integrity`, and `inputContext`. |
 | `foreground_rejects_synthetic_input` | Pointer input failures | Move was not applied and either a `SetCursorPos` probe returned `FALSE` with `GetLastError() == 0` or the foreground process is listed in `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS` (for example VMware Workstation while a powered-on VM is shown in the active tab; VMware host UI with no running VM in the active tab accepts synthetic input). |
 | `warning` (`foreground_may_reject_synthetic_input`) | `send_key_chord`, `type_keys`, `type_text` keyboard fallback | Non-blocking warning attached to successful keyboard results when the foreground process is listed in `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
-| `captureSource` / `allowOccluded` | `capture_screenshot`, `capture_scene`, `observe` | `captureSource="screen"` captures the DWM-composited desktop rectangle of the target window bounds (showing floating popups, menus, and tooltips while preserving window-relative coordinates); refused when not visible or occluded by another process unless `allowOccluded=true`. `ScreenshotResult.captureSource` reports the mode used. |
+| `captureSource` / `allowOccluded` | `capture_screenshot`, `capture_scene`, `observe` | `captureSource="screen"` captures the DWM-composited desktop rectangle of the target window bounds (showing floating popups, menus, and tooltips while preserving window-relative coordinates); refused when not visible or occluded by another process unless `allowOccluded=true`. `ScreenshotResult.captureSource` reports the mode used. Only the DWM extended frame is copied (resize-border strips stay transparent; the image keeps the window-rectangle size), falling back to the full rectangle when the frame is unavailable. |
+| `warning` (`region_uniform`) | `capture_screenshot`, `capture_scene`, `read_text_visually` | Present when the captured or read area is a single color (sampled): check the application (stale or disconnected session) before concluding nothing is displayed. A legitimately blank window also triggers it. Joined with `" | "` when another warning applies. |
+| `warning` (`ocr_language_fallback`), `requestedLanguage` | `read_text_visually` | The requested OCR language was not installed and a recognizer of the same script was used; `language` is the one used. |
+| `titleWithheld` | `list_windows`, `get_focused_element`, `winsight://windows` | `true` when the window title is replaced by `""` because the window does not belong to the session target (desktop-wide listing, or focus outside the target). |
 | `truncationReason` | `observe_scene`, `inspect_ui_tree`, `snapshot_ui` | Explains early traversal stop when `truncated=true`: `time_budget` (`WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS`, default `5000` ms, range `100..120000`), `node_limit`, `max_results`, or `com_error`. |
 | `any_change_unrelated` (`hint`) | `act_verified` | Non-blocking `hint` returned on `verified` when `expect.kind=any_change` matched only elements unrelated to the target (not the target, not its descendants, not a new window), recommending strict kinds (`window_open`, `selected`, `value`, `toggle`, ...). |
 | `sessionLockSource` | `get_user_activity` | Reports which method produced `sessionLocked`: `wts`, `input_desktop`, or `unknown`. |
