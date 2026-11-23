@@ -48,42 +48,7 @@ public static class Program
             options.LogToStandardErrorThreshold = LogLevel.Trace;
         });
 
-        builder.Services.AddSingleton<SessionTarget>();
-        builder.Services.AddSingleton<UiaSceneDriver>();
-        builder.Services.AddSingleton<SceneServices>();
-        builder.Services.AddSingleton<SceneStore>(sp => new SceneStore(sp.GetRequiredService<SceneServices>()));
-        builder.Services.AddSingleton<ApplicationProfiles>();
-        builder.Services.AddSingleton<SessionMemory>();
-        builder.Services.AddSingleton<WindowDiscovery>();
-        builder.Services.AddSingleton<AppLauncher>();
-        builder.Services.AddSingleton<UiTreeInspector>();
-        builder.Services.AddSingleton<AffordanceScanner>();
-        builder.Services.AddSingleton<UiSnapshotter>();
-        builder.Services.AddSingleton<UiSnapshotStore>();
-        builder.Services.AddSingleton<ActionInvoker>();
-        builder.Services.AddSingleton<ElementStateReader>();
-        builder.Services.AddSingleton<FocusedElementReader>();
-        builder.Services.AddSingleton<WindowManager>();
-        builder.Services.AddSingleton<ElementWaiter>();
-        builder.Services.AddSingleton<UiEventWatcher>();
-        builder.Services.AddSingleton<ManagedStateReader>();
-        builder.Services.AddSingleton<WindowCapture>();
-        builder.Services.AddSingleton<StepRunner>();
-        builder.Services.AddSingleton<WebView2Detector>();
-        builder.Services.AddSingleton<DiagnosticsObserver>();
-        builder.Services.AddSingleton<VisualDiffer>();
-        builder.Services.AddSingleton<UserActivityMonitor>();
-        builder.Services.AddSingleton<ClipboardService>();
-        builder.Services.AddSingleton<VisualWaiter>();
-        builder.Services.AddSingleton<VisualTextReader>();
-
-        builder.Services.AddHttpClient();
-        builder.Services.AddSingleton<CdpTargetDiscovery>(sp =>
-        {
-            HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(CdpTargetDiscovery));
-            return new CdpTargetDiscovery(http);
-        });
-        builder.Services.AddSingleton<IElementGrounder>(VisionGrounderRegistration.Create);
+        RegisterServices(builder.Services);
 
         builder.Services
             .AddMcpServer()
@@ -95,5 +60,47 @@ public static class Program
         builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, McpServerConfiguration>();
 
         await builder.Build().RunAsync();
+    }
+
+    /// <summary>Registers the host's singleton services; shared with tests so a missing registration fails there.</summary>
+    internal static void RegisterServices(IServiceCollection services)
+    {
+        services.AddSingleton<SessionTarget>();
+        services.AddSingleton<UiaSceneDriver>();
+        services.AddSingleton<ISceneDriver>(sp => sp.GetRequiredService<UiaSceneDriver>());
+        services.AddSingleton<SceneServices>();
+        services.AddSingleton<SceneStore>(sp => new SceneStore(sp.GetRequiredService<SceneServices>()));
+        services.AddSingleton<ApplicationProfiles>();
+        services.AddSingleton<SessionMemory>();
+        services.AddSingleton<WindowDiscovery>();
+        services.AddSingleton<AppLauncher>();
+        services.AddSingleton<UiTreeInspector>();
+        services.AddSingleton<AffordanceScanner>();
+        services.AddSingleton<UiSnapshotter>();
+        services.AddSingleton<UiSnapshotStore>();
+        services.AddSingleton<ActionInvoker>();
+        services.AddSingleton<ElementStateReader>();
+        services.AddSingleton<FocusedElementReader>();
+        services.AddSingleton<WindowManager>();
+        services.AddSingleton<ElementWaiter>();
+        services.AddSingleton<UiEventWatcher>();
+        services.AddSingleton<ManagedStateReader>();
+        services.AddSingleton<WindowCapture>();
+        services.AddSingleton<StepRunner>();
+        services.AddSingleton<WebView2Detector>();
+        services.AddSingleton<DiagnosticsObserver>();
+        services.AddSingleton<VisualDiffer>();
+        services.AddSingleton<UserActivityMonitor>();
+        services.AddSingleton<ClipboardService>();
+        services.AddSingleton<VisualWaiter>();
+        services.AddSingleton<VisualTextReader>();
+
+        services.AddHttpClient();
+        services.AddSingleton<CdpTargetDiscovery>(sp =>
+        {
+            HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(CdpTargetDiscovery));
+            return new CdpTargetDiscovery(http);
+        });
+        services.AddSingleton<IElementGrounder>(VisionGrounderRegistration.Create);
     }
 }

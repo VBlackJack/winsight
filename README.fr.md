@@ -11,21 +11,23 @@ Windows en cours de développement, au-delà de ce que permet UI Automation seul
 
 ## Démarrer en 60 secondes
 
-**Recommandé:** téléchargez `Winsight-Setup-0.2.2-win-x64.exe` depuis
-[v0.2.2](https://github.com/VBlackJack/winsight/releases/tag/v0.2.2), fermez vos
-clients et suivez l'assistant. Sélectionnez **Codex, Claude Desktop, Claude Code
-et/ou Gemini CLI**, puis redémarrez-les. Aucune commande en terminal ni aucune
-installation de .NET n'est nécessaire. Les clients eux-mêmes doivent déjà être
-installés. Consultez le [guide d'installation](docs/installation.html).
+**Recommandé:** téléchargez `Winsight-Setup-0.6.0-win-x64.exe` depuis
+[v0.6.0](https://github.com/VBlackJack/winsight/releases/tag/v0.6.0) et suivez
+l'assistant. Sélectionnez **Codex, Claude Desktop, Claude Code et/ou Gemini CLI**,
+puis redémarrez-les. Aucune commande en terminal ni aucune installation de .NET
+n'est nécessaire. Les clients eux-mêmes doivent déjà être installés. Lors d'une
+mise à jour, l'installation ferme elle-même les serveurs Winsight en cours
+d'exécution : les fichiers utilisés ne la bloquent plus. Redémarrez ensuite les
+applications clientes qui les ont lancés. Consultez le [guide d'installation](docs/installation.html).
 
-Pour la version portable Windows x64, téléchargez `winsight-0.2.2-win-x64.zip` et
-`SHA256SUMS.txt` depuis [v0.2.2](https://github.com/VBlackJack/winsight/releases/tag/v0.2.2).
+Pour la version portable Windows x64, téléchargez `winsight-0.6.0-win-x64.zip` et
+`SHA256SUMS.txt` depuis [v0.6.0](https://github.com/VBlackJack/winsight/releases/tag/v0.6.0).
 Vérifiez l'archive avec `Get-FileHash -Algorithm SHA256`, extrayez-la, puis
 déclarez le chemin absolu de `winsight-mcp.exe` comme commande stdio de votre
 client MCP. L'archive inclut le runtime .NET; aucune installation de SDK n'est
 requise. Les poids des modèles de vision et les identifiants d'API se
 configurent séparément. Consultez les
-[notes de version](docs/fr/release-notes/v0.2.2.md) pour la configuration et les
+[notes de version](docs/fr/release-notes/v0.6.0.md) pour la configuration et les
 limites de validation.
 
 Pour compiler depuis les sources:
@@ -34,7 +36,7 @@ Pour compiler depuis les sources:
 git clone https://github.com/VBlackJack/winsight.git
 cd winsight
 dotnet build -c Release
-.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 71 tools
+.\tools\smoke-mcp.ps1                  # confirms the server speaks MCP and lists 71 tools (count derived from the sources)
 ```
 
 Ensuite, dans Claude Code, le fichier `.mcp.json` à la racine du dépôt déclare
@@ -147,6 +149,7 @@ winsight/
 ├── tools/
 │   ├── Winsight.Eval/      Exécuteur d'évaluation indépendant du modèle
 │   ├── run-mcp.ps1         Lance une copie du serveur compilé, pour que la compilation reste déverrouillée
+│   ├── release-preflight.ps1 Contrôles avant release (arbre propre, notes, tag, CI)
 │   └── smoke-mcp.ps1       Test de fumée JSON-RPC du serveur stdio
 └── docs/                   Documentation anglaise; docs/fr/ contient les versions françaises
     ├── architecture.md
@@ -176,6 +179,20 @@ vérifie les résultats. Elle nécessite un bureau interactif déverrouillé don
 focus est disponible pour le processus de test; les restrictions de Windows sur
 la fenêtre de premier plan peuvent faire échouer les cas dépendants du focus
 dans les sessions en arrière-plan ou distantes.
+`FieldReportScenarioTests` couvre sur des fenêtres réelles les correctifs du
+rapport de terrain de la 0.5.0 : le masque de bordure de la capture d'écran, le
+repli de langue OCR, le retrait des titres, `actionableOnly` strict et
+`region_uniform`.
+
+### Liste de contrôle de release
+
+Avant de poser le tag, lancez `tools\release-preflight.ps1` depuis la racine du
+dépôt. Il ne modifie rien et vérifie que l'arbre de travail est propre, que
+`HEAD` égale `origin/main`, que les notes de version et une entrée datée du
+journal des modifications existent pour la version de `Directory.Build.props`,
+que le tag est absent en local et sur `origin`, et que l'exécution de la CI
+pour `HEAD` a réussi. Le code de sortie `0` signifie prêt, `2` qu'un prérequis
+(`git` ou `gh`) manque, `3` qu'un contrôle a échoué.
 
 ## Exécuter le serveur MCP
 
@@ -239,6 +256,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-mcp.ps1
 Le processus doit rester ouvert en attente d'entrées stdio. Appuyez sur
 `Ctrl+C` pour quitter. Les journaux vont sur stderr; stdout est réservé au
 trafic du protocole MCP.
+
+Pour lancer le test de fumée JSON-RPC, utilisez `tools\smoke-mcp.ps1`. Il dérive
+le nombre d'outils attendu des sources ; passez `-ExpectedToolCount N` pour le
+remplacer.
 
 ### Facultatif: activer l'ancrage visuel
 

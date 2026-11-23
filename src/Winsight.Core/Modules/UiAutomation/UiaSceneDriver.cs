@@ -26,7 +26,7 @@ using Winsight.Core.Models;
 namespace Winsight.Core.Modules.UiAutomation;
 
 /// <summary>Captures and revalidates live UIA identities, not index-based guesses.</summary>
-public sealed class UiaSceneDriver
+public sealed class UiaSceneDriver : ISceneDriver
 {
     private const int MaximumText = 512;
     private const int DragSteps = 12;

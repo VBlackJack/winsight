@@ -215,6 +215,9 @@ officielle:
 et [documentation Gemini CLI](https://geminicli.com/docs/tools/mcp-server/).
 
 Lancez `dotnet test Winsight.slnx -c Release` sur un bureau Windows interactif.
+`FieldReportScenarioTests` couvre sur des fenêtres réelles les correctifs du
+rapport de terrain de la 0.5.0 (masque de bordure de la capture d'écran, repli
+de langue OCR, retrait des titres, `actionableOnly` strict, `region_uniform`).
 `AuditSafetyRegressionTests` et `AuditSafetyScenarioTests` couvrent la politique
 de processus, la fermeture non forcée, les références en simulation, les échecs
 de trace, l'unicité des artefacts, l'occlusion et les captures visuelles

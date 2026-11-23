@@ -19,6 +19,10 @@ namespace Winsight.Core.Modules.Capture;
 /// <summary>
 /// Snapshot of a top-level window's visibility and bounds used to decide
 /// whether a desktop-composited ("screen") capture of a target window is safe.
+/// <para>
+/// <see cref="Title"/> is left empty on purpose by the capture path: titles of
+/// other processes are not read, so the policy never depends on it.
+/// </para>
 /// </summary>
 public readonly record struct OcclusionWindow(
     long Handle,
@@ -99,13 +103,10 @@ public static class ScreenCapturePolicy
 
             if (Intersects(target.Bounds, candidate.Bounds))
             {
-                string titleSuffix = string.IsNullOrWhiteSpace(candidate.Title)
-                    ? string.Empty
-                    : $" (\"{candidate.Title}\")";
                 return new OcclusionCheckResult(
                     Allowed: false,
                     Reason: $"Cannot capture with captureSource=\"screen\": target window 0x{target.Handle:x} " +
-                            $"(process {target.ProcessId}) is occluded by window 0x{candidate.Handle:x}{titleSuffix} " +
+                            $"(process {target.ProcessId}) is occluded by window 0x{candidate.Handle:x} " +
                             $"of process {candidate.ProcessId}. Bring the target window to the front, use " +
                             "captureSource=\"window\", or pass allowOccluded=true.",
                     Occluder: candidate);

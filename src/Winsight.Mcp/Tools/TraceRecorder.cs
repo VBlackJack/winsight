@@ -126,7 +126,7 @@ internal static class TraceRecorder
         }
 
         string path = Path.Combine(directory, $"run-steps-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.json");
-        string json = JsonSerializer.Serialize(replay, JsonOptions.Default);
+        string json = JsonSerializer.Serialize(replay, JsonOptions.Indented);
         File.WriteAllText(path, json);
         return path;
     }

@@ -16,7 +16,7 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
-    [int]$ExpectedToolCount = 71,
+    [int]$ExpectedToolCount = 0,
     [int]$ResponseTimeoutSeconds = 10
 )
 
@@ -28,6 +28,22 @@ $dll = Join-Path $repoRoot "src\Winsight.Mcp\bin\$Configuration\net10.0-windows1
 if (-not (Test-Path $dll)) {
     Write-Error "Build artifact not found: $dll`nBuild first: dotnet build -c $Configuration"
     exit 1
+}
+
+if ($ExpectedToolCount -le 0) {
+    $toolNamePattern = 'McpServerTool\(\s*Name\s*=\s*"([a-z0-9_]+)"'
+    $sourceRoot = Join-Path $repoRoot "src\Winsight.Mcp"
+    $declared = Get-ChildItem -Path $sourceRoot -Filter *.cs -Recurse -File |
+        Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
+        ForEach-Object { [regex]::Matches([string](Get-Content -LiteralPath $_.FullName -Raw), $toolNamePattern) } |
+        ForEach-Object { $_.Groups[1].Value } |
+        Sort-Object -Unique
+    $ExpectedToolCount = ($declared | Measure-Object).Count
+    if ($ExpectedToolCount -eq 0) {
+        Write-Error "Could not derive the expected tool count: no [McpServerTool(Name = ...)] found under $sourceRoot."
+        exit 1
+    }
+    Write-Host "Expected tool count derived from sources: $ExpectedToolCount" -ForegroundColor DarkGray
 }
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo

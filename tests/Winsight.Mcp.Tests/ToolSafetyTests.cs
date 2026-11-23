@@ -136,7 +136,7 @@ public class ToolSafetyTests
 
             Directory.GetFiles(traceDir, "*.jsonl").Should().ContainSingle();
             File.ReadAllText(Directory.GetFiles(traceDir, "*.jsonl").Single())
-                .Should().Contain("\"success\": true");
+                .Should().Contain("\"success\":true");
         }
         finally
         {

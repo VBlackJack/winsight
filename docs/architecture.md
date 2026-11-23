@@ -433,7 +433,9 @@ so an agent driving one or multiple apps need not repeat raw process ids.
 Verified scene tools share DI-managed singletons through `SceneServices`
 (including `UiaSceneDriver`, `VisualTextReader`, `WebView2Detector`,
 `ApplicationProfiles` and `SessionMemory` with consecutive-failure loop
-detection). `UiEventWatcher` provides bounded real-time UIA event hooks and
+detection). `ISceneDriver` is the seam between the scene tools and UI
+Automation (scene capture and action dispatch); `UiaSceneDriver` is the live
+implementation, and tests substitute a fake driver. `UiEventWatcher` provides bounded real-time UIA event hooks and
 `UiAccessibilityAuditor` runs deterministic QA checks on captured UIA scenes.
 
 `ToolListAnnouncer` sends `notifications/tools/list_changed` once the client
@@ -469,7 +471,7 @@ image-returning capture tools). The guard:
 - Mirrors the original exception (with full stack) to **stderr** so a
   human attaching to the host process can see what happened. Stdout
   remains reserved for MCP protocol traffic.
-- Records a compact JSONL tool event when `WINSIGHT_TRACE` or
+- Records a compact JSONL tool event (one record per line) when `WINSIGHT_TRACE` or
   `WINSIGHT_TRACE_DIR` is set: tool name, duration, success/error, and
   payload byte count.
 - Lets truly fatal exceptions propagate (`OutOfMemoryException`,

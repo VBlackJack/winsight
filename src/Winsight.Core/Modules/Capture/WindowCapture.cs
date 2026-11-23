@@ -39,7 +39,6 @@ public sealed class WindowCapture
     private const uint LWA_ALPHA = 0x00000002;
     private const uint DWMWA_EXTENDED_FRAME_BOUNDS = 9;
     private const uint DWMWA_CLOAKED = 14;
-    private const int MaxTitleLength = 256;
     private const int MaxZOrderWalk = 4096;
 
     /// <summary>
@@ -276,11 +275,10 @@ public sealed class WindowCapture
         bool isCloaked = IsWindowCloaked(hwnd);
         bool isZeroAlpha = IsZeroAlphaLayered(hwnd);
         WindowBounds bounds = ReadVisibleBounds(hwnd);
-        string title = ReadWindowTitle(hwnd);
         return new OcclusionWindow(
             Handle: hwnd.ToInt64(),
             ProcessId: processId,
-            Title: title,
+            Title: string.Empty,
             Bounds: bounds,
             IsVisible: isVisible,
             IsMinimized: isMinimized,
@@ -338,13 +336,6 @@ public sealed class WindowCapture
         return NativeMethods.GetLayeredWindowAttributes(hwnd, out _, out byte alpha, out uint flags) &&
                (flags & LWA_ALPHA) != 0 &&
                alpha == 0;
-    }
-
-    private static string ReadWindowTitle(IntPtr hwnd)
-    {
-        char[] buffer = new char[MaxTitleLength];
-        int length = NativeMethods.GetWindowText(hwnd, buffer, buffer.Length);
-        return length > 0 ? new string(buffer, 0, length) : string.Empty;
     }
 
     /// <summary>
@@ -599,9 +590,6 @@ public sealed class WindowCapture
 
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
-
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        public static extern int GetWindowText(IntPtr hwnd, [Out] char[] lpString, int nMaxCount);
 
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
         public static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int nIndex);
