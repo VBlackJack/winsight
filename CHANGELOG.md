@@ -7,6 +7,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-23
+
 ### Added
 
 - `tools/release-preflight.ps1`: read-only pre-release check that the working tree is clean, `HEAD` equals `origin/main`, release notes and a dated changelog entry exist for the version, the tag is absent locally and on `origin`, and the CI run for `HEAD` succeeded. Exit codes: `0` ok, `2` prerequisite missing, `3` a check failed.
@@ -15,7 +17,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Tool output is compact JSON (no indentation, no space after `:`). Field names and null omission are unchanged. The daily `.jsonl` trace stays one record per line; the `run_steps` replay file stays indented.
+- Tool output is compact JSON (no indentation, no space after `:`). Field names and null omission are unchanged. The `run_steps` replay file stays indented.
 - The installer closes running Winsight servers itself on update (`CloseApplications=force`), so files in use no longer block it. The client applications that started them must be restarted afterwards; the setup introduction text says so.
 - `tools/smoke-mcp.ps1` derives the expected tool count from the sources. `-ExpectedToolCount N` still overrides it.
 - The `captureSource="screen"` occlusion refusal names the occluding window by handle and process id and no longer includes that window's title.
