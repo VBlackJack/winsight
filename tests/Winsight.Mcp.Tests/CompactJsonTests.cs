@@ -24,14 +24,13 @@ namespace Winsight.Mcp.Tests;
 public sealed class CompactJsonTests : IDisposable
 {
     private const int RecordCount = 3;
-    private const string TraceDirectoryVariable = "WINSIGHT_TRACE_DIR";
     private static readonly string[] SampleItems = ["a", "b"];
-    private readonly string? _previousDirectory = Environment.GetEnvironmentVariable(TraceDirectoryVariable);
+    private readonly string? _previousDirectory = Environment.GetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable);
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "winsight-compact-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {
-        Environment.SetEnvironmentVariable(TraceDirectoryVariable, _previousDirectory);
+        Environment.SetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable, _previousDirectory);
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
     }
 
@@ -63,7 +62,7 @@ public sealed class CompactJsonTests : IDisposable
     [Fact]
     public void Trace_file_holds_one_json_record_per_line()
     {
-        Environment.SetEnvironmentVariable(TraceDirectoryVariable, _directory);
+        Environment.SetEnvironmentVariable(TraceRecorder.TraceDirectoryVariable, _directory);
         string payload = JsonSerializer.Serialize(OperationResult.Ok(), JsonOptions.Default);
 
         for (int i = 0; i < RecordCount; i++)

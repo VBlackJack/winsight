@@ -41,6 +41,8 @@ public class FieldReportScenarioTests
 {
     private const string ReadyLabelId = "CountLabel";
     private const string ScreenSource = "screen";
+    private const string ScreenPolicyRefusalPrefix = "Cannot capture with captureSource=\"screen\"";
+    private const string UiaSource = "uia";
     private const string FallbackWarningPrefix = "ocr_language_fallback:";
     private const string InvalidLanguagePrefix = "ocr_language_invalid";
     private const string UnavailableOcrPrefix = "ocr_unavailable";
@@ -76,7 +78,15 @@ public class FieldReportScenarioTests
             using JsonDocument document = JsonDocument.Parse(json);
             if (call.IsError == true || !document.RootElement.GetProperty("success").GetBoolean())
             {
-                Assert.Skip("The screen capture was refused (environmental): " + json);
+                string? error = document.RootElement.TryGetProperty("error", out JsonElement errorElement)
+                    ? errorElement.GetString()
+                    : null;
+                if (error is not null && error.StartsWith(ScreenPolicyRefusalPrefix, StringComparison.Ordinal))
+                {
+                    Assert.Skip("The screen capture was refused by the occlusion policy (environmental): " + json);
+                }
+
+                Assert.Fail("The screen capture failed unexpectedly: " + json);
             }
 
             JsonElement data = document.RootElement.GetProperty("data");
@@ -155,9 +165,13 @@ public class FieldReportScenarioTests
 
             document.RootElement.GetProperty("success").GetBoolean().Should().BeTrue(document.RootElement.ToString());
             JsonElement data = document.RootElement.GetProperty("data");
-            data.GetProperty("requestedLanguage").GetString().Should().Be(candidate);
+            data.TryGetProperty("warning", out JsonElement warning).Should().BeTrue(
+                "a fallback must report a warning: " + data);
+            warning.GetString().Should().StartWith(FallbackWarningPrefix);
+            data.TryGetProperty("requestedLanguage", out JsonElement requested).Should().BeTrue(
+                "a fallback must report the requested language: " + data);
+            requested.GetString().Should().Be(candidate);
             data.GetProperty("language").GetString().Should().NotBeNullOrEmpty().And.NotBe(candidate);
-            data.GetProperty("warning").GetString().Should().StartWith(FallbackWarningPrefix);
             data.GetProperty("text").GetString().Should().NotBeNullOrWhiteSpace("the fallback recognizer still reads the window");
         }
         finally
@@ -188,8 +202,9 @@ public class FieldReportScenarioTests
     [Fact]
     public void Desktop_wide_window_listing_withholds_titles_of_processes_other_than_the_target()
     {
-        using Process target = LaunchSample();
+        // Start the lab first: a failure here must not leave a launched sample behind.
         using WpfLabSession other = WpfLabSession.Start();
+        using Process target = LaunchSample();
         try
         {
             Thread.Sleep(WindowSettleMs);
@@ -239,8 +254,9 @@ public class FieldReportScenarioTests
     [Fact]
     public void A_focused_element_outside_the_target_has_its_name_and_window_title_withheld()
     {
-        using Process target = LaunchSample();
+        // Start the lab first: a failure here must not leave a launched sample behind.
         using WpfLabSession other = WpfLabSession.Start();
+        using Process target = LaunchSample();
         try
         {
             Thread.Sleep(FocusSettleMs);
@@ -260,6 +276,8 @@ public class FieldReportScenarioTests
                 Assert.Skip("The target kept the keyboard focus (foreground lock), nothing to withhold.");
             }
 
+            data.GetProperty("processId").GetInt32().Should().Be(other.ProcessId,
+                "the focus belongs to the other process, not the target");
             data.GetProperty("topLevelWindowTitle").GetString().Should().BeEmpty();
             data.GetProperty("name").GetString().Should().BeEmpty();
             data.GetProperty("titleWithheld").GetBoolean().Should().BeTrue();
@@ -298,7 +316,7 @@ public class FieldReportScenarioTests
             foreach (JsonElement element in elements)
             {
                 element.TryGetProperty("window", out _).Should().BeFalse("window bounds live in windows[] only");
-                if (element.GetProperty("source").GetString() == "uia")
+                if (element.GetProperty("source").GetString() == UiaSource)
                 {
                     JsonElement handle = element.GetProperty("windowHandle");
                     handle.ValueKind.Should().Be(JsonValueKind.Number);
@@ -510,6 +528,14 @@ public class FieldReportScenarioTests
         catch (InvalidOperationException)
         {
             // Already exited.
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Access denied or the process is already terminating.
+        }
+        catch (AggregateException)
+        {
+            // Some members of the process tree could not be terminated.
         }
     }
 

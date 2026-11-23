@@ -19,6 +19,10 @@ namespace Winsight.Core.Modules.Capture;
 /// <summary>
 /// Snapshot of a top-level window's visibility and bounds used to decide
 /// whether a desktop-composited ("screen") capture of a target window is safe.
+/// <para>
+/// <see cref="Title"/> is left empty on purpose by the capture path: titles of
+/// other processes are not read, so the policy never depends on it.
+/// </para>
 /// </summary>
 public readonly record struct OcclusionWindow(
     long Handle,

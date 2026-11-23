@@ -26,6 +26,7 @@ $ExitPrerequisite = 2
 $ExitCheckFailed = 3
 $RemoteName = 'origin'
 $MainRef = 'origin/main'
+$ShortShaLength = 7
 
 $script:failures = 0
 
@@ -55,9 +56,10 @@ function Invoke-Native {
     # Windows PowerShell 5.1 turns native stderr into terminating errors under 'Stop'.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    try { $output = & $Command @Arguments 2>&1 } finally { $ErrorActionPreference = $previous }
+    try { $output = @(& $Command @Arguments 2>&1) } finally { $ErrorActionPreference = $previous }
     if ($LASTEXITCODE -ne 0) { throw "$Command $($Arguments -join ' ') failed (exit $LASTEXITCODE): $(($output | Out-String).Trim())" }
-    return $output
+    # Return stdout only: stderr notices (gh, git line-ending warnings) must not corrupt parsed text.
+    return @($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
 }
 
 foreach ($tool in @('git', 'gh')) {
@@ -90,8 +92,8 @@ try {
 
         Invoke-Check "HEAD equals $MainRef" {
             $main = ([string](Invoke-Native git @('rev-parse', $MainRef))).Trim()
-            if ($head -ne $main) { throw "HEAD $($head.Substring(0, 7)) differs from $MainRef $($main.Substring(0, 7))" }
-            $head.Substring(0, 7)
+            if ($head -ne $main) { throw "HEAD $($head.Substring(0, $ShortShaLength)) differs from $MainRef $($main.Substring(0, $ShortShaLength))" }
+            $head.Substring(0, $ShortShaLength)
         }
 
         $notes = Join-Path $repository "docs\release-notes-$tag.md"
@@ -122,10 +124,14 @@ try {
 
         Invoke-Check "$Workflow run for HEAD succeeded" {
             $json = [string](Invoke-Native gh @('run', 'list', '--commit', $head, '--workflow', $Workflow, '--json', 'status,conclusion') | Out-String)
-            $runs = @($json | ConvertFrom-Json)
+            # Inner parentheses enumerate the array in Windows PowerShell 5.1.
+            $runs = @(($json | ConvertFrom-Json))
             if ($runs.Count -eq 0) { throw 'no run found for this commit' }
-            $good = @($runs | Where-Object { $_.status -eq 'completed' -and $_.conclusion -eq 'success' })
-            if ($good.Count -eq 0) { throw "latest run is $($runs[0].status)/$($runs[0].conclusion)" }
+            # gh run list returns the newest run first.
+            $latest = $runs[0]
+            $state = '{0}/{1}' -f $latest.status, $latest.conclusion
+            if ($latest.status -ne 'completed' -or $latest.conclusion -ne 'success') { throw "latest run is $state" }
+            "latest run $state"
         }
     } finally {
         Pop-Location

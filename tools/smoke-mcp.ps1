@@ -35,7 +35,7 @@ if ($ExpectedToolCount -le 0) {
     $sourceRoot = Join-Path $repoRoot "src\Winsight.Mcp"
     $declared = Get-ChildItem -Path $sourceRoot -Filter *.cs -Recurse -File |
         Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
-        ForEach-Object { [regex]::Matches((Get-Content -LiteralPath $_.FullName -Raw), $toolNamePattern) } |
+        ForEach-Object { [regex]::Matches([string](Get-Content -LiteralPath $_.FullName -Raw), $toolNamePattern) } |
         ForEach-Object { $_.Groups[1].Value } |
         Sort-Object -Unique
     $ExpectedToolCount = ($declared | Measure-Object).Count
