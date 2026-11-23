@@ -92,7 +92,8 @@ public class ScreenCapturePolicyTests
 
         result.Allowed.Should().BeFalse();
         result.Occluder.Should().Be(otherApp);
-        result.Reason.Should().Contain("OtherApp").And.Contain("allowOccluded=true");
+        result.Reason.Should().Contain("window 0x200").And.Contain("of process 20")
+            .And.Contain("allowOccluded=true").And.NotContain("OtherApp");
     }
 
     [Fact]

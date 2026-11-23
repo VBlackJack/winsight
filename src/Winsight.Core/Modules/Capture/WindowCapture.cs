@@ -276,11 +276,10 @@ public sealed class WindowCapture
         bool isCloaked = IsWindowCloaked(hwnd);
         bool isZeroAlpha = IsZeroAlphaLayered(hwnd);
         WindowBounds bounds = ReadVisibleBounds(hwnd);
-        string title = ReadWindowTitle(hwnd);
         return new OcclusionWindow(
             Handle: hwnd.ToInt64(),
             ProcessId: processId,
-            Title: title,
+            Title: string.Empty,
             Bounds: bounds,
             IsVisible: isVisible,
             IsMinimized: isMinimized,

@@ -99,13 +99,10 @@ public static class ScreenCapturePolicy
 
             if (Intersects(target.Bounds, candidate.Bounds))
             {
-                string titleSuffix = string.IsNullOrWhiteSpace(candidate.Title)
-                    ? string.Empty
-                    : $" (\"{candidate.Title}\")";
                 return new OcclusionCheckResult(
                     Allowed: false,
                     Reason: $"Cannot capture with captureSource=\"screen\": target window 0x{target.Handle:x} " +
-                            $"(process {target.ProcessId}) is occluded by window 0x{candidate.Handle:x}{titleSuffix} " +
+                            $"(process {target.ProcessId}) is occluded by window 0x{candidate.Handle:x} " +
                             $"of process {candidate.ProcessId}. Bring the target window to the front, use " +
                             "captureSource=\"window\", or pass allowOccluded=true.",
                     Occluder: candidate);

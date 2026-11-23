@@ -28,7 +28,7 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\winsight-mcp.exe
 LicenseFile=..\LICENSE
-CloseApplications=no
+CloseApplications=force
 RestartApplications=no
 SetupLogging=yes
 
@@ -39,8 +39,8 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 [CustomMessages]
 english.Clients=Connect Winsight to these applications:
 french.Clients=Connecter Winsight a ces applications :
-english.Intro=Install Winsight, select your applications, then restart them. No terminal commands are required. Your applications must already be installed. Close them before continuing; existing settings are backed up. An existing Winsight entry pointing elsewhere must first be removed in that application.
-french.Intro=Installez Winsight, choisissez vos applications, puis redemarrez-les. Aucune commande a saisir. Les applications doivent deja etre installees. Fermez-les avant de continuer ; les reglages existants seront sauvegardes. Une entree Winsight pointant ailleurs doit d'abord etre retiree dans l'application.
+english.Intro=Install Winsight, select your applications, then restart them. No terminal commands are required. Your applications must already be installed; existing settings are backed up. When updating, setup closes any running Winsight servers, so the applications that started them must be restarted afterwards. An existing Winsight entry pointing elsewhere must first be removed in that application.
+french.Intro=Installez Winsight, choisissez vos applications, puis redemarrez-les. Aucune commande a saisir. Les applications doivent deja etre installees ; les reglages existants seront sauvegardes. Lors d'une mise a jour, l'installation ferme les serveurs Winsight en cours d'execution : les applications qui les ont lances devront ensuite etre redemarrees. Une entree Winsight pointant ailleurs doit d'abord etre retiree dans l'application.
 english.Finished=Winsight is installed. Restart the selected applications to use its tools. The applications may ask you to approve the connection. To add another application later, run this installer again.
 french.Finished=Winsight est installe. Redemarrez les applications selectionnees pour utiliser ses outils. Elles peuvent demander votre accord pour la connexion. Pour ajouter une application plus tard, relancez cet installateur.
 english.ConfigurationFailed=Winsight files are installed, but client configuration failed. Close the clients and check for an existing Winsight entry. See %%LOCALAPPDATA%%\Winsight\logs. Rerun setup to retry.
