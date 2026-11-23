@@ -34,7 +34,7 @@ For the portable archive, download `winsight-0.6.0-win-x64.zip` and `SHA256SUMS.
 
 - Release build: 0 warnings, 0 errors (`net10.0-windows10.0.19041.0`).
 - Unit tests: 766 passed, 0 failed (`545` Core, `221` MCP, including documentation typography and tool-count guards; 2 ONNX real-model integration tests skipped when local model fixtures are absent).
-- End-to-end tests on a Windows CI runner: 76 passed, 1 skipped (the vision-grounding test, skipped without a model). The seven field-report scenarios all ran and passed, none was skipped.
+- End-to-end tests on a Windows CI runner: the field-report scenarios ran and passed on live windows. The focus-withholding scenario needs the runner to give keyboard focus to a second application and is skipped, not failed, when it does not; the vision-grounding test is skipped without a model.
 - MCP smoke check: 71 tools derived from the sources and discovered.
 
 ---
