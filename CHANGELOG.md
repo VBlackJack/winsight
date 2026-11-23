@@ -7,6 +7,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-23
+
 ### Added
 
 - `list_windows` parameter `includeTitles` (default `false`) and `titleWithheld` on every entry; `get_focused_element` also reports `titleWithheld`.
