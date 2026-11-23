@@ -20,4 +20,5 @@ public sealed record ScreenshotResult(
     int Height,
     DateTime CapturedAtUtc,
     WindowIdentity? Window = null,
-    string CaptureSource = CaptureSourceParser.WindowName);
+    string CaptureSource = CaptureSourceParser.WindowName,
+    string? Warning = null);

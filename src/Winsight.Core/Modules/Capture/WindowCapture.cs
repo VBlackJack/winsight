@@ -79,18 +79,25 @@ public sealed class WindowCapture
             ValidateScreenCapture(hwnd, processId, allowOccluded);
         }
 
+        WindowBounds windowBounds = new(rect.Left, rect.Top, width, height);
+        Rectangle evaluated = new(0, 0, width, height);
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         using (var graphics = Graphics.FromImage(bitmap))
         {
             if (captureSource == CaptureSource.Screen)
             {
-                CaptureScreenRect(graphics, rect.Left, rect.Top, width, height);
+                // Mask, do not crop: only the visible frame is copied, to its offset in a
+                // window-sized bitmap, so the invisible resize border stays transparent.
+                ScreenBlitRect blit = ScreenBlitGeometry.ComputeBlitRect(windowBounds, ReadDwmFrame(hwnd));
+                CaptureScreenRect(graphics, blit);
+                evaluated = new Rectangle(blit.DestX, blit.DestY, blit.Width, blit.Height);
             }
             else
             {
                 CaptureWindowHwnd(graphics, hwnd);
             }
         }
+        string? warning = CaptureWarnings.EvaluateUniform(bitmap, evaluated);
 
         var directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(directory))
@@ -104,8 +111,27 @@ public sealed class WindowCapture
             Width: width,
             Height: height,
             CapturedAtUtc: DateTime.UtcNow,
-            Window: new WindowIdentity(processId, hwnd.ToInt64(), new WindowBounds(rect.Left, rect.Top, width, height)),
-            CaptureSource: CaptureSourceParser.ToWireValue(captureSource));
+            Window: new WindowIdentity(processId, hwnd.ToInt64(), windowBounds),
+            CaptureSource: CaptureSourceParser.ToWireValue(captureSource),
+            Warning: warning);
+    }
+
+    private static WindowBounds? ReadDwmFrame(IntPtr hwnd)
+    {
+        if (NativeMethods.DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                out Rect dwmRect,
+                Marshal.SizeOf<Rect>()) != 0)
+        {
+            return null;
+        }
+
+        return new WindowBounds(
+            dwmRect.Left,
+            dwmRect.Top,
+            dwmRect.Right - dwmRect.Left,
+            dwmRect.Bottom - dwmRect.Top);
     }
 
     private static void CaptureWindowHwnd(Graphics graphics, IntPtr hwnd)
@@ -128,7 +154,7 @@ public sealed class WindowCapture
         }
     }
 
-    private static void CaptureScreenRect(Graphics graphics, int left, int top, int width, int height)
+    private static void CaptureScreenRect(Graphics graphics, ScreenBlitRect blit)
     {
         IntPtr screenHdc = NativeMethods.GetDC(IntPtr.Zero);
         if (screenHdc == IntPtr.Zero)
@@ -145,13 +171,13 @@ public sealed class WindowCapture
             {
                 if (!NativeMethods.BitBlt(
                         destHdc,
-                        0,
-                        0,
-                        width,
-                        height,
+                        blit.DestX,
+                        blit.DestY,
+                        blit.Width,
+                        blit.Height,
                         screenHdc,
-                        left,
-                        top,
+                        blit.SourceLeft,
+                        blit.SourceTop,
                         SRCCOPY | CAPTUREBLT))
                 {
                     int win32Error = Marshal.GetLastWin32Error();
