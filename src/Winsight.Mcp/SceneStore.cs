@@ -42,7 +42,8 @@ public sealed class SceneStore
     public sealed record Entry(string Id, int ProcessId, long ProcessStart, string? Title,
         DateTimeOffset Expires, SceneCapture Capture, int? CdpPort = null, string? CdpTarget = null,
         [property: JsonIgnore] SceneCaptureFilter? Filter = null,
-        [property: JsonIgnore] IReadOnlySet<string>? UnfilteredElementKeys = null)
+        [property: JsonIgnore] IReadOnlySet<string>? UnfilteredElementKeys = null,
+        [property: JsonIgnore] SceneCapture? LooseBaseline = null)
     {
         [JsonIgnore]
         public SceneCaptureFilter EffectiveFilter => Filter ?? new SceneCaptureFilter(WindowTitle: Title);
@@ -50,7 +51,8 @@ public sealed class SceneStore
 
     public Entry Add(int pid, long processStart, string? title, SceneCapture capture,
         int? cdpPort = null, string? cdpTarget = null,
-        SceneCaptureFilter? filter = null, IReadOnlySet<string>? unfilteredElementKeys = null)
+        SceneCaptureFilter? filter = null, IReadOnlySet<string>? unfilteredElementKeys = null,
+        SceneCapture? looseBaseline = null)
     {
         lock (_gate)
         {
@@ -66,7 +68,8 @@ public sealed class SceneStore
                 cdpPort,
                 cdpTarget,
                 filter ?? new SceneCaptureFilter(WindowTitle: title),
-                unfilteredElementKeys);
+                unfilteredElementKeys,
+                looseBaseline);
             _entries.Add(entry.Id, entry);
             _latest = entry;
             return entry;

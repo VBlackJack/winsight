@@ -102,7 +102,7 @@ public static class SceneScreenshotTool
                 using (Pen pen = new(Color.Lime, 2))
                 using (Font font = new(FontFamily.GenericSansSerif, 10, FontStyle.Bold))
                 {
-                    foreach (SceneElement element in entry.Capture.Elements.Where(e => e.Window.Handle == resolvedHandle && e.Visible && e.Actions.Count > 0))
+                    foreach (SceneElement element in entry.Capture.Elements.Where(e => e.Window.Handle == resolvedHandle && e.Visible && SceneActionability.IsActionable(e)))
                     {
                         int x = element.Bounds.Left - window.X;
                         int y = element.Bounds.Top - window.Y;

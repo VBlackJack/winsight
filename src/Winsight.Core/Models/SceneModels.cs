@@ -21,7 +21,7 @@ public sealed record SceneElement(
     string Ref, string Source, string Role, string Name, string? Value,
     bool Enabled, bool Visible, bool Focused, bool? Selected,
     WindowBounds Bounds, IReadOnlyList<string> Actions,
-    WindowIdentity Window,
+    [property: JsonIgnore] WindowIdentity Window,
     ElementLocator Locator,
     [property: JsonIgnore] string Identity,
     [property: JsonIgnore] string? BackendId = null,
@@ -29,7 +29,11 @@ public sealed record SceneElement(
     string? ToggleState = null,
     [property: JsonIgnore] string? StateHash = null,
     string? ExpandCollapseState = null,
-    [property: JsonIgnore] string? ParentIdentity = null);
+    [property: JsonIgnore] string? ParentIdentity = null)
+{
+    /// <summary>Owning window handle, serialized instead of the full window identity (bounds live in windows[]). Null for handle 0 (DOM).</summary>
+    public long? WindowHandle => Window.Handle == 0 ? null : Window.Handle;
+}
 
 /// <summary>Expectation is evaluated against the same authorized process as the action.</summary>
 public sealed record SceneExpectation(
