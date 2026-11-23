@@ -32,7 +32,7 @@ public static class WinsightPrompts
     {
         return $"""
             Explore the Windows application "{target}" autonomously using Winsight:
-            1. If "{target}" is an executable path, call launch_app (setAsTarget=true by default). Otherwise call list_windows and set_target on the matching processId.
+            1. If "{target}" is an executable path, call launch_app (setAsTarget=true by default). If "{target}" is a window title, call list_windows with includeTitles=true and set_target on the matching processId. Otherwise call list_windows, pick the window by processName, className, or bounds (titles of other apps are withheld by default), and set_target on its processId.
             2. Call observe_scene to inspect windows, modals, and actionable eN elements.
             3. Call capture_scene(observation) to view the inline Set-of-Mark annotated screenshot before interacting with unfamiliar layout.
             4. Drive controls with act_verified (use observeAfter=true and exploratory predicates like any_change or name_contains when exploring).

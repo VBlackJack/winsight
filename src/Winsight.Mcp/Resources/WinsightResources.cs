@@ -53,9 +53,13 @@ public static class WinsightResources
         Name = "winsight_windows",
         Title = "Winsight Visible Windows",
         MimeType = JsonMimeType)]
-    [Description("Classified visible windows for the current session target, or all desktop windows when no target is set.")]
+    [Description("Classified visible windows for the current session target, or all desktop windows when no target is set " +
+                 "(titles withheld in that desktop-wide case: titleWithheld=true; call list_windows with includeTitles=true to see them).")]
     public static string GetWindows(WindowDiscovery discovery, SessionTarget target)
-        => ListWindowsTool.ListWindows(discovery, target.ProcessId);
+    {
+        int? targetProcessId = target.ProcessId;
+        return ListWindowsTool.List(discovery, targetProcessId, targetProcessId, includeTitles: false);
+    }
 
     [McpServerResource(
         UriTemplate = "winsight://scene/latest",

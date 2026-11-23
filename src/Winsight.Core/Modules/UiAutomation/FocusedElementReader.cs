@@ -86,6 +86,7 @@ public sealed class FocusedElementReader
         IReadOnlyList<string> evidence = WebView2FocusClassifier.Evidence(
             frameworkId, processName, classNames, win32FocusClass);
 
+        bool belongsToTarget = BelongsToTarget(targetProcessId, elementProcessId, topLevelProcessId);
         return new FocusedElementInfo(
             ControlType: SafeRead(() => element.Properties.ControlType.ValueOrDefault.ToString(), string.Empty),
             AutomationId: SafeRead(() => element.Properties.AutomationId.ValueOrDefault ?? string.Empty, string.Empty),
@@ -94,18 +95,26 @@ public sealed class FocusedElementReader
             FrameworkId: frameworkId,
             ProcessId: elementProcessId,
             ProcessName: processName,
-            BelongsToTarget: targetProcessId != 0 &&
-                (elementProcessId == targetProcessId || topLevelProcessId == (uint)targetProcessId),
+            BelongsToTarget: belongsToTarget,
             IsWebView2: evidence.Count > 0,
             WebView2Evidence: evidence,
             Win32FocusClassName: win32FocusClass,
             TopLevelWindowHandle: topLevel.ToInt64(),
-            TopLevelWindowTitle: ReadTitle(topLevel),
+            TopLevelWindowTitle: belongsToTarget ? ReadTitle(topLevel) : string.Empty,
             X: rect.X,
             Y: rect.Y,
             Width: rect.Width,
-            Height: rect.Height);
+            Height: rect.Height,
+            TitleWithheld: !belongsToTarget);
     }
+
+    /// <summary>
+    /// True when the focus sits in the target process or in a top-level window it
+    /// hosts. A zero target id (no target known) never matches.
+    /// </summary>
+    internal static bool BelongsToTarget(int targetProcessId, int elementProcessId, uint topLevelProcessId) =>
+        targetProcessId != 0 &&
+        (elementProcessId == targetProcessId || topLevelProcessId == (uint)targetProcessId);
 
     // ClassName of the element and its ancestors (nearest first), plus the
     // nearest native window handle so the top-level host can be resolved.
