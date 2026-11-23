@@ -13,6 +13,8 @@
 // limitations under the License.
 
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
@@ -27,6 +29,7 @@ namespace Winsight.Core.Tests;
 /// Screen-capture blit geometry (resize-border mask), OCR same-script language
 /// fallback, uniform-capture detection, and the wire shape of the warning fields.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class CaptureFixesTests
 {
     private const int InsetPx = 7;
@@ -253,5 +256,36 @@ public sealed class CaptureFixesTests
         plainJson.Should().NotContain("requestedLanguage").And.NotContain("warning");
         string fallbackJson = JsonSerializer.Serialize(fallback, WireOptions);
         fallbackJson.Should().Contain("\"requestedLanguage\":\"en-US\"").And.Contain("\"warning\":\"ocr_language_fallback: ");
+    }
+
+    [Fact]
+    public void Compose_leaves_strips_transparent_and_keeps_the_frame_opaque()
+    {
+        const int frameWidth = 40;
+        const int frameHeight = 30;
+        const int offsetX = 5;
+        const int offsetY = 0;
+        const int windowWidth = frameWidth + 2 * offsetX;
+        const int windowHeight = frameHeight + 4;
+        Color frameColor = Color.FromArgb(255, 10, 120, 200);
+
+        using Bitmap frame = new(frameWidth, frameHeight, PixelFormat.Format24bppRgb);
+        using (Graphics g = Graphics.FromImage(frame))
+        {
+            g.Clear(frameColor);
+        }
+
+        using Bitmap destination = new(windowWidth, windowHeight, PixelFormat.Format32bppArgb);
+        using (Graphics g = Graphics.FromImage(destination))
+        {
+            g.Clear(Color.Red);
+        }
+
+        ScreenBlitRect blit = new(0, 0, offsetX, offsetY, frameWidth, frameHeight);
+        WindowCapture.ComposeScreenFrame(destination, frame, blit);
+
+        destination.GetPixel(0, 0).A.Should().Be(0);
+        destination.GetPixel(windowWidth - 1, windowHeight - 1).A.Should().Be(0);
+        destination.GetPixel(offsetX + 1, offsetY + 1).Should().Be(frameColor);
     }
 }

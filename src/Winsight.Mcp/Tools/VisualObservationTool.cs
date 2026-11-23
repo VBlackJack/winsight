@@ -139,7 +139,9 @@ public static class VisualObservationTool
                  "same script is used: language is then the recognizer actually used, requestedLanguage the " +
                  "requested tag, and warning starts with ocr_language_fallback. warning also starts with " +
                  "region_uniform when the read area is a single color (check the application, for example a " +
-                 "stale session, before concluding nothing is displayed). Fails with ocr_unavailable, listing " +
+                 "stale session, before concluding nothing is displayed); the check covers the whole captured " +
+                 "area, so on a full-window read the title bar usually prevents it: pass a region to check a " +
+                 "specific pane. Fails with ocr_unavailable, listing " +
                  "the installed OCR languages, when no recognizer of the same script is installed. To assert " +
                  "inside a batch, use a run_steps 'assert' step with operator text_visible. Read-only.")]
     public static string ReadTextVisually(

@@ -115,16 +115,17 @@ public class ActionableOnlyTests
         using Process self = Process.GetCurrentProcess();
         WindowDescriptor win = new(self.Id, WindowHandleValue, "App", "app", true, 0, 0, 800, 600);
         SceneElement button = Make("e1", "Button", "Save", ActivateWithPointer);
-        SceneElement statusBefore = Make("e2", "Text", "Idle", ["drag_to", "right_click", "double_click", "focus"]);
+        SceneElement statusBefore = Make("e2", "Text", "Idle", PointerTrio);
         SceneElement statusAfter = statusBefore with { Name = "Saved" };
 
         (SceneCapture strictBefore, SceneCapture looseBefore) = VerifiedSceneTool.EnrichCaptureWithBaseline(
             SceneServices.Default, self.Id, null, new SceneCapture([win], [button, statusBefore], false, "uia"), actionableOnly: true);
-        (_, SceneCapture looseAfter) = VerifiedSceneTool.EnrichCaptureWithBaseline(
+        (SceneCapture strictAfter, SceneCapture looseAfter) = VerifiedSceneTool.EnrichCaptureWithBaseline(
             SceneServices.Default, self.Id, null, new SceneCapture([win], [button, statusAfter], false, "uia"), actionableOnly: true);
 
         VerifiedSceneTool.ComputeDiff(looseBefore, looseAfter).HasChanges.Should().BeTrue();
-        strictBefore.Elements.Select(e => e.Ref).Should().BeEquivalentTo(["e1", "e2"]);
+        strictBefore.Elements.Select(e => e.Ref).Should().BeEquivalentTo(["e1"]);
+        VerifiedSceneTool.ComputeDiff(strictBefore, strictAfter).HasChanges.Should().BeFalse();
     }
 
     [Fact]

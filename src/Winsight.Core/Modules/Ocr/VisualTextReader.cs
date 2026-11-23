@@ -94,7 +94,7 @@ public sealed class VisualTextReader
             lines,
             frame.Region,
             effectiveScale,
-            RequestedLanguage: fallbackWarning is null ? null : language,
+            RequestedLanguage: fallbackWarning is null ? null : language?.Trim(),
             Warning: CaptureWarnings.Join(
                 fallbackWarning,
                 CaptureWarnings.EvaluateUniform(

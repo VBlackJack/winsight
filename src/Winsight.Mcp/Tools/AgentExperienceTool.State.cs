@@ -133,6 +133,7 @@ public static partial class AgentExperienceTool
                         uipi_blocked = "target runs at a higher integrity level than Winsight: restart Winsight at the same integrity level",
                         clipboard_disabled = "set WINSIGHT_ALLOW_CLIPBOARD=1 in the server environment, or use type_keys mode=keys",
                         ocr_unavailable = "no installed OCR component shares the requested language or its script: pass language with one of the installed OCR languages listed in the error, or add the component under Settings, Time and language",
+                        ocr_language_invalid = "the language tag is not well-formed BCP-47: pass a tag such as one of the installed OCR languages listed in the error (for example en-US or fr-FR)",
                         timed_out = "the condition never held: observe or capture, then adjust the wait or the action",
                         any_change_unrelated = "act_verified with expect.kind=any_change verified only via elements unrelated to the target (not the target, not its descendants, not a new window): replace any_change with a strict kind (window_open, selected, value, toggle, name, exists, absent) for deterministic verification",
                     },

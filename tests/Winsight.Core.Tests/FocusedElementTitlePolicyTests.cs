@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using FluentAssertions;
+using Winsight.Core.Models;
 using Winsight.Core.Modules.UiAutomation;
 using Xunit;
 
@@ -46,5 +47,36 @@ public sealed class FocusedElementTitlePolicyTests
     public void No_known_target_never_matches()
     {
         FocusedElementReader.BelongsToTarget(NoTarget, NoTarget, NoTarget).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Withheld_focus_serializes_empty_name_and_title_while_keeping_identity_fields()
+    {
+        FocusedElementInfo info = new(
+            ControlType: "TabItem",
+            AutomationId: string.Empty,
+            Name: string.Empty,
+            ClassName: "BrowserTab",
+            FrameworkId: "Win32",
+            ProcessId: OtherPid,
+            ProcessName: "browser",
+            BelongsToTarget: false,
+            IsWebView2: false,
+            WebView2Evidence: [],
+            Win32FocusClassName: string.Empty,
+            TopLevelWindowHandle: 0,
+            TopLevelWindowTitle: string.Empty,
+            X: 0,
+            Y: 0,
+            Width: 0,
+            Height: 0,
+            TitleWithheld: true);
+
+        info.Name.Should().BeEmpty();
+        info.TopLevelWindowTitle.Should().BeEmpty();
+        info.TitleWithheld.Should().BeTrue();
+        info.ControlType.Should().Be("TabItem");
+        info.ClassName.Should().Be("BrowserTab");
+        info.ProcessName.Should().Be("browser");
     }
 }

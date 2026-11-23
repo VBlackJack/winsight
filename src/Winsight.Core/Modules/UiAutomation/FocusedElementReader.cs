@@ -90,7 +90,11 @@ public sealed class FocusedElementReader
         return new FocusedElementInfo(
             ControlType: SafeRead(() => element.Properties.ControlType.ValueOrDefault.ToString(), string.Empty),
             AutomationId: SafeRead(() => element.Properties.AutomationId.ValueOrDefault ?? string.Empty, string.Empty),
-            Name: SafeRead(() => element.Properties.Name.ValueOrDefault ?? string.Empty, string.Empty),
+            // A focused browser tab or chat item exposes the page title or message text as its
+            // Name: it is withheld, like the window title, when the focus is outside the target.
+            Name: belongsToTarget
+                ? SafeRead(() => element.Properties.Name.ValueOrDefault ?? string.Empty, string.Empty)
+                : string.Empty,
             ClassName: classNames.Count > 0 ? classNames[0] : string.Empty,
             FrameworkId: frameworkId,
             ProcessId: elementProcessId,

@@ -73,7 +73,8 @@ public static class ElementStateTool
     [Description("Report where keyboard input would land right now: the element that owns keyboard focus " +
                  "(controlType, automationId, name, className, frameworkId, owning process), the Win32 focus " +
                  "window class, whether the focus belongs to the target process or a window it hosts, and " +
-                 "whether it sits inside a WebView2 surface (isWebView2 plus the evidence). Check it before " +
+                 "whether it sits inside a WebView2 surface (isWebView2 plus the evidence). When the focus is " +
+                 "outside the target, name and topLevelWindowTitle are empty and titleWithheld is true. Check it before " +
                  "type_text or send_key_chord: synthetic keyboard input into WebView2 has crashed ctfmon, " +
                  "and type_into_webview is the safe path there. Read-only.")]
     public static string GetFocusedElement(
