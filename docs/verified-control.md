@@ -155,7 +155,14 @@ only to the completed run; it does not guarantee all future runs.
 ## Autonomous loop extensions
 
 - **Token-budget & hybrid perception (`observe_scene`)**: pass `actionableOnly=true`
-  or `filterText` to trim large UIA trees. Filters are applied before the
+  or `filterText` to trim large UIA trees. `actionableOnly` is strict: an element
+  is kept only with at least one action other than `drag_to`/`right_click`/
+  `double_click` that is visible or supports `scroll_into_view` (separators,
+  static texts, and invisible menu items are dropped); the same rule drives the
+  `surfaceHint` sparse-UIA detection and the `capture_scene` labels, while
+  `any_change` verification is unchanged. Elements carry `windowHandle` (omitted
+  for DOM elements) instead of a `window` object (breaking change); window bounds
+  are in `windows[]` once. Filters are applied before the
   `maxResults` cap, and `truncated` is `true` only when matching results were
   actually cut by `maxResults` or UIA traversal hit its node limit. When UIA
   yields few actionable nodes, `surfaceHint` reports either a listening WebView2

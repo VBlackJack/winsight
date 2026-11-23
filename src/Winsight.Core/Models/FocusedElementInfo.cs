@@ -21,6 +21,11 @@ namespace Winsight.Core.Models;
 /// signals that decided it. <see cref="BelongsToTarget"/> is true when the
 /// focus sits in the target process or in a window it hosts (a WebView2
 /// renders in its own msedgewebview2 process, parented into the host window).
+/// <see cref="TopLevelWindowTitle"/> and <see cref="Name"/> are empty and
+/// <see cref="TitleWithheld"/> is true when the focus is outside the target: the
+/// title of someone else's window, or the name of its focused element (a browser
+/// tab or chat item exposes the page title or message text), does not belong in
+/// an agent's log.
 /// </summary>
 public sealed record FocusedElementInfo(
     string ControlType,
@@ -39,4 +44,5 @@ public sealed record FocusedElementInfo(
     int X,
     int Y,
     int Width,
-    int Height);
+    int Height,
+    bool TitleWithheld = false);

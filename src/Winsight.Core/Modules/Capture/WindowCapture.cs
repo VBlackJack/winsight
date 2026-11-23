@@ -14,6 +14,7 @@
 
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -28,6 +29,8 @@ public sealed class WindowCapture
     // PW_RENDERFULLCONTENT (Windows 8.1+) renders accelerated surfaces correctly,
     // including DirectX-composed WPF windows. Without it the bitmap may come back black.
     private const uint PW_RENDERFULLCONTENT = 0x00000002;
+    // Opaque (no alpha channel): GDI writes never set alpha, so the frame must not rely on it.
+    private const PixelFormat ScreenFramePixelFormat = PixelFormat.Format24bppRgb;
     private const uint SRCCOPY = 0x00CC0020;
     private const uint CAPTUREBLT = 0x40000000;
     private const uint GW_HWNDPREV = 3;
@@ -79,18 +82,27 @@ public sealed class WindowCapture
             ValidateScreenCapture(hwnd, processId, allowOccluded);
         }
 
+        WindowBounds windowBounds = new(rect.Left, rect.Top, width, height);
+        Rectangle evaluated = new(0, 0, width, height);
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using (var graphics = Graphics.FromImage(bitmap))
+        if (captureSource == CaptureSource.Screen)
         {
-            if (captureSource == CaptureSource.Screen)
+            // Mask, do not crop: only the visible frame is copied, to its offset in a
+            // window-sized bitmap, so the invisible resize border stays transparent.
+            ScreenBlitRect blit = ScreenBlitGeometry.ComputeBlitRect(windowBounds, ReadDwmFrame(hwnd));
+            using (Bitmap frame = CaptureScreenFrame(blit))
             {
-                CaptureScreenRect(graphics, rect.Left, rect.Top, width, height);
+                ComposeScreenFrame(bitmap, frame, blit);
             }
-            else
-            {
-                CaptureWindowHwnd(graphics, hwnd);
-            }
+
+            evaluated = new Rectangle(blit.DestX, blit.DestY, blit.Width, blit.Height);
         }
+        else
+        {
+            using var graphics = Graphics.FromImage(bitmap);
+            CaptureWindowHwnd(graphics, hwnd);
+        }
+        string? warning = CaptureWarnings.EvaluateUniform(bitmap, evaluated);
 
         var directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(directory))
@@ -104,8 +116,27 @@ public sealed class WindowCapture
             Width: width,
             Height: height,
             CapturedAtUtc: DateTime.UtcNow,
-            Window: new WindowIdentity(processId, hwnd.ToInt64(), new WindowBounds(rect.Left, rect.Top, width, height)),
-            CaptureSource: CaptureSourceParser.ToWireValue(captureSource));
+            Window: new WindowIdentity(processId, hwnd.ToInt64(), windowBounds),
+            CaptureSource: CaptureSourceParser.ToWireValue(captureSource),
+            Warning: warning);
+    }
+
+    private static WindowBounds? ReadDwmFrame(IntPtr hwnd)
+    {
+        if (NativeMethods.DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                out Rect dwmRect,
+                Marshal.SizeOf<Rect>()) != 0)
+        {
+            return null;
+        }
+
+        return new WindowBounds(
+            dwmRect.Left,
+            dwmRect.Top,
+            dwmRect.Right - dwmRect.Left,
+            dwmRect.Bottom - dwmRect.Top);
     }
 
     private static void CaptureWindowHwnd(Graphics graphics, IntPtr hwnd)
@@ -128,7 +159,46 @@ public sealed class WindowCapture
         }
     }
 
-    private static void CaptureScreenRect(Graphics graphics, int left, int top, int width, int height)
+    /// <summary>
+    /// Copies the frame rectangle of the screen into a new opaque bitmap of the frame size.
+    /// </summary>
+    private static Bitmap CaptureScreenFrame(ScreenBlitRect blit)
+    {
+        Bitmap frame = new(blit.Width, blit.Height, ScreenFramePixelFormat);
+        try
+        {
+            using Graphics graphics = Graphics.FromImage(frame);
+            CaptureScreenRect(graphics, blit);
+            return frame;
+        }
+        catch
+        {
+            frame.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Composes the final window-sized image: everything outside the copied frame is
+    /// cleared to transparent, then the frame is drawn unscaled at its destination offset.
+    /// </summary>
+    internal static void ComposeScreenFrame(Bitmap destination, Bitmap frame, ScreenBlitRect blit)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(frame);
+
+        using Graphics graphics = Graphics.FromImage(destination);
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.Clear(Color.Transparent);
+        graphics.DrawImage(
+            frame,
+            blit.DestX,
+            blit.DestY,
+            new Rectangle(0, 0, blit.Width, blit.Height),
+            GraphicsUnit.Pixel);
+    }
+
+    private static void CaptureScreenRect(Graphics graphics, ScreenBlitRect blit)
     {
         IntPtr screenHdc = NativeMethods.GetDC(IntPtr.Zero);
         if (screenHdc == IntPtr.Zero)
@@ -147,11 +217,11 @@ public sealed class WindowCapture
                         destHdc,
                         0,
                         0,
-                        width,
-                        height,
+                        blit.Width,
+                        blit.Height,
                         screenHdc,
-                        left,
-                        top,
+                        blit.SourceLeft,
+                        blit.SourceTop,
                         SRCCOPY | CAPTUREBLT))
                 {
                     int win32Error = Marshal.GetLastWin32Error();

@@ -23,10 +23,16 @@ public sealed record VisualTextLine(string Text, WindowRegion Bounds, IReadOnlyL
 /// <summary>
 /// Text read from a window capture by the Windows OCR engine. <see cref="Text"/>
 /// joins the lines with newlines; <see cref="Region"/> is the area that was read.
+/// <see cref="Language"/> is the recognizer actually used; when it is a same-script
+/// fallback, <see cref="RequestedLanguage"/> holds the requested tag and
+/// <see cref="Warning"/> starts with <c>ocr_language_fallback</c>. <see cref="Warning"/>
+/// also carries <c>region_uniform</c> when the read area is a single color.
 /// </summary>
 public sealed record VisualTextResult(
     string Language,
     string Text,
     IReadOnlyList<VisualTextLine> Lines,
     WindowRegion Region,
-    int Scale);
+    int Scale,
+    string? RequestedLanguage = null,
+    string? Warning = null);

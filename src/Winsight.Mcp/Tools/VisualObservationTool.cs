@@ -134,8 +134,15 @@ public static class VisualObservationTool
     [Description("Read the text a window draws with the OCR engine built into Windows (offline, nothing " +
                  "sent anywhere), for UIs that expose no UI Automation text: a status line, a table cell, an " +
                  "error message. Returns { language, text, lines:[{ text, bounds, words:[{ text, bounds }] }], " +
-                 "region, scale } with every rectangle in window coordinates, ready for click_point. Fails " +
-                 "with ocr_unavailable, listing the installed OCR languages, when none matches. To assert " +
+                 "region, scale, requestedLanguage?, warning? } with every rectangle in window coordinates, ready " +
+                 "for click_point. When the requested language has no OCR component, an installed one of the " +
+                 "same script is used: language is then the recognizer actually used, requestedLanguage the " +
+                 "requested tag, and warning starts with ocr_language_fallback. warning also starts with " +
+                 "region_uniform when the read area is a single color (check the application, for example a " +
+                 "stale session, before concluding nothing is displayed); the check covers the whole captured " +
+                 "area, so on a full-window read the title bar usually prevents it: pass a region to check a " +
+                 "specific pane. Fails with ocr_unavailable, listing " +
+                 "the installed OCR languages, when no recognizer of the same script is installed. To assert " +
                  "inside a batch, use a run_steps 'assert' step with operator text_visible. Read-only.")]
     public static string ReadTextVisually(
         VisualTextReader reader,

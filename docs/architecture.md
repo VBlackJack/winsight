@@ -532,6 +532,7 @@ persisted to disk. Repairable high-level failures share the same data shape:
 | Situation                                 | Behavior                                              |
 | ----------------------------------------- | ----------------------------------------------------- |
 | Window has no name                        | Skipped from desktop-wide `list_windows`; included in a per-process listing |
+| Desktop-wide `list_windows` of a non-target process | Title withheld: `title` is `""` and `titleWithheld` is `true`, unless `includeTitles=true` |
 | COM exception on a single window          | Caught locally, that window is skipped                |
 | Element not found                         | `OperationResult.Failure(...)` (success = false)      |
 | Process has no managed runtime            | `OperationResult.Failure(...)`                        |
@@ -542,7 +543,8 @@ persisted to disk. Repairable high-level failures share the same data shape:
 | The foreground moved between `run_steps` steps | The batch stops with `foreground_changed` and `foregroundChanged: true` |
 | The pointer moved during a settle         | `cursor_moved: ...`, the press, wheel or hold is not sent |
 | Clipboard tool without `WINSIGHT_ALLOW_CLIPBOARD` | `clipboard_disabled: ...` |
-| No OCR component for the language          | `ocr_unavailable: ...` listing the installed languages |
+| No OCR component for the language          | A same-script recognizer is used with an `ocr_language_fallback:` warning; with none, `ocr_unavailable: ...` listing the installed languages |
+| A capture or OCR read is a single color    | `warning` starting with `region_uniform:` |
 | A visual or idle wait never holds          | `timed_out: ...` with the last measurements |
 
 ## What is intentionally absent at this point

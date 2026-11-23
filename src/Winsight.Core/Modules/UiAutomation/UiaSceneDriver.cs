@@ -114,10 +114,10 @@ public sealed class UiaSceneDriver
         if (SafeUiaProperties.Read(() => element.Patterns.SelectionItem.IsSupported)) { actions.Add("select"); actions.Add("select_many"); }
         if (SafeUiaProperties.Read(() => element.Patterns.Selection.IsSupported)) actions.Add("select_item");
         if (SafeUiaProperties.Read(() => element.Patterns.Scroll.IsSupported)) actions.Add("scroll");
-        if (SafeUiaProperties.Read(() => element.Patterns.ScrollItem.IsSupported)) actions.Add("scroll_into_view");
+        if (SafeUiaProperties.Read(() => element.Patterns.ScrollItem.IsSupported)) actions.Add(SceneActionability.ActionScrollIntoView);
         if (SafeUiaProperties.Read(() => element.Patterns.ExpandCollapse.IsSupported)) { actions.Add("expand"); actions.Add("collapse"); }
         if (isKeyboardFocusable) { actions.Add("focus"); actions.Add("key_chord"); }
-        if (bounds.Width > 0 && bounds.Height > 0 && !password) { actions.Add("drag_to"); actions.Add("right_click"); actions.Add("double_click"); }
+        if (bounds.Width > 0 && bounds.Height > 0 && !password) { actions.Add(SceneActionability.ActionDragTo); actions.Add(SceneActionability.ActionRightClick); actions.Add(SceneActionability.ActionDoubleClick); }
         ElementLocator locator = new(AutomationId: string.IsNullOrEmpty(automationId) ? null : automationId,
             Name: string.IsNullOrEmpty(automationId) ? name : null, ControlType: role);
         return new SceneElement(reference, "uia", role, Clip(name) ?? string.Empty, Clip(value), isEnabled,

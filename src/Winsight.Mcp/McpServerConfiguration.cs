@@ -29,7 +29,8 @@ internal sealed class McpServerConfiguration : IConfigureOptions<McpServerOption
 
     internal const string Instructions =
         "Winsight drives and inspects Windows desktop applications. Follow this autonomous loop:\n" +
-        "1. Target: call launch_app (auto-sets session target) or list_windows + set_target (use alias + switch_target for multi-app workflows).\n" +
+        "1. Target: call launch_app (auto-sets session target) or list_windows + set_target (use alias + switch_target for multi-app workflows). " +
+        "Desktop-wide list_windows withholds titles of non-target processes: identify the app by processName, className, and bounds, or pass includeTitles=true when you must find it by window title.\n" +
         "2. Perceive: call observe_scene for expiring eN target references, window/modal state, and supported actions. " +
         "Call capture_scene(observation) when visual layout helps (returns an inline Set-of-Mark annotated PNG), watch_ui_events for transient popups/menus, or audit_ui_accessibility for QA checks.\n" +
         "3. Act & verify: prefer act_verified with an explicit expect postcondition (strict predicates: exists, absent, value, name, selected, toggle, focused, visible, selected_item, window_open, window_closed, managed; exploratory predicates: value_contains, name_contains, any_change, visual_change). " +

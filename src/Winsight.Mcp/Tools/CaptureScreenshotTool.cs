@@ -37,12 +37,15 @@ public static class CaptureScreenshotTool
                  "With captureSource='screen', captures the DWM-composited desktop rectangle matching the target " +
                  "window bounds so floating popups over the window appear while keeping window-relative coordinates " +
                  "for click_point; refuses if the target window is not visible or is occluded by another process " +
-                 "window unless allowOccluded=true. " +
+                 "window unless allowOccluded=true; the invisible resize border of the window is left transparent " +
+                 "(only the visible frame is copied, to its window-relative offset). " +
                  "Use windowTitle to target modal dialogs, popups, and secondary windows. " +
                  "If outputPath is omitted, the file is written under WINSIGHT_OUTPUT_DIR " +
                  "(default %TEMP%\\winsight) with a timestamped name. " +
                  "Returns a text block with the OperationResult JSON (success/error; on success, data " +
-                 "carries { path, width, height, capturedAtUtc, window, captureSource }) and, unless includeImage=false, " +
+                 "carries { path, width, height, capturedAtUtc, window, captureSource, warning? }; warning starts with region_uniform " +
+                 "when the capture is a single color: check the application, for example a stale session, " +
+                 "before concluding nothing is displayed) and, unless includeImage=false, " +
                  "the captured PNG as an inline image so you can see the UI directly without reading the file.")]
     public static CallToolResult CaptureScreenshot(
         WindowCapture capture,

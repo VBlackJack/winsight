@@ -38,6 +38,9 @@ public sealed class VisualTextReader
     public const int DefaultScale = 2;
     public const int MaxScale = 4;
     private const string NoEngineCode = "ocr_unavailable";
+    private const string LanguageFallbackCode = "ocr_language_fallback";
+    private const string MalformedLanguageCode = "ocr_language_invalid";
+    private const string UserProfileLanguagesLabel = "the user profile languages";
 
     private readonly WindowCapture _capture;
 
@@ -62,7 +65,7 @@ public sealed class VisualTextReader
             return OperationResult.Failure(string.Create(
                 CultureInfo.InvariantCulture, $"scale must be between 1 and {MaxScale} (got {scale})."));
         }
-        if (CreateEngine(language, out string? engineError) is not { } engine)
+        if (CreateEngine(language, out string? engineError, out string? fallbackWarning) is not { } engine)
         {
             return OperationResult.Failure(engineError!);
         }
@@ -90,23 +93,62 @@ public sealed class VisualTextReader
             string.Join('\n', lines.Select(line => line.Text)),
             lines,
             frame.Region,
-            effectiveScale));
+            effectiveScale,
+            RequestedLanguage: fallbackWarning is null ? null : language?.Trim(),
+            Warning: CaptureWarnings.Join(
+                fallbackWarning,
+                CaptureWarnings.EvaluateUniform(
+                    frame.Bitmap, new Rectangle(0, 0, frame.Bitmap.Width, frame.Bitmap.Height)))));
     }
 
-    private static OcrEngine? CreateEngine(string? language, out string? error)
+    private static OcrEngine? CreateEngine(string? language, out string? error, out string? fallbackWarning)
     {
-        OcrEngine? engine = string.IsNullOrWhiteSpace(language)
-            ? OcrEngine.TryCreateFromUserProfileLanguages()
-            : OcrEngine.IsLanguageSupported(new Windows.Globalization.Language(language))
-                ? OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language(language))
-                : null;
-        error = engine is null
-            ? $"{NoEngineCode}: no Windows OCR component for " +
-              $"{(string.IsNullOrWhiteSpace(language) ? "the user profile languages" : $"\"{language}\"")}. " +
-              $"Installed: {string.Join(", ", AvailableLanguages())}. Add one under Settings, Time and language."
-            : null;
-        return engine;
+        error = null;
+        fallbackWarning = null;
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            OcrEngine? profileEngine = OcrEngine.TryCreateFromUserProfileLanguages();
+            error = profileEngine is null ? BuildUnavailableError(UserProfileLanguagesLabel) : null;
+            return profileEngine;
+        }
+
+        string requested = language.Trim();
+        if (!Windows.Globalization.Language.IsWellFormed(requested))
+        {
+            error = $"{MalformedLanguageCode}: \"{requested}\" is not a well-formed BCP-47 language tag " +
+                    $"(for example en-US or fr-FR). Installed: {string.Join(", ", AvailableLanguages())}.";
+            return null;
+        }
+
+        Windows.Globalization.Language requestedLanguage = new(requested);
+        if (OcrEngine.IsLanguageSupported(requestedLanguage) &&
+            OcrEngine.TryCreateFromLanguage(requestedLanguage) is { } exact)
+        {
+            return exact;
+        }
+
+        List<(string Tag, string Script)> installed = OcrEngine.AvailableRecognizerLanguages
+            .Select(installedLanguage => (installedLanguage.LanguageTag, installedLanguage.Script))
+            .ToList();
+        string? userProfileTag = OcrEngine.TryCreateFromUserProfileLanguages()?.RecognizerLanguage.LanguageTag;
+        string? chosen = OcrLanguageSelector.Select(requested, requestedLanguage.Script, installed, userProfileTag);
+        if (chosen is not null &&
+            OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language(chosen)) is { } fallback)
+        {
+            fallbackWarning = $"{LanguageFallbackCode}: no Windows OCR component for \"{requested}\"; " +
+                              $"read with \"{fallback.RecognizerLanguage.LanguageTag}\" instead (same script " +
+                              $"\"{requestedLanguage.Script}\"). Accuracy may be lower; add the OCR component " +
+                              "for the requested language under Settings, Time and language.";
+            return fallback;
+        }
+
+        error = BuildUnavailableError($"\"{requested}\"");
+        return null;
     }
+
+    private static string BuildUnavailableError(string subject) =>
+        $"{NoEngineCode}: no Windows OCR component for {subject}. " +
+        $"Installed: {string.Join(", ", AvailableLanguages())}. Add one under Settings, Time and language.";
 
     // Enlarging past the engine's maximum dimension would make recognition fail.
     internal static int FitScale(int width, int height, int requested, int maxDimension)

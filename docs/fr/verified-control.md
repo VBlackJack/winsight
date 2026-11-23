@@ -180,7 +180,16 @@ ne garantit pas toutes les exécutions futures.
 ## Extensions de la boucle autonome
 
 - **Perception hybride et budget tokens (`observe_scene`)** : passer
-  `actionableOnly=true` ou `filterText` pour réduire les grands arbres UIA. Les
+  `actionableOnly=true` ou `filterText` pour réduire les grands arbres UIA.
+  `actionableOnly` est strict: un élément n'est conservé que s'il a au moins
+  une action autre que `drag_to`/`right_click`/`double_click` et qu'il est
+  visible ou prend en charge `scroll_into_view` (séparateurs, textes statiques et
+  éléments de menu invisibles écartés); la même règle pilote la détection d'UIA
+  clairsemé de `surfaceHint` et les étiquettes de `capture_scene`, tandis que la
+  vérification `any_change` est inchangée. Les éléments portent `windowHandle`
+  (omis pour les éléments DOM) au lieu d'un objet `window` (changement
+  incompatible); les bornes des fenêtres sont dans `windows[]`, une seule fois.
+  Les
   filtres sont appliqués avant le plafond `maxResults`, et `truncated` vaut
   `true` uniquement si les résultats correspondants ont été coupés par
   `maxResults` ou si le parcours UIA a atteint sa limite de noeuds. Quand UIA

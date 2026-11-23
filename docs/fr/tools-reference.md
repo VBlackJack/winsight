@@ -56,7 +56,7 @@ cette boucle, déclare les annotations MCP (`ReadOnly`, `Destructive`, `Idempote
 (`winsight://guide`, `winsight://state`, `winsight://windows`,
 `winsight://scene/latest`) ainsi que les prompts MCP (`explore_app`,
 `verify_flow`, `diagnose_ui_bug`). Définir `WINSIGHT_TOOL_PROFILE=compact` pour
-exposer un jeu réduit de 33 outils autonomes au lieu des 70 outils complets.
+exposer un jeu réduit de 33 outils autonomes au lieu des 71 outils complets.
 
 Ces outils de commodité d'origine restent disponibles. Les outils de plus bas
 niveau restent disponibles, mais les agents devraient commencer ici, car les
@@ -73,6 +73,21 @@ réponses sont orientées vers une action réparable.
 | `get_agent_state` | Renvoie un contexte compact: cible, garde-fous, mémoire, dernier échec et recettes |
 | `get_session_memory` / `clear_session_memory` | Inspecte ou réinitialise les localisateurs observés et les échecs réparables récents |
 | `get_winsight_guide` | Renvoie le guide pratique intégré destiné aux agents |
+
+### Contrat de perception d'`observe_scene`
+
+- `actionableOnly=true` est strict: un élément n'est conservé que s'il a au moins
+  une action autre que `drag_to`, `right_click` et `double_click`, **et** qu'il
+  est visible ou prend en charge `scroll_into_view`. Les séparateurs, textes
+  statiques et éléments de menu invisibles sont écartés. La même règle pilote la
+  détection d'UIA clairsemé derrière `surfaceHint` et les étiquettes dessinées
+  par `capture_scene`. La vérification `any_change` sous `actionableOnly` est
+  inchangée et voit toujours les changements de texte statique.
+- Les éléments de scène ne portent plus d'objet `window` (changement
+  incompatible pour les clients qui lisent `element.window`). Chaque élément a
+  `windowHandle`, qui correspond à `windows[].windowHandle` et est omis pour les
+  éléments DOM; les bornes des fenêtres ne sont envoyées qu'une fois, dans
+  `windows[]`.
 
 ### `observe`
 
@@ -322,7 +337,8 @@ info-bulles) sont ainsi découvrables, et pas seulement atteignables.
 
 | Nom         | Type | Défaut | Description                                                                 |
 | ----------- | ---- | ------ | --------------------------------------------------------------------------- |
-| `processId` | int? | null   | Si défini, renvoie de façon exhaustive la pile **complète** des fenêtres de ce processus (y compris les boîtes de dialogue sans titre, les popups et les menus). Si omis, renvoie toutes les fenêtres de premier niveau **nommées** du bureau (découverte; évite le bruit des fenêtres auxiliaires). |
+| `processId` | int? | null   | Si défini, renvoie de façon exhaustive la pile **complète** des fenêtres de ce processus (y compris les boîtes de dialogue sans titre, les popups et les menus), avec les titres complets. Si omis, renvoie toutes les fenêtres de premier niveau **nommées** du bureau (découverte; évite le bruit des fenêtres auxiliaires), les titres des processus autres que la cible étant masqués sauf avec `includeTitles=true`. |
+| `includeTitles` | bool | false  | Mode bureau entier seulement (`processId` omis): renvoie le titre de chaque fenêtre, y compris des processus qui ne sont pas la cible de la session. À n'utiliser que pour retrouver une application par son titre de fenêtre. |
 
 **Renvoie**: tableau JSON de `WindowDescriptor`:
 
@@ -332,6 +348,7 @@ info-bulles) sont ainsi découvrables, et pas seulement atteignables.
     "processId": 14820,
     "windowHandle": 1247868,
     "title": "Winsight Sample - Counter",
+    "titleWithheld": false,
     "processName": "SampleWpfApp",
     "isForeground": true,
     "x": 750, "y": 400, "width": 420, "height": 280,
@@ -342,6 +359,17 @@ info-bulles) sont ainsi découvrables, et pas seulement atteignables.
   }
 ]
 ```
+
+**Masquage des titres** (changement incompatible du comportement par défaut): en
+mode bureau entier (sans `processId`), tout processus autre que la cible de la
+session reçoit `title: ""` et `titleWithheld: true`, y compris quand aucune
+cible n'est définie, car les titres du bureau peuvent révéler des documents,
+des conversations et des onglets de navigateur sans rapport. Chaque entrée porte
+`titleWithheld`. Découvrez les cibles par `processName`, `className` et bornes,
+ou passez `includeTitles=true` quand un titre est nécessaire. Le mode par
+processus (`processId` défini) est inchangé et renvoie toujours les titres
+complets. La ressource `winsight://windows` suit le même défaut et n'a pas
+d'option d'activation.
 
 `kind` vaut `main`, `dialog` (fenêtre possédée avec barre de titre, ou Win32
 `#32770`, MessageBox comprise), `popup` (surcouche sans barre de titre: menu
@@ -797,10 +825,22 @@ que le `processId` facultatif.
     "win32FocusClassName": "Chrome_WidgetWin_1",
     "topLevelWindowHandle": 25827204,
     "topLevelWindowTitle": "Heimdall - Remote Access Control Center",
-    "x": 1984, "y": 497, "width": 7, "height": 17
+    "x": 1984, "y": 497, "width": 7, "height": 17,
+    "titleWithheld": false
   }
 }
 ```
+
+Quand la fenêtre qui a le focus n'appartient pas à la cible (`belongsToTarget`
+vaut false), `topLevelWindowTitle` vaut `""` et `titleWithheld` vaut `true`:
+le titre de la fenêtre d'un tiers n'atteint jamais l'agent ; le `name` de
+l'élément vaut alors aussi `""`, car un onglet de navigateur ou un élément de
+conversation ayant le focus expose le titre de la page ou le texte du message
+comme nom. Il en va de même
+pour les informations de focus intégrées à d'autres résultats, comme le `focus`
+de `send_key_chord` et le `focusedElement` des résultats du presse-papiers et de
+`type_keys`. (Changement incompatible pour les clients qui lisent le titre d'une
+fenêtre hors cible.)
 
 `isWebView2` est true quand un signal quelconque place le focus dans WebView2:
 un `frameworkId` Chromium, un élément appartenant à `msedgewebview2`, une classe
@@ -1302,6 +1342,23 @@ noir.
 | `captureSource` | string | non       | `window` (défaut, `PrintWindow` sur un HWND) ou `screen` (rectangle du bureau composé par DWM correspondant aux bornes de la fenêtre cible, faisant apparaître les menus, listes déroulantes et info-bulles flottants tout en conservant des coordonnées relatives à la fenêtre pour `click_point`) |
 | `allowOccluded` | bool | non         | Avec `captureSource="screen"`, autorise la capture même si une fenêtre d'un autre processus recouvre la cible (`false` par défaut). Les fenêtres réduites, masquées ou cachées restent refusées. |
 
+Avec `captureSource="screen"`, seul le cadre étendu DWM de la fenêtre est
+copié: les bandes invisibles de la bordure de redimensionnement restent
+transparentes, si bien qu'aucun pixel étranger ne s'y glisse. L'image garde la
+taille du rectangle de la fenêtre, donc les pixels correspondent toujours aux
+coordonnées relatives à la fenêtre. Quand le cadre DWM est indisponible ou
+n'est pas inclus dans le rectangle de la fenêtre, le rectangle complet est
+copié. Limite connue: les coins arrondis de Windows 11 peuvent encore laisser
+apparaître quelques pixels étrangers.
+
+Quand la zone capturée est d'une seule couleur (échantillonnage), le
+`ScreenshotResult` porte un `warning` qui commence par `region_uniform:`.
+Vérifiez l'application elle-même (session périmée ou déconnectée, surface qui
+n'a pas encore été dessinée) avant de conclure que rien n'est affiché; une
+fenêtre légitimement vide le déclenche aussi. Le même avertissement est joint
+aux données de capture de `capture_scene`. Quand deux avertissements
+s'appliquent, ils sont joints par `" | "`.
+
 > **Répertoire de sortie**: quand `outputPath` est omis, la capture est
 > écrite dans le répertoire désigné par la variable d'environnement
 > `WINSIGHT_OUTPUT_DIR`, avec repli sur `%TEMP%\winsight`. Définissez-la pour
@@ -1434,14 +1491,23 @@ d'une langue OCR (Paramètres, Heure et langue, Langue et région).
 | Nom | Type | Obligatoire | Description |
 | --- | ---- | ----------- | ----------- |
 | `region` | object? | non | `{ x, y, width, height }` en coordonnées de fenêtre |
-| `language` | string? | non | Balise BCP-47 comme `en-US`; par défaut les langues du profil utilisateur |
+| `language` | string? | non | Balise BCP-47 comme `en-US`; par défaut les langues du profil utilisateur. Une balise mal formée échoue avec `ocr_language_invalid` |
 | `scale` | int | non | Agrandissement avant reconnaissance, de 1 à 4, 2 par défaut |
 | `windowTitle`, `processId` | | non | Sélection de la fenêtre |
 
-**Retour**: `{ language, text, lines: [{ text, bounds, words: [{ text, bounds }] }], region, scale }`.
+**Retour**: `{ language, text, lines: [{ text, bounds, words: [{ text, bounds }] }], region, scale, requestedLanguage?, warning? }`.
 Chaque `bounds` est en coordonnées de fenêtre, le même espace que
-`click_point` relatif à la fenêtre. Sans langue OCR correspondante, l'appel
-échoue avec `ocr_unavailable` et liste les langues installées. Dans un lot,
+`click_point` relatif à la fenêtre. Quand la langue demandée n'a pas de
+composant OCR, un reconnaisseur installé de la même écriture est utilisé
+(ordre: même langue principale, reconnaisseur du profil utilisateur, premier de
+cette écriture): `language` est alors le reconnaisseur réellement utilisé,
+`requestedLanguage` la balise demandée, et `warning` commence par
+`ocr_language_fallback:`. Sans reconnaisseur de la même écriture, l'appel
+échoue avec `ocr_unavailable` et liste les langues installées. `warning`
+commence aussi par `region_uniform:` quand la zone lue est d'une seule couleur
+(échantillonnage): vérifiez l'application (session périmée ou déconnectée)
+avant de conclure que rien n'est affiché. Deux avertissements sont joints par
+`" | "`. Dans un lot,
 vérifiez avec
 `{ "action": "assert", "operator": "text_visible", "expectedValue": "...", "region": {...} }`:
 la comparaison ignore la casse et réduit les espacements.
@@ -1967,7 +2033,10 @@ Liste de noms de processus séparés par des virgules ou points-virgules (sans `
 | `move_not_applied` | `click_point`, `hover_point`, `scroll_point`, clics physiques | Le pointeur est resté à sa position initiale après stabilisation (distinct de `cursor_moved`, réservé au cas où le pointeur a bougé ailleurs que le départ et la cible). Inclut le résultat `SendInput`, `attemptTraces`, `foregroundWindow`, `clipCursor`, `cursorInfo`, `integrity` et `inputContext`. |
 | `foreground_rejects_synthetic_input` | Échecs d'entrée pointeur | Le déplacement n'a pas été appliqué et soit la sonde `SetCursorPos` a renvoyé `FALSE` avec `GetLastError() == 0`, soit le processus au premier plan figure dans `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS` (par exemple VMware Workstation lorsqu'une VM allumée est affichée dans l'onglet actif; l'interface hôte VMware sans VM en cours dans l'onglet actif accepte les entrées synthétiques). |
 | `warning` (`foreground_may_reject_synthetic_input`) | `send_key_chord`, `type_keys`, repli clavier de `type_text` | Avertissement non bloquant joint aux résultats clavier réussis quand le processus au premier plan figure dans `WINSIGHT_SYNTHETIC_INPUT_REJECTING_HOSTS`. |
-| `captureSource` / `allowOccluded` | `capture_screenshot`, `capture_scene`, `observe` | `captureSource="screen"` capture le rectangle du bureau composé par DWM aux bornes de la fenêtre cible (incluant popups, menus et info-bulles flottants avec coordonnées relatives à la fenêtre); refusé si la fenêtre n'est pas visible ou est recouverte par un autre processus sauf avec `allowOccluded=true`. `ScreenshotResult.captureSource` indique le mode utilisé. |
+| `captureSource` / `allowOccluded` | `capture_screenshot`, `capture_scene`, `observe` | `captureSource="screen"` capture le rectangle du bureau composé par DWM aux bornes de la fenêtre cible (incluant popups, menus et info-bulles flottants avec coordonnées relatives à la fenêtre); refusé si la fenêtre n'est pas visible ou est recouverte par un autre processus sauf avec `allowOccluded=true`. `ScreenshotResult.captureSource` indique le mode utilisé. Seul le cadre étendu DWM est copié (les bandes de bordure de redimensionnement restent transparentes; l'image garde la taille du rectangle de la fenêtre), avec repli sur le rectangle complet quand le cadre est indisponible. |
+| `warning` (`region_uniform`) | `capture_screenshot`, `capture_scene`, `read_text_visually` | Présent quand la zone capturée ou lue est d'une seule couleur (échantillonnage): vérifiez l'application (session périmée ou déconnectée) avant de conclure que rien n'est affiché. Une fenêtre légitimement vide le déclenche aussi. Joint par `" | "` quand un autre avertissement s'applique. |
+| `warning` (`ocr_language_fallback`), `requestedLanguage` | `read_text_visually` | La langue OCR demandée n'était pas installée et un reconnaisseur de la même écriture a été utilisé; `language` est celui qui a servi. |
+| `titleWithheld` | `list_windows`, `get_focused_element`, `winsight://windows` | `true` quand le titre de la fenêtre est remplacé par `""` parce que la fenêtre n'appartient pas à la cible de la session (liste du bureau entier, ou focus hors de la cible). |
 | `truncationReason` | `observe_scene`, `inspect_ui_tree`, `snapshot_ui` | Explique l'arrêt anticipé d'un parcours quand `truncated=true`: `time_budget` (`WINSIGHT_SCENE_TRAVERSAL_BUDGET_MS`, `5000` ms par défaut, plage `100..120000`), `node_limit`, `max_results` ou `com_error`. |
 | `any_change_unrelated` (`hint`) | `act_verified` | Indice non bloquant renvoyé sur `verified` quand `expect.kind=any_change` n'a vérifié que par des éléments sans lien avec la cible (ni la cible, ni ses descendants, ni une nouvelle fenêtre), recommandant un prédicat strict (`window_open`, `selected`, `value`, `toggle`, ...). |
 | `sessionLockSource` | `get_user_activity` | Indique la méthode ayant produit `sessionLocked`: `wts`, `input_desktop` ou `unknown`. |

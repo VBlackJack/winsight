@@ -608,6 +608,7 @@ réparables de haut niveau partagent la même forme de données: `code`, `cause`
 | Situation                                 | Comportement                                          |
 | ----------------------------------------- | ----------------------------------------------------- |
 | La fenêtre n'a pas de nom                 | Ignorée par `list_windows` sur tout le bureau; incluse dans une liste par processus |
+| `list_windows` sur tout le bureau, processus hors cible | Titre masqué: `title` vaut `""` et `titleWithheld` vaut `true`, sauf avec `includeTitles=true` |
 | Exception COM sur une seule fenêtre       | Interceptée localement, cette fenêtre est ignorée     |
 | Élément introuvable                       | `OperationResult.Failure(...)` (success = false)      |
 | Le processus n'a pas de runtime managé    | `OperationResult.Failure(...)`                        |
@@ -618,7 +619,8 @@ réparables de haut niveau partagent la même forme de données: `code`, `cause`
 | Le premier plan a changé entre deux étapes de `run_steps` | Le lot s'arrête avec `foreground_changed` et `foregroundChanged: true` |
 | Le pointeur a bougé pendant une stabilisation | `cursor_moved: ...`, l'appui, la molette ou le maintien n'est pas envoyé |
 | Outil de presse-papiers sans `WINSIGHT_ALLOW_CLIPBOARD` | `clipboard_disabled: ...` |
-| Aucun composant OCR pour la langue        | `ocr_unavailable: ...` avec la liste des langues installées |
+| Aucun composant OCR pour la langue        | Un reconnaisseur de la même écriture est utilisé avec un avertissement `ocr_language_fallback:`; sans lui, `ocr_unavailable: ...` avec la liste des langues installées |
+| Une capture ou une lecture OCR est d'une seule couleur | `warning` qui commence par `region_uniform:` |
 | Une attente visuelle ou d'inactivité n'est jamais satisfaite | `timed_out: ...` avec les dernières mesures |
 
 ## Ce qui est volontairement absent à ce stade

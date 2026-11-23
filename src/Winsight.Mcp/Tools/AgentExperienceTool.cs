@@ -31,7 +31,7 @@ public static partial class AgentExperienceTool
     private static readonly char[] TermSeparators = { ' ', '-', '_', '.', ':' };
     private static readonly string[] DefaultLoop =
     {
-        "set_target after launch_app or list_windows",
+        "set_target after launch_app or list_windows (pick by processName/className; includeTitles=true only to find an app by title)",
         "observe_scene to get expiring references, windows, states and supported actions",
         "act_verified with an explicit postcondition and dryRun=true to preview",
         "act_verified with dryRun=false, then inspect verified and dispatched separately",
